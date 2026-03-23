@@ -22,6 +22,9 @@ export const PROVIDERS: Record<string, ProviderMeta> = {
   microsoft:    { displayName: 'Microsoft',   color: '#0078d4', bgColor: 'rgba(0,120,212,0.12)' },
   inflection:   { displayName: 'Inflection',  color: '#c084fc', bgColor: 'rgba(192,132,252,0.12)' },
   writer:       { displayName: 'Writer',      color: '#f472b6', bgColor: 'rgba(244,114,182,0.12)' },
+  cursor:       { displayName: 'Cursor',      color: '#60a5fa', bgColor: 'rgba(96,165,250,0.12)' },
+  windsurf:     { displayName: 'Windsurf',    color: '#38bdf8', bgColor: 'rgba(56,189,248,0.12)' },
+  codeium:      { displayName: 'Codeium',     color: '#38bdf8', bgColor: 'rgba(56,189,248,0.12)' },
 };
 
 export function getProvider(id: string): ProviderMeta {

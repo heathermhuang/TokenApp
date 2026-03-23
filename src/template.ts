@@ -496,7 +496,11 @@ export function getHtml(params: {
       font-weight: 500;
       padding: 2px 8px;
       border-radius: 4px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
     }
+    .sub-provider-chip .provider-logo { width: 12px; height: 12px; }
 
     .sub-desc {
       font-size: 12px;
@@ -1003,6 +1007,9 @@ function getProviderStyle(providerId) {
     'x-ai':       { color: '#e2e8f0', bg: 'rgba(226,232,240,0.10)' },
     cohere:       { color: '#4ade80', bg: 'rgba(74,222,128,0.12)' },
     perplexityai: { color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
+    cursor:       { color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' },
+    windsurf:     { color: '#38bdf8', bg: 'rgba(56,189,248,0.12)' },
+    microsoft:    { color: '#60a5fa', bg: 'rgba(0,120,212,0.12)' },
   };
   return map[providerId] ?? { color: '#94a3b8', bg: 'rgba(148,163,184,0.12)' };
 }
@@ -1024,6 +1031,9 @@ const PROVIDER_DOMAINS = {
   inflection:    'inflection.ai',
   writer:        'writer.com',
   '01-ai':       '01.ai',
+  cursor:        'cursor.com',
+  windsurf:      'windsurf.com',
+  codeium:       'windsurf.com',
 };
 
 function getProviderLogo(providerId) {
@@ -1216,11 +1226,12 @@ function renderSubscriptions() {
       </div>\`;
     }).join('');
 
+    const logoImg = providerLogoImg(sub.providerId);
     return \`<div class="sub-card">
       <div class="sub-header">
         <div class="sub-title-row">
           <span class="sub-name">\${escape(sub.name)}</span>
-          <span class="sub-provider-chip" style="background:\${ps.bg};color:\${ps.color}">\${escape(sub.provider)}</span>
+          <span class="sub-provider-chip" style="background:\${ps.bg};color:\${ps.color}">\${logoImg}\${escape(sub.provider)}</span>
         </div>
         <p class="sub-desc">\${escape(sub.description)}</p>
       </div>
