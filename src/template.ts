@@ -1075,6 +1075,7 @@ const PROVIDER_DOMAINS = {
   kwaipilot:            'kuaishou.com',
   meituan:              'meituan.com',
   'z-ai':               'zhipuai.cn',
+  zhipuai:              'zhipuai.cn',
   // Open-source / research labs
   allenai:              'allenai.org',
   eleutherai:           'eleuther.ai',

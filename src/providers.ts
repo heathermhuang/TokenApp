@@ -34,6 +34,8 @@ export const PROVIDERS: Record<string, ProviderMeta> = {
   tencent:      { displayName: 'Tencent',     color: '#1eff7a', bgColor: 'rgba(30,255,122,0.10)' },
   xiaomi:       { displayName: 'Xiaomi',      color: '#f97316', bgColor: 'rgba(249,115,22,0.12)' },
   stepfun:      { displayName: 'StepFun',     color: '#fbbf24', bgColor: 'rgba(251,191,36,0.12)' },
+  zhipuai:      { displayName: 'Zhipu AI',    color: '#818cf8', bgColor: 'rgba(129,140,248,0.12)' },
+  'z-ai':       { displayName: 'Zhipu AI',    color: '#818cf8', bgColor: 'rgba(129,140,248,0.12)' },
   kwaipilot:    { displayName: 'Kuaishou',    color: '#fb923c', bgColor: 'rgba(251,146,60,0.12)' },
   meituan:      { displayName: 'Meituan',     color: '#fbbf24', bgColor: 'rgba(251,191,36,0.12)' },
   // Research & infra
