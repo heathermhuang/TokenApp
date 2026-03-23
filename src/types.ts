@@ -49,7 +49,7 @@ export interface Subscription {
   description: string;
   tiers: SubscriptionTier[];
   url: string;
-  category: 'chat' | 'coding' | 'search' | 'image' | 'other';
+  category: 'chat' | 'coding' | 'search' | 'media' | 'other';
   underlyingModels?: string[];  // model IDs powering this service
 }
 

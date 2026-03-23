@@ -256,6 +256,9 @@ export function getHtml(params: {
       transition: all 0.15s;
       white-space: nowrap;
       user-select: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
     }
 
     .filter-pill:hover { border-color: var(--border2); color: var(--text); }
@@ -423,6 +426,9 @@ export function getHtml(params: {
     .badge-vision { background: rgba(96,165,250,0.15); color: #60a5fa; }
     .badge-reasoning { background: rgba(167,139,250,0.15); color: #a78bfa; }
     .badge-audio       { background: rgba(251,191,36,0.15); color: #fbbf24; }
+    .badge-text        { background: rgba(148,163,184,0.10); color: #94a3b8; border-color: rgba(148,163,184,0.2); }
+    .badge-image-gen   { background: rgba(232,121,249,0.12); color: #e879f9; border-color: rgba(232,121,249,0.25); }
+    .badge-video       { background: rgba(99,102,241,0.12);  color: #818cf8; border-color: rgba(99,102,241,0.25); }
     .badge-deprecated  { background: rgba(100,116,139,0.12); color: #64748b; border-color: rgba(100,116,139,0.25); font-style: italic; }
     .badge-active      { background: rgba(34,197,94,0.10);   color: #22c55e; border-color: rgba(34,197,94,0.25); }
 
@@ -861,6 +867,7 @@ export function getHtml(params: {
         <button class="cat-tab" data-subcat="chat">Chat AI</button>
         <button class="cat-tab" data-subcat="coding">Coding</button>
         <button class="cat-tab" data-subcat="search">Search</button>
+        <button class="cat-tab" data-subcat="media">Media</button>
       </div>
     </div>
   </div>
@@ -1010,30 +1017,80 @@ function getProviderStyle(providerId) {
     cursor:       { color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' },
     windsurf:     { color: '#38bdf8', bg: 'rgba(56,189,248,0.12)' },
     microsoft:    { color: '#60a5fa', bg: 'rgba(0,120,212,0.12)' },
+    // Chinese providers
+    baidu:        { color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
+    bytedance:    { color: '#f43f5e', bg: 'rgba(244,63,94,0.12)' },
+    'bytedance-seed': { color: '#f43f5e', bg: 'rgba(244,63,94,0.12)' },
+    minimax:      { color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
+    moonshotai:   { color: '#e2e8f0', bg: 'rgba(226,232,240,0.10)' },
+    tencent:      { color: '#1eff7a', bg: 'rgba(30,255,122,0.10)' },
+    xiaomi:       { color: '#f97316', bg: 'rgba(249,115,22,0.12)' },
+    stepfun:      { color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' },
+    alibaba:      { color: '#fb923c', bg: 'rgba(251,146,60,0.12)' },
+    kwaipilot:    { color: '#fb923c', bg: 'rgba(251,146,60,0.12)' },
+    meituan:      { color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' },
+    // Research / others
+    allenai:      { color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' },
+    'ibm-granite':{ color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
+    openrouter:   { color: '#94a3b8', bg: 'rgba(148,163,184,0.12)' },
+    nvidia:       { color: '#76b900', bg: 'rgba(118,185,0,0.12)' },
   };
   return map[providerId] ?? { color: '#94a3b8', bg: 'rgba(148,163,184,0.12)' };
 }
 
 const PROVIDER_DOMAINS = {
-  openai:        'openai.com',
-  anthropic:     'anthropic.com',
-  google:        'deepmind.google',
-  'meta-llama':  'meta.com',
-  mistralai:     'mistral.ai',
-  deepseek:      'deepseek.com',
-  'x-ai':        'x.ai',
-  cohere:        'cohere.com',
-  perplexityai:  'perplexity.ai',
-  qwen:          'qwen.ai',
-  nvidia:        'nvidia.com',
-  amazon:        'aws.amazon.com',
-  microsoft:     'microsoft.com',
-  inflection:    'inflection.ai',
-  writer:        'writer.com',
-  '01-ai':       '01.ai',
-  cursor:        'cursor.com',
-  windsurf:      'windsurf.com',
-  codeium:       'windsurf.com',
+  // Major Western providers
+  openai:               'openai.com',
+  anthropic:            'anthropic.com',
+  google:               'deepmind.google',
+  'meta-llama':         'meta.com',
+  mistralai:            'mistral.ai',
+  deepseek:             'deepseek.com',
+  'x-ai':               'x.ai',
+  cohere:               'cohere.com',
+  perplexityai:         'perplexity.ai',
+  perplexity:           'perplexity.ai',
+  nvidia:               'nvidia.com',
+  amazon:               'aws.amazon.com',
+  microsoft:            'microsoft.com',
+  inflection:           'inflection.ai',
+  writer:               'writer.com',
+  '01-ai':              '01.ai',
+  // Coding tools
+  cursor:               'cursor.com',
+  windsurf:             'windsurf.com',
+  codeium:              'windsurf.com',
+  // Chinese providers
+  qwen:                 'qianwen.aliyun.com',
+  alibaba:              'alibaba.com',
+  baidu:                'baidu.com',
+  bytedance:            'bytedance.com',
+  'bytedance-seed':     'bytedance.com',
+  minimax:              'hailuo.ai',
+  moonshotai:           'moonshot.cn',
+  tencent:              'tencent.com',
+  xiaomi:               'xiaomi.com',
+  stepfun:              'stepfun.com',
+  zhipuai:              'zhipuai.cn',
+  kwaipilot:            'kuaishou.com',
+  meituan:              'meituan.com',
+  'z-ai':               'zhipuai.cn',
+  // Open-source / research labs
+  allenai:              'allenai.org',
+  eleutherai:           'eleuther.ai',
+  nousresearch:         'nousresearch.com',
+  ibm:                  'ibm.com',
+  'ibm-granite':        'ibm.com',
+  // API / infra providers
+  openrouter:           'openrouter.ai',
+  ai21:                 'ai21.com',
+  'arcee-ai':           'arcee.ai',
+  upstage:              'upstage.ai',
+  liquid:               'liquid.ai',
+  'inception':          'inceptionlabs.ai',
+  'prime-intellect':    'primeintellect.ai',
+  'essentialai':        'essential.ai',
+  'switchpoint':        'switchpoint.ai',
 };
 
 function getProviderLogo(providerId) {
@@ -1136,16 +1193,24 @@ function renderTable() {
 
 function buildModIcons(m) {
   const badges = [];
+  // Status
   if (m.isDeprecated) {
     badges.push('<span class="badge badge-deprecated">Deprecated</span>');
   } else {
     badges.push('<span class="badge badge-active">Active</span>');
   }
-  if (m.isFree) badges.push('<span class="badge badge-free">Free</span>');
-  if (m.isVision) badges.push('<span class="badge badge-vision">Vision</span>');
-  if (m.isReasoning) badges.push('<span class="badge badge-reasoning">Think</span>');
+  // Modalities
+  const hasText = m.outputModalities?.includes('text');
+  const hasImageOut = m.outputModalities?.includes('image');
+  const hasVideoOut = m.outputModalities?.includes('video');
   const hasAudio = m.inputModalities?.includes('audio') || m.outputModalities?.includes('audio');
-  if (hasAudio) badges.push('<span class="badge badge-audio">Audio</span>');
+  if (hasText)     badges.push('<span class="badge badge-text">Text</span>');
+  if (m.isVision)  badges.push('<span class="badge badge-vision">Vision</span>');
+  if (hasImageOut) badges.push('<span class="badge badge-image-gen">Image</span>');
+  if (hasVideoOut) badges.push('<span class="badge badge-video">Video</span>');
+  if (hasAudio)    badges.push('<span class="badge badge-audio">Audio</span>');
+  if (m.isReasoning) badges.push('<span class="badge badge-reasoning">Think</span>');
+  if (m.isFree)    badges.push('<span class="badge badge-free">Free</span>');
   return badges.join('');
 }
 

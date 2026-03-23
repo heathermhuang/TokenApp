@@ -25,6 +25,24 @@ export const PROVIDERS: Record<string, ProviderMeta> = {
   cursor:       { displayName: 'Cursor',      color: '#60a5fa', bgColor: 'rgba(96,165,250,0.12)' },
   windsurf:     { displayName: 'Windsurf',    color: '#38bdf8', bgColor: 'rgba(56,189,248,0.12)' },
   codeium:      { displayName: 'Codeium',     color: '#38bdf8', bgColor: 'rgba(56,189,248,0.12)' },
+  // Chinese providers
+  baidu:        { displayName: 'Baidu',       color: '#3b82f6', bgColor: 'rgba(59,130,246,0.12)' },
+  bytedance:    { displayName: 'ByteDance',   color: '#f43f5e', bgColor: 'rgba(244,63,94,0.12)' },
+  'bytedance-seed': { displayName: 'ByteDance', color: '#f43f5e', bgColor: 'rgba(244,63,94,0.12)' },
+  minimax:      { displayName: 'MiniMax',     color: '#a78bfa', bgColor: 'rgba(167,139,250,0.12)' },
+  moonshotai:   { displayName: 'Moonshot AI', color: '#e2e8f0', bgColor: 'rgba(226,232,240,0.10)' },
+  tencent:      { displayName: 'Tencent',     color: '#1eff7a', bgColor: 'rgba(30,255,122,0.10)' },
+  xiaomi:       { displayName: 'Xiaomi',      color: '#f97316', bgColor: 'rgba(249,115,22,0.12)' },
+  stepfun:      { displayName: 'StepFun',     color: '#fbbf24', bgColor: 'rgba(251,191,36,0.12)' },
+  kwaipilot:    { displayName: 'Kuaishou',    color: '#fb923c', bgColor: 'rgba(251,146,60,0.12)' },
+  meituan:      { displayName: 'Meituan',     color: '#fbbf24', bgColor: 'rgba(251,191,36,0.12)' },
+  // Research & infra
+  allenai:      { displayName: 'AllenAI',     color: '#60a5fa', bgColor: 'rgba(96,165,250,0.12)' },
+  'ibm-granite':{ displayName: 'IBM',         color: '#3b82f6', bgColor: 'rgba(59,130,246,0.12)' },
+  ai21:         { displayName: 'AI21 Labs',   color: '#818cf8', bgColor: 'rgba(129,140,248,0.12)' },
+  'arcee-ai':   { displayName: 'Arcee AI',    color: '#c084fc', bgColor: 'rgba(192,132,252,0.12)' },
+  upstage:      { displayName: 'Upstage',     color: '#38bdf8', bgColor: 'rgba(56,189,248,0.12)' },
+  openrouter:   { displayName: 'OpenRouter',  color: '#94a3b8', bgColor: 'rgba(148,163,184,0.12)' },
 };
 
 export function getProvider(id: string): ProviderMeta {
