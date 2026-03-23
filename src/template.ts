@@ -29,6 +29,7 @@ export function getHtml(params: {
   <meta name="twitter:image" content="https://token.app/og.svg" />
   <link rel="canonical" href="https://token.app/" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔷</text></svg>" />
+  <script>(function(){var t=localStorage.getItem('theme')||(window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);})();</script>
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -77,6 +78,29 @@ export function getHtml(params: {
       --red: #ef4444;
       --radius: 8px;
       --radius-sm: 5px;
+      --nav-bg: rgba(12,12,14,0.88);
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+      --shadow-md: 0 4px 16px rgba(0,0,0,0.4);
+    }
+
+    html[data-theme="light"] {
+      --bg: #f4f4f8;
+      --surface: #ffffff;
+      --surface2: #ebebf2;
+      --border: #dcdce8;
+      --border2: #c8c8d8;
+      --text: #111118;
+      --text2: #484860;
+      --text3: #8888a0;
+      --accent: #5254d0;
+      --accent-dim: rgba(82,84,208,0.1);
+      --green: #16a34a;
+      --yellow: #ca8a04;
+      --orange: #ea580c;
+      --red: #dc2626;
+      --nav-bg: rgba(244,244,248,0.9);
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+      --shadow-md: 0 4px 16px rgba(0,0,0,0.12);
     }
 
     html { scroll-behavior: smooth; }
@@ -95,9 +119,9 @@ export function getHtml(params: {
       position: sticky;
       top: 0;
       z-index: 100;
-      background: rgba(12,12,14,0.85);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
+      background: var(--nav-bg);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
       border-bottom: 1px solid var(--border);
       padding: 0 24px;
       height: 52px;
@@ -148,6 +172,43 @@ export function getHtml(params: {
     @keyframes pulse {
       0%, 100% { opacity: 1; }
       50% { opacity: 0.4; }
+    }
+
+    /* ── Theme Toggle ──────────────────────────────────────────────────────── */
+    .theme-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 1px solid var(--border2);
+      background: var(--surface2);
+      color: var(--text2);
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.15s;
+    }
+
+    .theme-btn:hover {
+      background: var(--border);
+      border-color: var(--text3);
+      color: var(--text);
+      transform: rotate(15deg);
+    }
+
+    .theme-btn svg { display: block; pointer-events: none; }
+
+    /* Show correct icon per theme */
+    .theme-btn .icon-moon { display: block; }
+    .theme-btn .icon-sun  { display: none; }
+    html[data-theme="light"] .theme-btn .icon-moon { display: none; }
+    html[data-theme="light"] .theme-btn .icon-sun  { display: block; }
+
+    /* Smooth theme transition */
+    html { transition: background 0.2s, color 0.2s; }
+    body, nav, .hero, table, .sub-card, .modal-content, .consent-bar, footer {
+      transition: background-color 0.2s, border-color 0.2s, color 0.2s;
     }
 
     /* ── Hero ─────────────────────────────────────────────────────────────── */
@@ -883,6 +944,20 @@ export function getHtml(params: {
       <span id="nav-updated">checking…</span>
     </div>
   </div>
+  <button class="theme-btn" onclick="toggleTheme()" title="Toggle light/dark theme" aria-label="Toggle light/dark theme">
+    <!-- Moon (shown in dark mode) -->
+    <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+    </svg>
+    <!-- Sun (shown in light mode) -->
+    <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="5"/>
+      <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+      <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+    </svg>
+  </button>
 </nav>
 
 <!-- ── Hero ─────────────────────────────────────────────────────────────────── -->
@@ -1726,6 +1801,14 @@ async function init() {
         '<tr><td colspan="7"><div class="empty-state"><h3>Failed to load data</h3><p>' + err.message + '</p></div></td></tr>';
     }
   }
+}
+
+// ── Theme ──────────────────────────────────────────────────────────────────────
+function toggleTheme() {
+  var current = document.documentElement.getAttribute('data-theme');
+  var next = current === 'light' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('theme', next);
 }
 
 // ── Event Bindings ─────────────────────────────────────────────────────────────
