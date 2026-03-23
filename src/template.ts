@@ -990,9 +990,9 @@ export function getHtml(params: {
   <p class="footer-powered">
     Powered by <a href="https://measurable.ai" target="_blank" rel="noopener">Measurable AI</a>
     &nbsp;·&nbsp;
-    <a href="#" onclick="openModal('terms');return false;">Terms of Use</a>
+    <a href="https://measurable.ai/en-US/termsOfUse" target="_blank" rel="noopener">Terms of Use</a>
     &nbsp;·&nbsp;
-    <a href="#" onclick="openModal('privacy');return false;">Privacy Policy</a>
+    <a href="https://measurable.ai/en-US/privacyPolicy" target="_blank" rel="noopener">Privacy Policy</a>
   </p>
 </footer>
 
@@ -1000,8 +1000,8 @@ export function getHtml(params: {
 <div class="consent-bar" id="consent-bar">
   <p class="consent-text">
     We use cookies and analytics to understand how token.app is used. See our
-    <a href="#" onclick="openModal('privacy');return false;">Privacy Policy</a> and
-    <a href="#" onclick="openModal('terms');return false;">Terms of Use</a>.
+    <a href="https://measurable.ai/en-US/privacyPolicy" target="_blank" rel="noopener">Privacy Policy</a> and
+    <a href="https://measurable.ai/en-US/termsOfUse" target="_blank" rel="noopener">Terms of Use</a>.
   </p>
   <div class="consent-actions">
     <button class="consent-btn consent-btn-decline" onclick="setConsent('declined')">Decline</button>
