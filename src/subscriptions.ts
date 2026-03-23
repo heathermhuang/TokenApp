@@ -173,7 +173,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     providerId: 'x-ai',
     description: 'xAI\'s AI with real-time X data, deep search, Think mode, and SuperGrok Heavy.',
     category: 'chat',
-    url: 'https://x.ai/grok',
+    url: 'https://x.ai/pricing',
     underlyingModels: ['x-ai/grok-3', 'x-ai/grok-3-mini'],
     tiers: [
       {
@@ -281,7 +281,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     providerId: 'mistralai',
     description: 'Mistral\'s AI assistant with frontier models, deep research, extended thinking, and No Telemetry Mode.',
     category: 'chat',
-    url: 'https://mistral.ai/pricing',
+    url: 'https://chat.mistral.ai/pricing',
     tiers: [
       {
         name: 'Free',
@@ -337,7 +337,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     providerId: 'moonshotai',
     description: '月之暗面 (Moonshot AI) — long-context assistant with Deep Research and agentic tasks. Domestic pricing ~3–7× cheaper.',
     category: 'chat',
-    url: 'https://kimi.ai',
+    url: 'https://kimi.ai/pricing',
     tiers: [
       {
         name: 'Adagio',
@@ -387,7 +387,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     providerId: 'baidu',
     description: '文小言 (formerly 文心一言) — Baidu\'s AI assistant. Fully free since April 2025, including ERNIE 4.5 & X1 reasoning.',
     category: 'chat',
-    url: 'https://yiyan.baidu.com',
+    url: 'https://yiyan.baidu.com/price',
     tiers: [
       {
         name: 'Free',
@@ -407,7 +407,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     providerId: 'bytedance',
     description: '豆包 — ByteDance\'s AI assistant (Cici internationally) powered by Seed series models.',
     category: 'chat',
-    url: 'https://doubao.com',
+    url: 'https://www.doubao.com/price',
     tiers: [
       {
         name: 'Free',
@@ -437,7 +437,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     providerId: 'zhipuai',
     description: '智谱清言 — Zhipu AI\'s assistant powered by GLM-5. First major Chinese LLM to raise prices in 2026.',
     category: 'chat',
-    url: 'https://chatglm.cn',
+    url: 'https://chatglm.cn/membership',
     tiers: [
       {
         name: 'Free',
@@ -639,7 +639,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     providerId: 'anthropic',
     description: 'Agentic CLI coding tool for the terminal. Billed against your Anthropic API usage — no flat subscription.',
     category: 'coding',
-    url: 'https://claude.ai/code',
+    url: 'https://www.anthropic.com/claude-code',
     underlyingModels: ['anthropic/claude-sonnet-4-5'],
     tiers: [
       {
@@ -661,7 +661,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     providerId: 'minimax',
     description: 'MiniMax\'s Hailuo video & image generation platform. Hailuo 2.3 produces cinematic AI videos.',
     category: 'media',
-    url: 'https://hailuo.ai',
+    url: 'https://hailuo.ai/pricing',
     tiers: [
       {
         name: 'Free',

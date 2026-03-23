@@ -1124,77 +1124,137 @@ const PROVIDER_DOMAINS = {
   inflection:           'inflection.ai',
 };
 
+// ── Provider AI product pages (for provider chip links) ─────────────────────
 const PROVIDER_URLS = {
-  openai:           'https://openai.com',
-  anthropic:        'https://anthropic.com',
-  google:           'https://deepmind.google',
-  'meta-llama':     'https://ai.meta.com',
-  mistralai:        'https://mistral.ai',
-  deepseek:         'https://deepseek.com',
-  'x-ai':           'https://x.ai',
-  cohere:           'https://cohere.com',
-  perplexityai:     'https://perplexity.ai',
-  qwen:             'https://qianwen.aliyun.com',
-  alibaba:          'https://qianwen.aliyun.com',
-  nvidia:           'https://build.nvidia.com',
-  amazon:           'https://aws.amazon.com/bedrock/',
-  microsoft:        'https://microsoft.com/en-us/ai',
-  inflection:       'https://inflection.ai',
-  writer:           'https://writer.com',
-  '01-ai':          'https://01.ai',
-  cursor:           'https://cursor.com',
-  windsurf:         'https://windsurf.com',
-  codeium:          'https://windsurf.com',
-  baidu:            'https://yiyan.baidu.com',
-  bytedance:        'https://doubao.com',
-  'bytedance-seed': 'https://doubao.com',
-  minimax:          'https://minimax.io',
-  moonshotai:       'https://kimi.ai',
-  tencent:          'https://hunyuan.tencent.com',
-  xiaomi:           'https://xiaomi.com',
-  stepfun:          'https://stepfun.com',
-  zhipuai:          'https://chatglm.cn',
-  'z-ai':           'https://chatglm.cn',
-  kwaipilot:        'https://kwaipilot.kuaishou.com',
-  meituan:          'https://www.meituan.com',
-  allenai:          'https://allenai.org',
-  'ibm-granite':    'https://www.ibm.com/granite',
-  ai21:             'https://ai21.com',
-  'arcee-ai':       'https://arcee.ai',
-  upstage:          'https://upstage.ai',
-  openrouter:           'https://openrouter.ai',
-  nousresearch:         'https://nousresearch.com',
-  cohere:               'https://cohere.com',
-  perplexity:           'https://perplexity.ai',
-  amazon:               'https://aws.amazon.com/bedrock/',
-  'aion-labs':          'https://aionlabs.ai',
-  cognitivecomputations:'https://cognitivecomputations.com',
-  deepcogito:           'https://deepcogito.com',
-  mancer:               'https://mancer.tech',
-  morph:                'https://morph.so',
-  tngtech:              'https://tngtech.com',
-  'anthracite-org':     'https://anthracite.org',
-  relace:               'https://relace.ai',
-  'nex-agi':            'https://nexagi.com',
-  liquid:               'https://liquid.ai',
-  inception:            'https://inceptionlabs.ai',
-  'prime-intellect':    'https://primeintellect.ai',
-  essentialai:          'https://essential.ai',
-  switchpoint:          'https://switchpoint.ai',
-  upstage:              'https://upstage.ai',
-  eleutherai:           'https://eleuther.ai',
+  // Major Western — link to AI product / API / models page
+  openai:               'https://platform.openai.com/docs/models',
+  anthropic:            'https://www.anthropic.com/claude',
+  google:               'https://aistudio.google.com/',
+  'meta-llama':         'https://ai.meta.com/models/',
+  mistralai:            'https://mistral.ai/technology/',
+  deepseek:             'https://www.deepseek.com/',
+  'x-ai':               'https://x.ai/grok',
+  cohere:               'https://cohere.com/models',
+  perplexityai:         'https://www.perplexity.ai/',
+  perplexity:           'https://www.perplexity.ai/',
+  nvidia:               'https://build.nvidia.com/models',
+  amazon:               'https://aws.amazon.com/bedrock/foundation-models/',
+  microsoft:            'https://ai.azure.com/explore/models',
+  inflection:           'https://inflection.ai/',
+  writer:               'https://writer.com/',
+  '01-ai':              'https://01.ai/',
+  // Coding tools
+  cursor:               'https://cursor.com/',
+  windsurf:             'https://windsurf.com/',
+  codeium:              'https://windsurf.com/',
+  // Chinese — link to the actual AI chat/platform product
+  qwen:                 'https://tongyi.aliyun.com/',
+  alibaba:              'https://tongyi.aliyun.com/',
+  baidu:                'https://yiyan.baidu.com/',
+  bytedance:            'https://www.doubao.com/',
+  'bytedance-seed':     'https://www.doubao.com/',
+  minimax:              'https://minimax.io/platform',
+  moonshotai:           'https://kimi.ai/',
+  tencent:              'https://hunyuan.tencent.com/',
+  xiaomi:               'https://mimo.xiaomi.com/',       // MiMo AI model page
+  stepfun:              'https://stepfun.com/',
+  zhipuai:              'https://chatglm.cn/',
+  'z-ai':               'https://chatglm.cn/',
+  kwaipilot:            'https://kwaipilot.kuaishou.com/',
+  meituan:              'https://www.meituan.com/',
+  // Research & open-source
+  allenai:              'https://allenai.org/papers',
+  eleutherai:           'https://www.eleuther.ai/',
+  nousresearch:         'https://nousresearch.com/',
+  ibm:                  'https://www.ibm.com/products/watsonx-ai',
   'ibm-granite':        'https://www.ibm.com/granite',
-  ibm:                  'https://ibm.com',
-  ai21:                 'https://ai21.com',
-  'arcee-ai':           'https://arcee.ai',
-  'z-ai':               'https://chatglm.cn',
-  kwaipilot:            'https://kwaipilot.kuaishou.com',
-  meituan:              'https://www.meituan.com',
-  stepfun:              'https://stepfun.com',
+  // API / infra / community
+  openrouter:           'https://openrouter.ai/models',
+  ai21:                 'https://www.ai21.com/jamba',
+  'arcee-ai':           'https://arcee.ai/',
+  upstage:              'https://upstage.ai/',
+  liquid:               'https://liquid.ai/',
+  inception:            'https://inceptionlabs.ai/',
+  'prime-intellect':    'https://primeintellect.ai/',
+  essentialai:          'https://essential.ai/',
+  switchpoint:          'https://switchpoint.ai/',
+  'aion-labs':          'https://aionlabs.ai/',
+  cognitivecomputations:'https://cognitivecomputations.com/',
+  deepcogito:           'https://deepcogito.com/',
+  mancer:               'https://mancer.tech/',
+  morph:                'https://morph.so/',
+  tngtech:              'https://www.tngtech.com/',
+  'anthracite-org':     'https://anthracite.org/',
+  relace:               'https://relace.ai/',
+  'nex-agi':            'https://nexagi.com/',
+};
+
+// ── Model page URLs (link to the provider's own model/docs page) ─────────────
+// Providers with per-model doc pages: use a template function.
+// All others: link to provider's models listing or docs page.
+const MODEL_PAGE_URLS = {
+  openai:               null,  // handled per-model below
+  anthropic:            'https://docs.anthropic.com/en/docs/about-claude/models/overview',
+  google:               'https://ai.google.dev/gemini-api/docs/models',
+  'meta-llama':         'https://ai.meta.com/models/',
+  mistralai:            'https://mistral.ai/technology/',
+  deepseek:             'https://github.com/deepseek-ai',
+  'x-ai':               'https://x.ai/grok',
+  cohere:               'https://cohere.com/models',
+  perplexityai:         'https://docs.perplexity.ai/models/model-cards',
+  perplexity:           'https://docs.perplexity.ai/models/model-cards',
+  nvidia:               'https://build.nvidia.com/models',
+  amazon:               'https://aws.amazon.com/bedrock/foundation-models/',
+  microsoft:            'https://ai.azure.com/explore/models',
+  qwen:                 'https://qwenlm.github.io/',
+  alibaba:              'https://qwenlm.github.io/',
+  baidu:                'https://yiyan.baidu.com/',
+  bytedance:            'https://www.doubao.com/',
+  'bytedance-seed':     'https://www.doubao.com/',
+  minimax:              'https://minimax.io/platform',
+  moonshotai:           'https://kimi.ai/',
+  tencent:              'https://hunyuan.tencent.com/',
+  xiaomi:               'https://mimo.xiaomi.com/',
+  stepfun:              'https://stepfun.com/',
+  zhipuai:              'https://chatglm.cn/',
+  'z-ai':               'https://chatglm.cn/',
+  ai21:                 'https://www.ai21.com/jamba',
+  'arcee-ai':           'https://arcee.ai/',
+  upstage:              'https://upstage.ai/',
+  allenai:              'https://allenai.org/papers',
+  nousresearch:         'https://nousresearch.com/',
+  eleutherai:           'https://www.eleuther.ai/',
+  'ibm-granite':        'https://www.ibm.com/granite',
+  ibm:                  'https://www.ibm.com/products/watsonx-ai',
+  liquid:               'https://liquid.ai/',
+  inception:            'https://inceptionlabs.ai/',
+  writer:               'https://writer.com/',
+  inflection:           'https://inflection.ai/',
+  morph:                'https://morph.so/',
+  deepcogito:           'https://deepcogito.com/',
 };
 
 function getProviderUrl(providerId) {
   return PROVIDER_URLS[providerId] ?? null;
+}
+
+function getModelUrl(m) {
+  if (m.providerId === 'openai') {
+    return 'https://platform.openai.com/docs/models/' + m.slug;
+  }
+  if (m.providerId === 'mistralai') {
+    var s = m.slug;
+    var ci = s.indexOf(':'); if (ci !== -1) s = s.slice(0, ci);
+    if (s.slice(-7) === '-latest') s = s.slice(0, -7);
+    return 'https://mistral.ai/models/' + s;
+  }
+  if (m.providerId === 'nvidia') {
+    return 'https://build.nvidia.com/' + m.id;
+  }
+  if (m.providerId === 'deepseek') {
+    return 'https://github.com/deepseek-ai/' + m.slug.split('/').join('-');
+  }
+  return MODEL_PAGE_URLS[m.providerId] || PROVIDER_URLS[m.providerId] || 'https://openrouter.ai/' + m.id;
 }
 
 function getProviderLogo(providerId) {
@@ -1277,7 +1337,7 @@ function renderTable() {
     const outPClass = priceClass(m.outputPer1M, 'output');
     const depClass = m.isDeprecated ? ' row-deprecated' : '';
     const logoImg = providerLogoImg(m.providerId);
-    const modelUrl = \`https://openrouter.ai/\${m.id}\`;
+    const modelUrl = getModelUrl(m);
     const providerUrl = getProviderUrl(m.providerId);
     const providerChip = \`<span class="provider-chip" style="background:\${ps.bg};color:\${ps.color}">\${logoImg}\${escape(m.provider)}</span>\`;
 
