@@ -55,6 +55,72 @@ app.post('/api/refresh', async (c) => {
   }
 });
 
+// ── SEO / Static Assets ───────────────────────────────────────────────────────
+
+app.get('/robots.txt', (c) => {
+  return c.text(
+    'User-agent: *\nAllow: /\n\nSitemap: https://token.app/sitemap.xml\n',
+    200,
+    { 'Content-Type': 'text/plain; charset=utf-8' }
+  );
+});
+
+app.get('/sitemap.xml', (c) => {
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://token.app/</loc>
+    <changefreq>hourly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>`;
+  return c.body(xml, 200, {
+    'Content-Type': 'application/xml; charset=utf-8',
+    'Cache-Control': 'public, max-age=86400',
+  });
+});
+
+app.get('/og.svg', (c) => {
+  const svg = `<svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="630" fill="#0c0c0e"/>
+  <rect x="0" y="0" width="1200" height="4" fill="#6366f1"/>
+  <!-- Grid lines -->
+  <line x1="0" y1="120" x2="1200" y2="120" stroke="#27272f" stroke-width="1"/>
+  <line x1="0" y1="510" x2="1200" y2="510" stroke="#27272f" stroke-width="1"/>
+  <!-- Logo mark -->
+  <text x="80" y="185" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="64" fill="#6366f1">◈</text>
+  <!-- Title -->
+  <text x="160" y="185" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="56" font-weight="700" fill="#f0f0f4">token.app</text>
+  <!-- Tagline -->
+  <text x="80" y="270" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="28" fill="#9090a0">AI Token &amp; Subscription Pricing Tracker</text>
+  <!-- Divider -->
+  <rect x="80" y="320" width="1040" height="1" fill="#27272f"/>
+  <!-- Stats row -->
+  <g transform="translate(80,370)">
+    <text x="0" y="0" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="48" font-weight="700" fill="#f0f0f4">350+</text>
+    <text x="0" y="40" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="18" fill="#9090a0">Models tracked</text>
+  </g>
+  <g transform="translate(380,370)">
+    <text x="0" y="0" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="48" font-weight="700" fill="#f0f0f4">55+</text>
+    <text x="0" y="40" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="18" fill="#9090a0">Providers</text>
+  </g>
+  <g transform="translate(620,370)">
+    <text x="0" y="0" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="48" font-weight="700" fill="#22c55e">27+</text>
+    <text x="0" y="40" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="18" fill="#9090a0">Free models</text>
+  </g>
+  <g transform="translate(860,370)">
+    <text x="0" y="0" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="48" font-weight="700" fill="#6366f1">16+</text>
+    <text x="0" y="40" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="18" fill="#9090a0">Subscriptions</text>
+  </g>
+  <!-- Bottom tagline -->
+  <text x="80" y="585" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="20" fill="#606070">Real-time pricing · OpenAI · Anthropic · Google · Meta · DeepSeek · xAI · and more</text>
+</svg>`;
+  return c.body(svg, 200, {
+    'Content-Type': 'image/svg+xml',
+    'Cache-Control': 'public, max-age=86400',
+  });
+});
+
 // ── HTML App ─────────────────────────────────────────────────────────────────
 
 app.get('/', async (c) => {

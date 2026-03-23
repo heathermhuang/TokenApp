@@ -19,7 +19,32 @@ export function getHtml(params: {
   <meta name="description" content="Real-time AI model token pricing and subscription costs. Compare ${modelCount}+ models from ${providerCount}+ providers including OpenAI, Anthropic, Google, Meta, and more." />
   <meta property="og:title" content="token.app — AI Pricing Tracker" />
   <meta property="og:description" content="Real-time token pricing for ${modelCount}+ AI models. Compare input/output costs, context windows, and subscription plans." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://token.app/" />
+  <meta property="og:site_name" content="token.app" />
+  <meta property="og:image" content="https://token.app/og.svg" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="token.app — AI Pricing Tracker" />
+  <meta name="twitter:description" content="Real-time token pricing for ${modelCount}+ AI models. Compare input/output costs, context windows, and subscription plans." />
+  <meta name="twitter:image" content="https://token.app/og.svg" />
+  <link rel="canonical" href="https://token.app/" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔷</text></svg>" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "token.app",
+    "url": "https://token.app/",
+    "description": "Real-time AI model token pricing and subscription costs. Compare ${modelCount}+ models from ${providerCount}+ providers including OpenAI, Anthropic, Google, Meta, and more.",
+    "applicationCategory": "UtilityApplication",
+    "operatingSystem": "Web",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-Z59RHGWMWD"></script>
   <script>
@@ -796,12 +821,46 @@ export function getHtml(params: {
 
     /* ── Responsive ───────────────────────────────────────────────────────── */
     @media (max-width: 768px) {
-      .hero { padding: 28px 16px 24px; }
-      .controls { padding: 0 16px 12px; }
-      .table-wrap { padding: 0 0 32px; overflow-x: auto; }
-      table { min-width: 700px; }
+      /* Hero */
+      .hero { padding: 24px 16px 20px; }
+      .hero h1 { font-size: 22px; }
+      .hero p { font-size: 13px; }
+
+      /* Stats: 2×2 grid */
+      .stats-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .stat { padding: 10px 12px; }
+      .stat-value { font-size: 18px; }
+
+      /* Controls */
+      .controls { padding: 0 12px 12px; }
+      .filter-bar { gap: 6px; }
+      .filter-pill { font-size: 12px; padding: 4px 8px; }
+
+      /* Table: hide Released (3rd), Context (4th), Modalities (7th) */
+      .table-wrap { padding: 0 0 32px; }
+      table { min-width: unset; width: 100%; table-layout: fixed; }
+      table th:nth-child(1) { width: 42%; }
+      table th:nth-child(2) { width: 28%; }
+      table th:nth-child(5) { width: 15%; }
+      table th:nth-child(6) { width: 15%; }
+      table th:nth-child(3),
+      table td:nth-child(3),
+      table th:nth-child(4),
+      table td:nth-child(4),
+      table th:nth-child(7),
+      table td:nth-child(7) { display: none; }
+      table th, table td { padding: 8px 8px; }
+      .model-name { font-size: 12px; }
+      .model-id { font-size: 11px; }
+      .provider-chip { font-size: 12px; padding: 3px 7px; gap: 4px; }
+      .provider-chip img { width: 14px; height: 14px; }
+      .price { font-size: 12px; }
+
+      /* Subscriptions */
       .subs-grid { grid-template-columns: 1fr; }
       #subs-section { padding: 0 16px 32px; }
+
+      /* Nav */
       .nav-meta { display: none; }
     }
   </style>
