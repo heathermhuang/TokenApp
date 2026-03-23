@@ -1,0 +1,17 @@
+name = "token-app"
+main = "src/index.ts"
+compatibility_date = "2025-03-01"
+compatibility_flags = ["nodejs_compat"]
+
+workers_dev = true
+
+[triggers]
+crons = ["0 * * * *"]
+
+[[kv_namespaces]]
+binding = "TOKEN_APP_KV"
+id = "d877d388f1c945c1bb58d6bed48849e6"
+preview_id = "34e9c7fadf25428dbda2185fedd2c99b"
+
+[vars]
+ENVIRONMENT = "production"
