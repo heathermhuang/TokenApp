@@ -5,15 +5,20 @@ export function getHtml(params: {
 }): string {
   const { initialModels = '[]', initialSubscriptions = '[]', lastUpdated = null } = params;
 
+  // Compute counts server-side for accurate meta tags and hero description
+  const parsedModels = JSON.parse(initialModels) as Array<{ providerId: string }>;
+  const modelCount = parsedModels.length;
+  const providerCount = new Set(parsedModels.map(m => m.providerId)).size;
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>token.app — AI Token &amp; Subscription Pricing</title>
-  <meta name="description" content="Real-time AI model token pricing and subscription costs. Compare 500+ models from OpenAI, Anthropic, Google, Meta, and more." />
+  <meta name="description" content="Real-time AI model token pricing and subscription costs. Compare ${modelCount}+ models from ${providerCount}+ providers including OpenAI, Anthropic, Google, Meta, and more." />
   <meta property="og:title" content="token.app — AI Pricing Tracker" />
-  <meta property="og:description" content="Real-time token pricing for 500+ AI models. Compare input/output costs, context windows, and subscription plans." />
+  <meta property="og:description" content="Real-time token pricing for ${modelCount}+ AI models. Compare input/output costs, context windows, and subscription plans." />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔷</text></svg>" />
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-Z59RHGWMWD"></script>
@@ -824,7 +829,7 @@ export function getHtml(params: {
 <!-- ── Hero ─────────────────────────────────────────────────────────────────── -->
 <section class="hero">
   <h1>AI Token &amp; Subscription<br/><span>Pricing Tracker</span></h1>
-  <p>Real-time token costs and subscription pricing across the AI ecosystem. Compare 500+ models from 20+ providers.</p>
+  <p>Real-time token costs and subscription pricing across the AI ecosystem. Compare <span id="stat-desc-models">—</span> models from <span id="stat-desc-providers">—</span> providers.</p>
   <div class="stats-row">
     <div class="stat">
       <span class="stat-value" id="stat-models">—</span>
@@ -1499,6 +1504,8 @@ function updateStats() {
   document.getElementById('stat-subs').textContent = state.subscriptions.length;
   document.getElementById('nav-model-count').textContent = state.models.length.toLocaleString() + ' models';
   document.getElementById('nav-providers').textContent = providers.size + ' providers';
+  document.getElementById('stat-desc-models').textContent = state.models.length.toLocaleString();
+  document.getElementById('stat-desc-providers').textContent = providers.size;
 }
 
 // ── Sort Headers ───────────────────────────────────────────────────────────────
