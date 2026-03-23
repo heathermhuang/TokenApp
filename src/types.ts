@@ -33,8 +33,10 @@ export interface NormalizedModel {
 
 export interface SubscriptionTier {
   name: string;
-  monthlyPrice: number | null;       // null = contact sales
-  annualMonthlyPrice: number | null; // price when billed annually
+  monthlyPrice: number | null;         // USD (international)
+  annualMonthlyPrice: number | null;   // USD annual
+  cnMonthlyPrice?: number | null;      // CNY domestic price
+  cnAnnualMonthlyPrice?: number | null;// CNY domestic annual
   perSeat: boolean;
   features: string[];
   highlight: boolean;  // recommended tier

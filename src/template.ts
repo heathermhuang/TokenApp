@@ -442,6 +442,21 @@ export function getHtml(params: {
     }
     .filter-pill .provider-logo { width: 12px; height: 12px; }
 
+    /* ── Clickable links ────────────────────────────────────────────────── */
+    a.model-link { text-decoration: none; color: inherit; }
+    a.model-link:hover .model-name { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+    a.provider-link { text-decoration: none; }
+    a.provider-link:hover .provider-chip { opacity: 0.82; }
+    a.provider-link:hover .sub-provider-chip { opacity: 0.82; }
+
+    /* ── CNY price row ───────────────────────────────────────────────────── */
+    .tier-cn-price {
+      font-size: 10px;
+      color: var(--text3);
+      margin-top: 2px;
+      letter-spacing: 0.2px;
+    }
+
     /* ── Deprecated row ─────────────────────────────────────────────────── */
     tr.row-deprecated td { opacity: 0.45; }
     tr.row-deprecated .model-name { text-decoration: line-through; text-decoration-color: #64748b; }
@@ -1064,8 +1079,8 @@ const PROVIDER_DOMAINS = {
   qwen:                 'qianwen.aliyun.com',
   alibaba:              'alibaba.com',
   baidu:                'baidu.com',
-  bytedance:            'bytedance.com',
-  'bytedance-seed':     'bytedance.com',
+  bytedance:            'doubao.com',
+  'bytedance-seed':     'doubao.com',
   minimax:              'hailuo.ai',
   moonshotai:           'moonshot.cn',
   tencent:              'tencent.com',
@@ -1093,6 +1108,53 @@ const PROVIDER_DOMAINS = {
   'essentialai':        'essential.ai',
   'switchpoint':        'switchpoint.ai',
 };
+
+const PROVIDER_URLS = {
+  openai:           'https://openai.com',
+  anthropic:        'https://anthropic.com',
+  google:           'https://deepmind.google',
+  'meta-llama':     'https://ai.meta.com',
+  mistralai:        'https://mistral.ai',
+  deepseek:         'https://deepseek.com',
+  'x-ai':           'https://x.ai',
+  cohere:           'https://cohere.com',
+  perplexityai:     'https://perplexity.ai',
+  qwen:             'https://qianwen.aliyun.com',
+  alibaba:          'https://qianwen.aliyun.com',
+  nvidia:           'https://build.nvidia.com',
+  amazon:           'https://aws.amazon.com/bedrock/',
+  microsoft:        'https://microsoft.com/en-us/ai',
+  inflection:       'https://inflection.ai',
+  writer:           'https://writer.com',
+  '01-ai':          'https://01.ai',
+  cursor:           'https://cursor.com',
+  windsurf:         'https://windsurf.com',
+  codeium:          'https://windsurf.com',
+  baidu:            'https://yiyan.baidu.com',
+  bytedance:        'https://doubao.com',
+  'bytedance-seed': 'https://doubao.com',
+  minimax:          'https://hailuo.ai',
+  moonshotai:       'https://kimi.ai',
+  tencent:          'https://hunyuan.tencent.com',
+  xiaomi:           'https://xiaomi.com',
+  stepfun:          'https://stepfun.com',
+  zhipuai:          'https://chatglm.cn',
+  'z-ai':           'https://chatglm.cn',
+  kwaipilot:        'https://kwaipilot.kuaishou.com',
+  meituan:          'https://www.meituan.com',
+  allenai:          'https://allenai.org',
+  'ibm-granite':    'https://www.ibm.com/granite',
+  ai21:             'https://ai21.com',
+  'arcee-ai':       'https://arcee.ai',
+  upstage:          'https://upstage.ai',
+  openrouter:       'https://openrouter.ai',
+  nousresearch:     'https://nousresearch.com',
+  cohere:           'https://cohere.com',
+};
+
+function getProviderUrl(providerId) {
+  return PROVIDER_URLS[providerId] ?? null;
+}
 
 function getProviderLogo(providerId) {
   const domain = PROVIDER_DOMAINS[providerId];
@@ -1174,14 +1236,21 @@ function renderTable() {
     const outPClass = priceClass(m.outputPer1M, 'output');
     const depClass = m.isDeprecated ? ' row-deprecated' : '';
     const logoImg = providerLogoImg(m.providerId);
+    const modelUrl = \`https://openrouter.ai/\${m.id}\`;
+    const providerUrl = getProviderUrl(m.providerId);
+    const providerChip = \`<span class="provider-chip" style="background:\${ps.bg};color:\${ps.color}">\${logoImg}\${escape(m.provider)}</span>\`;
 
     return \`<tr class="model-row\${depClass}">
       <td class="model-cell">
-        <span class="model-name">\${escape(m.name)}</span>
-        <span class="model-id">\${escape(m.slug || m.id)}</span>
+        <a href="\${modelUrl}" target="_blank" rel="noopener" class="model-link">
+          <span class="model-name">\${escape(m.name)}</span>
+          <span class="model-id">\${escape(m.slug || m.id)}</span>
+        </a>
       </td>
       <td>
-        <span class="provider-chip" style="background:\${ps.bg};color:\${ps.color}">\${logoImg}\${escape(m.provider)}</span>
+        \${providerUrl
+          ? \`<a href="\${providerUrl}" target="_blank" rel="noopener" class="provider-link">\${providerChip}</a>\`
+          : providerChip}
       </td>
       <td class="ctx">\${fmtDate(m.createdAt)}</td>
       <td class="ctx">\${fmtCtx(m.contextWindow)}</td>
@@ -1274,12 +1343,16 @@ function renderSubscriptions() {
           ? '<span class="tier-price" style="color:var(--green)">Free</span>'
           : \`<span class="tier-price">$\${t.monthlyPrice}<span class="period">/mo</span></span>\`;
 
-      const annualHtml = (t.annualMonthlyPrice && t.annualMonthlyPrice < t.monthlyPrice)
+      const annualHtml = (t.annualMonthlyPrice && t.annualMonthlyPrice < (t.monthlyPrice ?? Infinity))
         ? \`<div class="tier-annual">$\${t.annualMonthlyPrice}/mo billed annually</div>\`
         : '';
 
+      const cnPriceHtml = t.cnMonthlyPrice != null && t.monthlyPrice !== 0
+        ? \`<div class="tier-cn-price">🇨🇳 ¥\${t.cnMonthlyPrice}/mo\${t.cnAnnualMonthlyPrice && t.cnAnnualMonthlyPrice < t.cnMonthlyPrice ? ' · ¥' + t.cnAnnualMonthlyPrice + ' annual' : ''}</div>\`
+        : '';
+
       const badgeHtml = t.badge ? \`<div class="tier-badge">\${escape(t.badge)}</div>\` : '';
-      const feats = t.features.slice(0, 4).map(f => \`<div class="tier-feature">\${escape(f)}</div>\`).join('');
+      const feats = t.features.slice(0, 5).map(f => \`<div class="tier-feature">\${escape(f)}</div>\`).join('');
       const perSeat = t.perSeat ? '<div style="font-size:10px;color:var(--text3);margin-top:2px">per seat</div>' : '';
 
       return \`<div class="tier\${t.highlight ? ' highlight' : ''}">
@@ -1288,16 +1361,21 @@ function renderSubscriptions() {
         \${priceHtml}
         \${perSeat}
         \${annualHtml}
+        \${cnPriceHtml}
         <div class="tier-features">\${feats}</div>
       </div>\`;
     }).join('');
 
     const logoImg = providerLogoImg(sub.providerId);
+    const providerUrl = getProviderUrl(sub.providerId);
+    const providerChipHtml = \`<span class="sub-provider-chip" style="background:\${ps.bg};color:\${ps.color}">\${logoImg}\${escape(sub.provider)}</span>\`;
     return \`<div class="sub-card">
       <div class="sub-header">
         <div class="sub-title-row">
           <span class="sub-name">\${escape(sub.name)}</span>
-          <span class="sub-provider-chip" style="background:\${ps.bg};color:\${ps.color}">\${logoImg}\${escape(sub.provider)}</span>
+          \${providerUrl
+            ? \`<a href="\${providerUrl}" target="_blank" rel="noopener" class="provider-link">\${providerChipHtml}</a>\`
+            : providerChipHtml}
         </div>
         <p class="sub-desc">\${escape(sub.description)}</p>
       </div>
