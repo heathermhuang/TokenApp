@@ -892,34 +892,48 @@ export function getHtml(params: {
       .stat { padding: 10px 12px; }
       .stat-value { font-size: 18px; }
 
-      /* Controls */
+      /* Controls: full width search */
       .controls { padding: 0 12px 12px; }
-      .filter-bar { gap: 6px; }
+      .filter-bar { gap: 6px; flex-wrap: wrap; }
+      .search-wrap { min-width: unset; max-width: unset; flex: 1 1 100%; order: -1; margin-bottom: 4px; }
+      #search { max-width: unset; }
       .filter-pill { font-size: 12px; padding: 4px 8px; }
 
-      /* Table: hide Released (3rd), Context (4th), Modalities (7th) */
-      .table-wrap { padding: 0 0 32px; }
+      /* Table: hide Released (3rd), Context (4th), Modalities (7th)
+         Columns: Model 33% | Provider 23% | Input 22% | Output 22% */
+      .table-wrap { padding: 0 0 32px; overflow-x: hidden; }
       table { min-width: unset; width: 100%; table-layout: fixed; }
-      table th:nth-child(1) { width: 42%; }
-      table th:nth-child(2) { width: 28%; }
-      table th:nth-child(5) { width: 15%; }
-      table th:nth-child(6) { width: 15%; }
+      table th:nth-child(1) { width: 33%; }
+      table th:nth-child(2) { width: 23%; }
+      table th:nth-child(5) { width: 22%; }
+      table th:nth-child(6) { width: 22%; }
       table th:nth-child(3),
       table td:nth-child(3),
       table th:nth-child(4),
       table td:nth-child(4),
       table th:nth-child(7),
       table td:nth-child(7) { display: none; }
-      table th, table td { padding: 8px 8px; }
-      .model-name { font-size: 12px; }
-      .model-id { font-size: 11px; }
-      .provider-chip { font-size: 12px; padding: 3px 7px; gap: 4px; }
-      .provider-chip img { width: 14px; height: 14px; }
+      table th, table td { padding: 7px 6px; }
+      /* Price column headers: smaller font to fit "Input $/1M" */
+      table th:nth-child(5),
+      table th:nth-child(6) { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      /* Truncate long model names */
+      .model-name { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .model-id { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      /* Provider chip: tighter, logo only fallback on very small */
+      .provider-chip { font-size: 11px; padding: 2px 6px; gap: 3px; }
+      .provider-chip img { width: 13px; height: 13px; }
       .price { font-size: 12px; }
+      /* Price cell: right-align and nowrap */
+      table td:nth-child(5),
+      table td:nth-child(6) { text-align: right; white-space: nowrap; }
 
       /* Subscriptions */
       .subs-grid { grid-template-columns: 1fr; }
       #subs-section { padding: 0 16px 32px; }
+      /* Subscription tier row: allow horizontal scroll if too many tiers */
+      .tiers-row { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .tier { min-width: 100px; flex-shrink: 0; }
 
       /* Nav */
       .nav-meta { display: none; }
