@@ -473,6 +473,11 @@ export function getHtml(params: {
       display: block;
     }
 
+    /* Mobile-only compact meta row (context + capability badges) */
+    .mobile-meta {
+      display: none;
+    }
+
     .provider-chip {
       display: inline-flex;
       align-items: center;
@@ -920,6 +925,10 @@ export function getHtml(params: {
       /* Truncate long model names */
       .model-name { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .model-id { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      /* Show context + capability badges inline below model name */
+      .mobile-meta { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; align-items: center; }
+      .mobile-meta .badge { font-size: 9px; padding: 1px 4px; line-height: 1.4; }
+      .ctx-tag { font-size: 9px; color: var(--text3); font-family: 'Menlo','Monaco',monospace; background: var(--surface2); border-radius: 3px; padding: 1px 4px; line-height: 1.4; }
       /* Provider chip: tighter, logo only fallback on very small */
       .provider-chip { font-size: 11px; padding: 2px 6px; gap: 3px; }
       .provider-chip img { width: 13px; height: 13px; }
@@ -1494,12 +1503,17 @@ function renderTable() {
     const providerUrl = getProviderUrl(m.providerId);
     const providerChip = \`<span class="provider-chip" style="background:\${ps.bg};color:\${ps.color}">\${logoImg}\${escape(m.provider)}</span>\`;
 
+    const ctxTag = m.contextWindow ? \`<span class="ctx-tag">\${fmtCtx(m.contextWindow)}</span>\` : '';
+    const mobileBadges = buildMobileMeta(m);
+    const mobileMeta = (ctxTag || mobileBadges) ? \`<div class="mobile-meta">\${ctxTag}\${mobileBadges}</div>\` : '';
+
     return \`<tr class="model-row\${depClass}">
       <td class="model-cell">
         <a href="\${modelUrl}" target="_blank" rel="noopener" class="model-link">
           <span class="model-name">\${escape(m.name)}</span>
           <span class="model-id">\${escape(m.slug || m.id)}</span>
         </a>
+        \${mobileMeta}
       </td>
       <td>
         \${providerUrl
@@ -1536,6 +1550,18 @@ function buildModIcons(m) {
   if (m.isReasoning) badges.push('<span class="badge badge-reasoning">Think</span>');
   if (m.isFree)    badges.push('<span class="badge badge-free">Free</span>');
   return badges.join('');
+}
+
+function buildMobileMeta(m) {
+  const b = [];
+  if (m.isFree)    b.push('<span class="badge badge-free">Free</span>');
+  if (m.isVision)  b.push('<span class="badge badge-vision">Vision</span>');
+  if (m.isReasoning) b.push('<span class="badge badge-reasoning">Think</span>');
+  if (m.outputModalities?.includes('image')) b.push('<span class="badge badge-image-gen">Image</span>');
+  if (m.outputModalities?.includes('video')) b.push('<span class="badge badge-video">Video</span>');
+  if (m.inputModalities?.includes('audio') || m.outputModalities?.includes('audio')) b.push('<span class="badge badge-audio">Audio</span>');
+  if (m.isDeprecated) b.push('<span class="badge badge-deprecated">Deprecated</span>');
+  return b.join('');
 }
 
 // ── Render Provider Filters ────────────────────────────────────────────────────
