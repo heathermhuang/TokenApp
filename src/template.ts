@@ -887,27 +887,39 @@ export function getHtml(params: {
 
     /* ── Responsive ───────────────────────────────────────────────────────── */
     @media (max-width: 768px) {
-      /* Hero */
-      .hero { padding: 24px 16px 20px; }
-      .hero h1 { font-size: 22px; }
-      .hero p { font-size: 13px; }
+      /* Nav */
+      .nav-meta { display: none; }
 
-      /* Stats: 2×2 grid */
-      .stats-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-      .stat { padding: 10px 12px; }
-      .stat-value { font-size: 18px; }
+      /* Hero: tighter vertical rhythm */
+      .hero { padding: 16px 16px 14px; }
+      .hero h1 { font-size: 21px; margin-bottom: 6px; }
+      .hero p { font-size: 13px; margin-bottom: 16px; }
 
-      /* Controls: full width search */
-      .controls { padding: 0 12px 12px; }
-      .filter-bar { gap: 6px; flex-wrap: wrap; }
-      .search-wrap { min-width: unset; max-width: unset; flex: 1 1 100%; order: -1; margin-bottom: 4px; }
-      #search { max-width: unset; }
-      .filter-pill { font-size: 12px; padding: 4px 8px; }
+      /* Stats: compact 2×2 grid */
+      .stats-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .stat { padding: 8px 10px; }
+      .stat-value { font-size: 17px; }
+      .stat-label { font-size: 10px; }
 
-      /* Table: all columns visible, scroll right to see them all */
+      /* Controls */
+      .controls { padding: 0 12px 10px; }
+
+      /* Search: full width on its own row */
+      .filter-row { gap: 6px; }
+      .search-wrap { min-width: unset; max-width: unset; flex: 1 1 100%; margin-bottom: 0; }
+      #search { max-width: unset; font-size: 14px; }
+      /* Hide the desktop vertical separator — it orphans on its own row on mobile */
+      .filter-divider { display: none; }
+
+      /* Category + filter pills: tighter */
+      .cat-tabs { gap: 4px; }
+      .cat-tab { padding: 4px 10px; font-size: 12px; }
+      .filter-pill { font-size: 11px; padding: 3px 7px; }
+
+      /* Table: all columns visible, swipe right to see all */
       .table-wrap { padding: 0 0 32px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
       table { min-width: 720px; table-layout: auto; }
-      table th, table td { padding: 7px 8px; }
+      table th, table td { padding: 6px 8px; }
       .model-name { font-size: 12px; }
       .model-id { font-size: 10px; }
       .provider-chip { font-size: 11px; padding: 2px 6px; gap: 3px; }
@@ -917,12 +929,8 @@ export function getHtml(params: {
       /* Subscriptions */
       .subs-grid { grid-template-columns: 1fr; }
       #subs-section { padding: 0 16px 32px; }
-      /* Subscription tier row: allow horizontal scroll if too many tiers */
       .tiers-row { overflow-x: auto; -webkit-overflow-scrolling: touch; }
       .tier { min-width: 100px; flex-shrink: 0; }
-
-      /* Nav */
-      .nav-meta { display: none; }
     }
   </style>
 </head>
