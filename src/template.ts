@@ -904,38 +904,15 @@ export function getHtml(params: {
       #search { max-width: unset; }
       .filter-pill { font-size: 12px; padding: 4px 8px; }
 
-      /* Table: hide Released (3rd), Context (4th), Modalities (7th)
-         Columns: Model 33% | Provider 23% | Input 22% | Output 22% */
-      .table-wrap { padding: 0 0 32px; overflow-x: hidden; }
-      table { min-width: unset; width: 100%; table-layout: fixed; }
-      table th:nth-child(1) { width: 33%; }
-      table th:nth-child(2) { width: 23%; }
-      table th:nth-child(5) { width: 22%; }
-      table th:nth-child(6) { width: 22%; }
-      table th:nth-child(3),
-      table td:nth-child(3),
-      table th:nth-child(4),
-      table td:nth-child(4),
-      table th:nth-child(7),
-      table td:nth-child(7) { display: none; }
-      table th, table td { padding: 7px 6px; }
-      /* Price column headers: smaller font to fit "Input $/1M" */
-      table th:nth-child(5),
-      table th:nth-child(6) { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      /* Truncate long model names */
-      .model-name { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .model-id { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      /* Show context + capability badges inline below model name */
-      .mobile-meta { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; align-items: center; }
-      .mobile-meta .badge { font-size: 9px; padding: 1px 4px; line-height: 1.4; }
-      .ctx-tag { font-size: 9px; color: var(--text3); font-family: 'Menlo','Monaco',monospace; background: var(--surface2); border-radius: 3px; padding: 1px 4px; line-height: 1.4; }
-      /* Provider chip: tighter, logo only fallback on very small */
+      /* Table: all columns visible, scroll right to see them all */
+      .table-wrap { padding: 0 0 32px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      table { min-width: 720px; table-layout: auto; }
+      table th, table td { padding: 7px 8px; }
+      .model-name { font-size: 12px; }
+      .model-id { font-size: 10px; }
       .provider-chip { font-size: 11px; padding: 2px 6px; gap: 3px; }
       .provider-chip img { width: 13px; height: 13px; }
       .price { font-size: 12px; }
-      /* Price cell: right-align and nowrap */
-      table td:nth-child(5),
-      table td:nth-child(6) { text-align: right; white-space: nowrap; }
 
       /* Subscriptions */
       .subs-grid { grid-template-columns: 1fr; }
