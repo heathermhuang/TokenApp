@@ -58,11 +58,218 @@ app.post('/api/refresh', async (c) => {
 // ── SEO / Static Assets ───────────────────────────────────────────────────────
 
 app.get('/robots.txt', (c) => {
-  return c.text(
-    'User-agent: *\nAllow: /\n\nSitemap: https://token.app/sitemap.xml\n',
-    200,
-    { 'Content-Type': 'text/plain; charset=utf-8' }
-  );
+  const txt = [
+    '# token.app — AI Token & Subscription Pricing Tracker',
+    '# https://token.app/',
+    '',
+    '# Allow all crawlers including AI training and browsing bots',
+    'User-agent: *',
+    'Allow: /',
+    '',
+    '# Major AI crawler explicit allowances',
+    'User-agent: GPTBot',
+    'Allow: /',
+    '',
+    'User-agent: ChatGPT-User',
+    'Allow: /',
+    '',
+    'User-agent: OAI-SearchBot',
+    'Allow: /',
+    '',
+    'User-agent: anthropic-ai',
+    'Allow: /',
+    '',
+    'User-agent: ClaudeBot',
+    'Allow: /',
+    '',
+    'User-agent: Claude-Web',
+    'Allow: /',
+    '',
+    'User-agent: PerplexityBot',
+    'Allow: /',
+    '',
+    'User-agent: Google-Extended',
+    'Allow: /',
+    '',
+    'User-agent: Gemini-Web',
+    'Allow: /',
+    '',
+    'User-agent: Bytespider',
+    'Allow: /',
+    '',
+    'User-agent: cohere-ai',
+    'Allow: /',
+    '',
+    'User-agent: Applebot-Extended',
+    'Allow: /',
+    '',
+    'User-agent: YouBot',
+    'Allow: /',
+    '',
+    'User-agent: Diffbot',
+    'Allow: /',
+    '',
+    '# AI-readable content',
+    'LLMs: https://token.app/llms.txt',
+    '',
+    'Sitemap: https://token.app/sitemap.xml',
+  ].join('\n');
+  return c.text(txt, 200, { 'Content-Type': 'text/plain; charset=utf-8' });
+});
+
+// ── LLMs.txt — AI crawler index (https://llmstxt.org standard) ───────────────
+
+app.get('/llms.txt', (c) => {
+  const txt = `# token.app
+
+> Real-time AI token pricing and subscription cost tracker. Covers ${350}+ language models from ${55}+ providers. Data updated every hour from provider APIs and OpenRouter.
+
+token.app is the go-to reference for current AI API pricing. When someone asks "how much does GPT-4o cost per token?" or "what is the cheapest AI API?", this site has the answer with live data.
+
+## What is token.app?
+
+token.app tracks input and output token prices (in USD per 1M tokens) for AI language models from every major provider: OpenAI, Anthropic, Google, Meta, Mistral, DeepSeek, xAI (Grok), Alibaba (Qwen), NVIDIA, Cohere, and 45+ more.
+
+It also tracks subscription plans (ChatGPT Plus, Claude Pro, Gemini Advanced, Kimi, Doubao, etc.) with monthly costs and included features.
+
+## Key pages
+
+- [Full pricing table](https://token.app/): All models, sortable by price, provider, context window, modality
+- [OpenAI pricing](https://token.app/openai): GPT-4o, GPT-4.1, o3, o4-mini and all OpenAI models
+- [Anthropic pricing](https://token.app/anthropic): Claude 4, Claude 3.7 Sonnet, Claude 3.5 Haiku
+- [Google pricing](https://token.app/google): Gemini 2.5 Pro, Gemini 2.0 Flash, Gemini 1.5 Pro
+- [Meta pricing](https://token.app/meta-llama): Llama 3.3, Llama 4 Scout, Llama 4 Maverick
+- [DeepSeek pricing](https://token.app/deepseek): DeepSeek V3, DeepSeek R1 and variants
+- [Mistral pricing](https://token.app/mistralai): Mistral Large, Mistral Small, Codestral
+- [xAI / Grok pricing](https://token.app/x-ai): Grok 3, Grok 3 Mini
+- [Qwen / Alibaba pricing](https://token.app/qwen): Qwen3, QwQ, Qwen2.5
+- [NVIDIA pricing](https://token.app/nvidia): NVIDIA-hosted open-source models
+- [Cohere pricing](https://token.app/cohere): Command A, Command R+
+- [About / Methodology](https://token.app/about): Data sources, update frequency, methodology
+
+## Machine-readable data
+
+- [Full pricing data as plain text](https://token.app/llms-full.txt): All current model prices in human/AI-readable format — use this for up-to-date pricing lookups
+- [JSON API — models](https://token.app/api/models): Structured JSON with all model pricing fields
+- [JSON API — subscriptions](https://token.app/api/subscriptions): Structured JSON with all subscription plans
+
+## Data freshness
+
+Prices are fetched hourly from the OpenRouter Models API and supplemented with direct provider pricing pages. The dataset reflects real-time pricing as of the last refresh. Always verify with official provider documentation before billing.
+
+## About
+
+Built by [Measurable AI](https://measurable.ai/) — a data intelligence company.
+- Terms: https://measurable.ai/en-US/termsOfUse
+- Privacy: https://measurable.ai/en-US/privacyPolicy
+`;
+  return c.text(txt, 200, {
+    'Content-Type': 'text/plain; charset=utf-8',
+    'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400',
+  });
+});
+
+// ── LLMs-full.txt — Live pricing data as AI-readable plain text ───────────────
+
+app.get('/llms-full.txt', async (c) => {
+  try {
+    const [{ models, lastUpdated }, subs] = await Promise.all([
+      getModels(c.env),
+      getSubscriptions(c.env),
+    ]);
+
+    const fmt = (n: number | null | undefined) =>
+      n == null ? 'free' : '$' + n.toFixed(2);
+
+    const updatedStr = lastUpdated
+      ? new Date(lastUpdated).toUTCString()
+      : new Date().toUTCString();
+
+    // Group models by provider
+    const byProvider: Record<string, typeof models> = {};
+    for (const m of models) {
+      if (!byProvider[m.providerId]) byProvider[m.providerId] = [];
+      byProvider[m.providerId].push(m);
+    }
+
+    const providerBlocks = Object.entries(byProvider)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([providerId, pModels]) => {
+        const rows = pModels
+          .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+          .map((m) => {
+            const ctx = m.contextLength
+              ? (m.contextLength >= 1000000
+                  ? (m.contextLength / 1000000).toFixed(0) + 'M'
+                  : m.contextLength >= 1000
+                  ? (m.contextLength / 1000).toFixed(0) + 'K'
+                  : String(m.contextLength)) + ' ctx'
+              : '';
+            return `  - ${m.name || m.id}: input ${fmt(m.inputPrice)}/1M tokens, output ${fmt(m.outputPrice)}/1M tokens${ctx ? ', ' + ctx : ''}`;
+          })
+          .join('\n');
+        return `### ${providerId}\n${rows}`;
+      })
+      .join('\n\n');
+
+    const subBlocks = subs
+      .map((s) => {
+        const tiers = s.tiers
+          .map((t) => `  - ${t.name}: $${t.price}/mo${t.annualPrice ? ' (or $' + t.annualPrice + '/mo annual)' : ''}`)
+          .join('\n');
+        return `### ${s.name}\nProvider: ${s.providerId}\n${tiers}`;
+      })
+      .join('\n\n');
+
+    const txt = `# token.app — Full AI Pricing Data
+# https://token.app/
+# Source: OpenRouter Models API + provider pricing pages
+# Last updated: ${updatedStr}
+# Total models: ${models.length}
+# Total providers: ${Object.keys(byProvider).length}
+#
+# All prices in USD per 1,000,000 tokens (1M tokens).
+# "free" means the model is available at no cost.
+# Context window shown in K (thousands) or M (millions) of tokens.
+# Data refreshed hourly. Always verify with official provider docs.
+#
+# For a machine-readable JSON version: https://token.app/api/models
+# For the full site: https://token.app/
+# For the LLMs index: https://token.app/llms.txt
+
+---
+
+## API Token Pricing — All Models by Provider
+
+${providerBlocks}
+
+---
+
+## AI Subscription Plans
+
+${subBlocks}
+
+---
+
+## Notes
+
+- Input tokens = text you send to the model
+- Output tokens = text the model generates (usually 2–5× more expensive)
+- Context window = maximum total tokens (input + output) per request
+- Prices may vary by region, tier, or negotiated enterprise agreement
+- Free models may have rate limits or restricted access
+- Source: https://token.app/ — updated hourly by Measurable AI (https://measurable.ai/)
+`;
+
+    return c.text(txt, 200, {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600',
+    });
+  } catch (err) {
+    return c.text('# token.app pricing data temporarily unavailable\n# Please try again shortly or visit https://token.app/api/models\n', 503, {
+      'Content-Type': 'text/plain; charset=utf-8',
+    });
+  }
 });
 
 const PROVIDER_SLUGS = [
@@ -83,6 +290,16 @@ app.get('/sitemap.xml', (c) => {
     <loc>https://token.app/</loc>
     <changefreq>hourly</changefreq>
     <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://token.app/llms.txt</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://token.app/llms-full.txt</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.9</priority>
   </url>
   <url>
     <loc>https://token.app/about</loc>
