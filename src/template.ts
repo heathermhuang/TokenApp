@@ -6,9 +6,30 @@ export function getHtml(params: {
   const { initialModels = '[]', initialSubscriptions = '[]', lastUpdated = null } = params;
 
   // Compute counts server-side for accurate meta tags and hero description
-  const parsedModels = JSON.parse(initialModels) as Array<{ providerId: string }>;
+  const parsedModels = JSON.parse(initialModels) as Array<{
+    providerId: string;
+    id: string;
+    name: string;
+    inputPer1M?: number | null;
+    outputPer1M?: number | null;
+  }>;
   const modelCount = parsedModels.length;
   const providerCount = new Set(parsedModels.map(m => m.providerId)).size;
+
+  // Extract specific model prices for FAQ answers
+  const gpt4o = parsedModels.find(m => m.id === 'openai/gpt-4o');
+  const claude35sonnet = parsedModels.find(m => m.id === 'anthropic/claude-3-5-sonnet');
+  const gemini15pro = parsedModels.find(m => m.id === 'google/gemini-pro-1.5' || m.id === 'google/gemini-1.5-pro');
+  const deepseekV3 = parsedModels.find(m => m.id?.includes('deepseek') && m.id?.includes('chat'));
+
+  function fmtPriceSsr(n: number | null | undefined): string {
+    if (n === null || n === undefined) return 'varies';
+    if (n === 0) return '$0.00';
+    if (n < 0.01) return '<$0.01';
+    if (n < 1) return '$' + n.toFixed(3);
+    if (n < 10) return '$' + n.toFixed(2);
+    return '$' + n.toFixed(1);
+  }
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -22,28 +43,89 @@ export function getHtml(params: {
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://token.app/" />
   <meta property="og:site_name" content="token.app" />
-  <meta property="og:image" content="https://token.app/og.svg" />
+  <meta property="og:image" content="https://token.app/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="token.app — AI Pricing Tracker" />
   <meta name="twitter:description" content="Real-time token pricing for ${modelCount}+ AI models. Compare input/output costs, context windows, and subscription plans." />
-  <meta name="twitter:image" content="https://token.app/og.svg" />
+  <meta name="twitter:image" content="https://token.app/og.png" />
+  <meta name="author" content="Measurable AI" />
   <link rel="canonical" href="https://token.app/" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔷</text></svg>" />
   <script>(function(){var t=localStorage.getItem('theme')||(window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);})();</script>
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
-    "@type": "WebApplication",
-    "name": "token.app",
+    "@type": "Dataset",
+    "name": "AI Model Token Pricing Dataset",
+    "description": "Real-time token pricing for ${modelCount}+ AI language models from ${providerCount}+ providers including OpenAI, Anthropic, Google, Meta, Mistral, and DeepSeek. Updated hourly.",
     "url": "https://token.app/",
-    "description": "Real-time AI model token pricing and subscription costs. Compare ${modelCount}+ models from ${providerCount}+ providers including OpenAI, Anthropic, Google, Meta, and more.",
-    "applicationCategory": "UtilityApplication",
-    "operatingSystem": "Web",
-    "offers": {
-      "@type": "Offer",
-      "price": "0",
-      "priceCurrency": "USD"
-    }
+    "creator": {
+      "@type": "Organization",
+      "name": "Measurable AI",
+      "url": "https://measurable.ai/"
+    },
+    "license": "https://measurable.ai/en-US/termsOfUse",
+    "keywords": ["AI pricing", "LLM tokens", "API cost", "language models", "GPT", "Claude", "Gemini", "token pricing"],
+    "measurementTechnique": "Automated hourly fetching from provider APIs and OpenRouter",
+    "variableMeasured": ["input token price", "output token price", "context window", "model availability"]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "How much does GPT-4o cost per 1M tokens?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "GPT-4o costs ${fmtPriceSsr(gpt4o?.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(gpt4o?.outputPer1M)} per 1M output tokens. These prices are sourced from OpenRouter and updated hourly."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How much does Claude 3.5 Sonnet cost per 1M tokens?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Claude 3.5 Sonnet costs ${fmtPriceSsr(claude35sonnet?.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(claude35sonnet?.outputPer1M)} per 1M output tokens as listed by Anthropic."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What is the cheapest AI API for text generation?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Several AI models offer free API access with $0 per token pricing, including models from DeepSeek, Meta's Llama, and various open-source providers. token.app tracks ${modelCount}+ models so you can compare and find the lowest-cost option for your use case."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How often are token prices updated?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "token.app updates pricing data every hour by fetching from OpenRouter and official provider pricing pages. The last update time is shown at the top of the pricing table."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What is a token in AI models?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "A token is a unit of text processed by AI language models. Roughly 1 token equals 4 characters or 0.75 words in English. AI APIs charge separately for input tokens (the text you send) and output tokens (the text the model generates). Prices are typically quoted per 1 million tokens."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How does DeepSeek compare in price to OpenAI?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "DeepSeek models are significantly cheaper than OpenAI equivalents. DeepSeek V3 costs ${fmtPriceSsr(deepseekV3?.inputPer1M)} per 1M input tokens compared to GPT-4o at ${fmtPriceSsr(gpt4o?.inputPer1M)} per 1M input tokens — making it one of the most cost-effective frontier models available."
+        }
+      }
+    ]
   }
   </script>
   <!-- Google tag (gtag.js) -->
@@ -752,6 +834,108 @@ export function getHtml(params: {
 
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* ── About Data Section ───────────────────────────────────────────────── */
+    .about-data {
+      max-width: 860px;
+      margin: 0 auto 12px;
+      padding: 20px 24px;
+      border-top: 1px solid var(--border);
+    }
+
+    .about-data h2 {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text2);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 10px;
+    }
+
+    .about-data p {
+      font-size: 13px;
+      color: var(--text3);
+      line-height: 1.65;
+      margin-bottom: 8px;
+    }
+
+    .about-data p:last-child { margin-bottom: 0; }
+
+    /* ── FAQ Section ──────────────────────────────────────────────────────── */
+    .faq-section {
+      max-width: 860px;
+      margin: 0 auto 8px;
+      padding: 20px 24px;
+      border-top: 1px solid var(--border);
+    }
+
+    .faq-section h2 {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text2);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 14px;
+    }
+
+    .faq-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .faq-item {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+    }
+
+    .faq-item summary {
+      padding: 12px 16px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text2);
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      user-select: none;
+    }
+
+    .faq-item summary::-webkit-details-marker { display: none; }
+
+    .faq-item summary::after {
+      content: '+';
+      color: var(--text3);
+      font-size: 16px;
+      font-weight: 400;
+      flex-shrink: 0;
+      transition: transform 0.15s;
+    }
+
+    .faq-item[open] summary::after { content: '−'; }
+
+    .faq-item summary:hover { color: var(--text); background: var(--surface2); }
+
+    .faq-item p {
+      padding: 0 16px 14px;
+      font-size: 13px;
+      color: var(--text3);
+      line-height: 1.65;
+    }
+
+    /* ── sr-only ──────────────────────────────────────────────────────────── */
+    .sr-only {
+      position: absolute;
+      width: 1px; height: 1px;
+      padding: 0; margin: -1px;
+      overflow: hidden;
+      clip: rect(0,0,0,0);
+      white-space: nowrap;
+      border: 0;
+    }
+
     /* ── Footer ───────────────────────────────────────────────────────────── */
     footer {
       border-top: 1px solid var(--border);
@@ -992,6 +1176,27 @@ export function getHtml(params: {
   </div>
 </section>
 
+<!-- ── About the Data ────────────────────────────────────────────────────────── -->
+<section class="about-data" id="about-data">
+  <h2>About This Data</h2>
+  <p>
+    token.app tracks real-time token pricing and subscription costs across the AI ecosystem.
+    We aggregate pricing data from <a href="https://openrouter.ai" target="_blank" rel="noopener">OpenRouter</a>
+    and official provider pricing pages, refreshing every hour so you always see current rates.
+    Coverage spans ${modelCount}+ models from ${providerCount}+ providers — including frontier labs like OpenAI,
+    Anthropic, Google DeepMind, Meta AI, Mistral, DeepSeek, xAI, Qwen, NVIDIA, and Cohere,
+    as well as dozens of fine-tuned and open-weight variants.
+  </p>
+  <p>
+    Every row in the table shows the model's input cost and output cost per 1 million tokens,
+    its context window size, and the modality types it supports (text, vision, audio, reasoning).
+    Prices reflect the listed API rate; enterprise or volume discounts may differ.
+    For the most accurate billing information always check the provider's official pricing page.
+    Data is provided by <a href="https://measurable.ai" target="_blank" rel="noopener">Measurable AI</a>
+    and is intended for research and comparison purposes.
+  </p>
+</section>
+
 <!-- ── Controls ─────────────────────────────────────────────────────────────── -->
 <div class="controls">
   <div class="main-tabs">
@@ -1036,6 +1241,7 @@ export function getHtml(params: {
 </div>
 
 <!-- ── API Pricing Table ─────────────────────────────────────────────────────── -->
+<h2 class="sr-only">API Pricing</h2>
 <div class="table-wrap" id="api-section">
   <div class="table-meta">
     <span><strong id="filtered-count">—</strong> models shown</span>
@@ -1060,11 +1266,51 @@ export function getHtml(params: {
 </div>
 
 <!-- ── Subscriptions ─────────────────────────────────────────────────────────── -->
+<h2 class="sr-only">AI Subscription Plans</h2>
 <div id="subs-section" style="display:none;">
   <div class="subs-grid" id="subs-grid">
     <!-- Injected by JS -->
   </div>
 </div>
+
+<!-- ── FAQ ────────────────────────────────────────────────────────────────────── -->
+<section class="faq-section" id="faq">
+  <h2>Frequently Asked Questions</h2>
+  <div class="faq-list">
+    <details class="faq-item">
+      <summary>How much does GPT-4o cost per 1M tokens?</summary>
+      <p>GPT-4o costs ${fmtPriceSsr(gpt4o?.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(gpt4o?.outputPer1M)} per 1M output tokens. These prices are sourced from OpenRouter and updated hourly. Always verify with OpenAI's official pricing page before billing decisions.</p>
+    </details>
+    <details class="faq-item">
+      <summary>How much does Claude 3.5 Sonnet cost per 1M tokens?</summary>
+      <p>Claude 3.5 Sonnet from Anthropic costs ${fmtPriceSsr(claude35sonnet?.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(claude35sonnet?.outputPer1M)} per 1M output tokens. It supports a 200K context window, making it one of the best-value frontier models for long-document tasks.</p>
+    </details>
+    <details class="faq-item">
+      <summary>What is a token in AI models?</summary>
+      <p>A token is a chunk of text processed by an AI language model. In English, roughly 1 token equals 4 characters or 0.75 words. AI APIs charge separately for input tokens (your prompt) and output tokens (the model's response). Prices are quoted per 1 million tokens ($/1M). A typical ChatGPT-length exchange uses 300–500 tokens total.</p>
+    </details>
+    <details class="faq-item">
+      <summary>How does DeepSeek compare in price to OpenAI?</summary>
+      <p>DeepSeek models are significantly cheaper than most OpenAI equivalents. DeepSeek V3 costs ${fmtPriceSsr(deepseekV3?.inputPer1M)} per 1M input tokens compared to GPT-4o at ${fmtPriceSsr(gpt4o?.inputPer1M)} per 1M input tokens. For many tasks, DeepSeek delivers comparable quality at a fraction of the cost.</p>
+    </details>
+    <details class="faq-item">
+      <summary>What is the cheapest AI API available?</summary>
+      <p>Several models offer completely free API access ($0 per token), including models hosted on OpenRouter from Meta (Llama), Mistral, and others. Use the "Free" filter tab in the table above to see all currently free models. Availability of free tiers can change — check token.app regularly for the latest pricing.</p>
+    </details>
+    <details class="faq-item">
+      <summary>How often are token prices updated?</summary>
+      <p>token.app refreshes pricing data every hour by automatically fetching from OpenRouter and official provider pricing pages. The "Updated" timestamp at the top of the table shows when data was last refreshed. Prices can change without notice — always confirm critical pricing with the official provider.</p>
+    </details>
+    <details class="faq-item">
+      <summary>What is the difference between input and output token pricing?</summary>
+      <p>Input tokens are the text you send to the model (your prompt, context, examples). Output tokens are the text the model generates in response. Output tokens typically cost 3–5× more than input tokens because generating text requires more compute than reading it. When optimising costs, reducing your prompt length and caching repeated context can significantly lower your bill.</p>
+    </details>
+    <details class="faq-item">
+      <summary>Which AI model has the largest context window?</summary>
+      <p>As of 2025, several models support extremely large context windows. Google Gemini 1.5 Pro and 1.5 Flash support up to 2M tokens. Anthropic Claude models support up to 200K tokens. OpenAI GPT-4o supports 128K tokens. Larger context windows allow processing longer documents, conversations, and codebases in a single request.</p>
+    </details>
+  </div>
+</section>
 
 <!-- ── Footer ───────────────────────────────────────────────────────────────── -->
 <footer>
@@ -1878,6 +2124,406 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 </script>
+</body>
+</html>`;
+}
+
+// ── Provider page descriptions ────────────────────────────────────────────────
+
+const PROVIDER_META: Record<string, { name: string; description: string; about: string }> = {
+  openai: {
+    name: 'OpenAI',
+    description: 'Real-time API token pricing for all OpenAI models including GPT-4o, GPT-4o mini, o1, o3, and GPT-3.5. Compare input/output costs and context windows.',
+    about: `OpenAI is the San Francisco-based AI lab behind the GPT series and ChatGPT. Their model lineup spans the cost spectrum from the ultra-affordable GPT-4o mini to the flagship GPT-4o and the advanced reasoning models o1 and o3. OpenAI pioneered the pay-per-token API model and remains one of the most widely integrated AI providers in production applications. Their pricing is generally quoted via the OpenAI API and aggregated on OpenRouter.`,
+  },
+  anthropic: {
+    name: 'Anthropic',
+    description: 'Real-time API token pricing for all Anthropic Claude models including Claude 3.5 Sonnet, Claude 3.5 Haiku, and Claude 3 Opus. Compare input/output costs and context windows.',
+    about: `Anthropic builds the Claude family of large language models with a strong emphasis on AI safety and reliability. Claude 3.5 Sonnet is widely regarded as one of the best-value frontier models, combining high capability with a 200K context window. Anthropic offers a tiered lineup from the fast and affordable Claude Haiku to the powerful Claude Opus, designed for enterprise reasoning and long-document analysis.`,
+  },
+  google: {
+    name: 'Google',
+    description: 'Real-time API token pricing for all Google AI models including Gemini 1.5 Pro, Gemini 1.5 Flash, Gemini 2.0 Flash, and PaLM. Compare input/output costs and context windows.',
+    about: `Google DeepMind produces the Gemini family of multimodal AI models available through Google AI Studio and Vertex AI. Gemini 1.5 Pro and Flash support industry-leading context windows of up to 2 million tokens. Google also offers several models with generous free-tier quotas, making them popular for experimentation. Their models support text, vision, audio, and video modalities.`,
+  },
+  'meta-llama': {
+    name: 'Meta Llama',
+    description: 'Real-time API token pricing for Meta Llama models including Llama 3.1, Llama 3.2, and Llama 3.3. Many Llama models are available free via OpenRouter.',
+    about: `Meta AI's Llama series are open-weight models released under a permissive research licence, making them the most widely deployed open-source AI models in the world. Llama 3 models are available in multiple sizes (8B, 70B, 405B) with strong performance across coding, reasoning, and instruction following. Many providers host Llama models at zero cost via OpenRouter, making them the default choice for budget-conscious developers.`,
+  },
+  mistralai: {
+    name: 'Mistral AI',
+    description: 'Real-time API token pricing for Mistral AI models including Mistral Large, Mistral Small, Mixtral 8x7B, and Codestral. Compare input/output costs.',
+    about: `Mistral AI is a Paris-based AI company known for releasing highly efficient open-weight models. Their Mixtral 8x22B model uses a mixture-of-experts architecture to deliver frontier-quality performance at a fraction of the cost. Mistral also offers Codestral, a specialized coding model, and Le Chat, their consumer assistant. Mistral models are popular for European data sovereignty requirements.`,
+  },
+  deepseek: {
+    name: 'DeepSeek',
+    description: 'Real-time API token pricing for DeepSeek models including DeepSeek V3, DeepSeek R1, and DeepSeek Coder. DeepSeek offers some of the lowest prices among frontier AI models.',
+    about: `DeepSeek is a Chinese AI research lab that has released highly capable models at remarkably low prices, disrupting the AI pricing landscape in 2025. DeepSeek V3 and R1 match or exceed many frontier models on benchmarks while costing a fraction of comparable OpenAI or Anthropic models. Their models are open-weight and widely available through OpenRouter and other providers.`,
+  },
+  'x-ai': {
+    name: 'xAI (Grok)',
+    description: 'Real-time API token pricing for xAI Grok models including Grok 3 and Grok 2. Compare Grok input/output costs and context windows.',
+    about: `xAI is Elon Musk's AI company, best known for the Grok series of large language models. Grok models are available via the xAI API and through X (formerly Twitter) Premium subscriptions. Grok 3 is xAI's flagship reasoning model, designed to be competitive with GPT-4o and Claude 3.5 Sonnet. xAI emphasises real-time information access and integration with the X platform.`,
+  },
+  qwen: {
+    name: 'Qwen (Alibaba)',
+    description: 'Real-time API token pricing for Qwen models from Alibaba Cloud including Qwen 2.5, Qwen 2, and QwQ reasoning models. Compare input/output costs.',
+    about: `Qwen is Alibaba Cloud's family of large language models, released under the Qwen series. Qwen 2.5 models span sizes from 0.5B to 72B parameters and include specialized variants for coding, math, and instruction following. QwQ is Alibaba's reasoning-focused model competitive with o1-mini. Many Qwen models are open-weight and available at very low cost via OpenRouter.`,
+  },
+  nvidia: {
+    name: 'NVIDIA',
+    description: 'Real-time API token pricing for NVIDIA AI models including Llama Nemotron and other NVIDIA-hosted models. Compare input/output costs via OpenRouter.',
+    about: `NVIDIA hosts and fine-tunes AI models through NVIDIA NIM (NVIDIA Inference Microservices) and makes them available via API. Their offerings include fine-tuned variants of Meta Llama and other open-weight models optimized for NVIDIA hardware. NVIDIA also produces their own models like Nemotron, designed for enterprise workloads on NVIDIA GPU infrastructure.`,
+  },
+  cohere: {
+    name: 'Cohere',
+    description: 'Real-time API token pricing for Cohere models including Command R+, Command R, and Embed. Cohere specialises in enterprise RAG and embeddings.',
+    about: `Cohere is a Toronto-based AI company specializing in enterprise language models, particularly for retrieval-augmented generation (RAG) and embeddings. Command R+ is their flagship model optimized for multi-step reasoning and tool use in enterprise RAG pipelines. Cohere also produces industry-leading embedding models and a reranker, making them a popular choice for search and knowledge management applications.`,
+  },
+};
+
+// ── Provider page HTML ────────────────────────────────────────────────────────
+
+export function getProviderHtml(params: {
+  providerId: string;
+  models: Array<{
+    id: string;
+    slug: string;
+    name: string;
+    provider: string;
+    providerId: string;
+    inputPer1M: number | null;
+    outputPer1M: number | null;
+    contextWindow: number | null;
+    inputModalities: string[];
+    outputModalities: string[];
+    isFree: boolean;
+    isVision: boolean;
+    isReasoning: boolean;
+    isOpenSource: boolean;
+    isDeprecated: boolean;
+    createdAt: number | null;
+  }>;
+}): string {
+  const { providerId, models } = params;
+  const meta = PROVIDER_META[providerId] ?? {
+    name: providerId,
+    description: `AI token pricing for ${providerId} models.`,
+    about: `${providerId} offers AI language models available via API.`,
+  };
+
+  function fmtCtx(n: number | null): string {
+    if (!n) return '—';
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1) + 'M';
+    if (n >= 1000) return Math.round(n / 1000) + 'K';
+    return String(n);
+  }
+
+  function fmtP(n: number | null | undefined): string {
+    if (n === null || n === undefined) return '—';
+    if (n === 0) return 'Free';
+    if (n < 0.01) return '<$0.01';
+    if (n < 1) return '$' + n.toFixed(3);
+    if (n < 10) return '$' + n.toFixed(2);
+    return '$' + n.toFixed(1);
+  }
+
+  function fmtDate(ts: number | null): string {
+    if (!ts) return '—';
+    return new Date(ts * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
+  }
+
+  function escape(s: string): string {
+    return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  const activeModels = models.filter(m => !m.isDeprecated);
+  const modelCount = activeModels.length;
+
+  const rows = models.map(m => {
+    const mods: string[] = [];
+    if (m.inputModalities.includes('image') || m.isVision) mods.push('Vision');
+    if (m.inputModalities.includes('audio') || m.outputModalities.includes('audio')) mods.push('Audio');
+    if (m.isReasoning) mods.push('Reasoning');
+    if (m.isFree) mods.push('Free');
+    if (m.isOpenSource) mods.push('Open Source');
+    if (m.isDeprecated) mods.push('Deprecated');
+
+    return `<tr${m.isDeprecated ? ' class="deprecated-row"' : ''}>
+      <td><span class="model-name">${escape(m.name)}</span></td>
+      <td style="font-size:11px;color:var(--text3);">${fmtDate(m.createdAt)}</td>
+      <td style="font-size:12px;">${fmtCtx(m.contextWindow)}</td>
+      <td class="${m.inputPer1M === 0 ? 'price-free' : m.inputPer1M && m.inputPer1M < 0.5 ? 'price-cheap' : m.inputPer1M && m.inputPer1M < 3 ? 'price-mid' : ''}">${fmtP(m.inputPer1M)}</td>
+      <td class="${m.outputPer1M === 0 ? 'price-free' : m.outputPer1M && m.outputPer1M < 2 ? 'price-cheap' : m.outputPer1M && m.outputPer1M < 12 ? 'price-mid' : ''}">${fmtP(m.outputPer1M)}</td>
+      <td style="font-size:11px;">${mods.join(', ') || 'Text'}</td>
+    </tr>`;
+  }).join('\n');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${escape(meta.name)} API Pricing — token.app</title>
+  <meta name="description" content="${escape(meta.description)}" />
+  <meta name="author" content="Measurable AI" />
+  <meta property="og:title" content="${escape(meta.name)} API Pricing — token.app" />
+  <meta property="og:description" content="${escape(meta.description)}" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://token.app/${encodeURIComponent(providerId)}" />
+  <meta property="og:site_name" content="token.app" />
+  <meta property="og:image" content="https://token.app/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="https://token.app/og.png" />
+  <link rel="canonical" href="https://token.app/${encodeURIComponent(providerId)}" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔷</text></svg>" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Dataset",
+    "name": "${escape(meta.name)} AI Model Token Pricing",
+    "description": "${escape(meta.description)}",
+    "url": "https://token.app/${encodeURIComponent(providerId)}",
+    "creator": {
+      "@type": "Organization",
+      "name": "Measurable AI",
+      "url": "https://measurable.ai/"
+    }
+  }
+  </script>
+  <script>(function(){var t=localStorage.getItem('theme')||(window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);})();</script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0c0c0e; --surface: #141418; --surface2: #1c1c22;
+      --border: #27272f; --border2: #33333d;
+      --text: #f0f0f4; --text2: #9090a0; --text3: #606070;
+      --accent: #6366f1; --accent-dim: rgba(99,102,241,0.15);
+      --green: #22c55e; --radius: 8px; --radius-sm: 5px;
+      --nav-bg: rgba(12,12,14,0.88);
+    }
+    html[data-theme="light"] {
+      --bg: #f4f4f8; --surface: #ffffff; --surface2: #ebebf2;
+      --border: #dcdce8; --border2: #c8c8d8;
+      --text: #111118; --text2: #484860; --text3: #8888a0;
+      --accent: #5254d0; --accent-dim: rgba(82,84,208,0.1);
+      --green: #16a34a; --nav-bg: rgba(244,244,248,0.9);
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; min-height: 100vh; }
+    nav { position: sticky; top: 0; z-index: 100; background: var(--nav-bg); backdrop-filter: blur(14px); border-bottom: 1px solid var(--border); padding: 0 24px; height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .nav-brand { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; color: var(--text); text-decoration: none; letter-spacing: -0.3px; }
+    .nav-brand .diamond { color: var(--accent); font-size: 18px; }
+    .nav-back { font-size: 13px; color: var(--text2); text-decoration: none; }
+    .nav-back:hover { color: var(--text); }
+    main { max-width: 1100px; margin: 0 auto; padding: 32px 24px 60px; }
+    h1 { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+    .provider-desc { color: var(--text2); font-size: 14px; line-height: 1.6; max-width: 680px; margin-bottom: 8px; }
+    .provider-count { font-size: 12px; color: var(--text3); margin-bottom: 24px; }
+    .about-block { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; margin-bottom: 24px; font-size: 13px; color: var(--text2); line-height: 1.7; }
+    .about-block h2 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text3); margin-bottom: 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+    tbody tr { border-bottom: 1px solid var(--border); }
+    tbody tr:hover { background: var(--surface2); }
+    tbody td { padding: 10px 12px; }
+    .model-name { font-weight: 500; color: var(--text); }
+    .price-free { color: #22c55e; font-weight: 600; }
+    .price-cheap { color: #4ade80; }
+    .price-mid { color: var(--text); }
+    .deprecated-row { opacity: 0.5; }
+    footer { border-top: 1px solid var(--border); padding: 20px 24px; text-align: center; font-size: 12px; color: var(--text3); }
+    footer a { color: var(--text3); text-decoration: none; }
+    footer a:hover { color: var(--text2); }
+    @media (max-width: 600px) { main { padding: 20px 16px 40px; } table { font-size: 12px; } }
+  </style>
+</head>
+<body>
+<nav>
+  <a href="/" class="nav-brand"><span class="diamond">◈</span> token.app</a>
+  <a href="/" class="nav-back">← All providers</a>
+</nav>
+<main>
+  <h1>${escape(meta.name)} API Pricing</h1>
+  <p class="provider-desc">${escape(meta.description)}</p>
+  <p class="provider-count">${modelCount} active models · Data updated hourly</p>
+
+  <div class="about-block">
+    <h2>About ${escape(meta.name)}</h2>
+    <p>${escape(meta.about)}</p>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Model</th>
+        <th>Released</th>
+        <th>Context</th>
+        <th>Input $/1M</th>
+        <th>Output $/1M</th>
+        <th>Modalities</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rows || '<tr><td colspan="6" style="padding:40px;text-align:center;color:var(--text3);">No models found</td></tr>'}
+    </tbody>
+  </table>
+</main>
+<footer>
+  <p>Data sourced from <a href="https://openrouter.ai">OpenRouter</a> and provider pricing pages. Always verify with official sources.</p>
+  <p style="margin-top:6px;">Powered by <a href="https://measurable.ai" target="_blank" rel="noopener">Measurable AI</a> · <a href="/">Back to token.app</a></p>
+</footer>
+</body>
+</html>`;
+}
+
+// ── About page HTML ───────────────────────────────────────────────────────────
+
+export function getAboutHtml(): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>About — token.app</title>
+  <meta name="description" content="About token.app — AI token and subscription pricing tracker built by Measurable AI. Learn about our methodology, data sources, and update frequency." />
+  <meta name="author" content="Measurable AI" />
+  <meta property="og:title" content="About token.app" />
+  <meta property="og:description" content="About token.app — AI token and subscription pricing tracker built by Measurable AI." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://token.app/about" />
+  <meta property="og:site_name" content="token.app" />
+  <meta property="og:image" content="https://token.app/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <link rel="canonical" href="https://token.app/about" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔷</text></svg>" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "AboutPage",
+    "name": "About token.app",
+    "url": "https://token.app/about",
+    "description": "About token.app — AI token and subscription pricing tracker.",
+    "creator": {
+      "@type": "Organization",
+      "name": "Measurable AI",
+      "url": "https://measurable.ai/"
+    }
+  }
+  </script>
+  <script>(function(){var t=localStorage.getItem('theme')||(window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);})();</script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0c0c0e; --surface: #141418; --surface2: #1c1c22;
+      --border: #27272f; --text: #f0f0f4; --text2: #9090a0; --text3: #606070;
+      --accent: #6366f1; --radius: 8px; --nav-bg: rgba(12,12,14,0.88);
+    }
+    html[data-theme="light"] {
+      --bg: #f4f4f8; --surface: #ffffff; --surface2: #ebebf2;
+      --border: #dcdce8; --text: #111118; --text2: #484860; --text3: #8888a0;
+      --accent: #5254d0; --nav-bg: rgba(244,244,248,0.9);
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.65; min-height: 100vh; }
+    nav { position: sticky; top: 0; z-index: 100; background: var(--nav-bg); backdrop-filter: blur(14px); border-bottom: 1px solid var(--border); padding: 0 24px; height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .nav-brand { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; color: var(--text); text-decoration: none; letter-spacing: -0.3px; }
+    .nav-brand .diamond { color: var(--accent); font-size: 18px; }
+    .nav-back { font-size: 13px; color: var(--text2); text-decoration: none; }
+    .nav-back:hover { color: var(--text); }
+    main { max-width: 720px; margin: 0 auto; padding: 48px 24px 80px; }
+    h1 { font-size: 28px; font-weight: 700; margin-bottom: 6px; }
+    .subtitle { font-size: 16px; color: var(--text2); margin-bottom: 40px; }
+    h2 { font-size: 16px; font-weight: 600; margin: 32px 0 12px; color: var(--text); }
+    p { color: var(--text2); margin-bottom: 14px; }
+    p:last-child { margin-bottom: 0; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .provider-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+    .provider-pill { background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; padding: 4px 14px; font-size: 12px; color: var(--text2); text-decoration: none; }
+    .provider-pill:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+    footer { border-top: 1px solid var(--border); padding: 20px 24px; text-align: center; font-size: 12px; color: var(--text3); }
+    footer a { color: var(--text3); text-decoration: none; }
+    footer a:hover { color: var(--text2); }
+    @media (max-width: 600px) { main { padding: 32px 16px 60px; } }
+  </style>
+</head>
+<body>
+<nav>
+  <a href="/" class="nav-brand"><span class="diamond">◈</span> token.app</a>
+  <a href="/" class="nav-back">← Back to pricing</a>
+</nav>
+<main>
+  <h1>About token.app</h1>
+  <p class="subtitle">AI token and subscription pricing tracker, built by Measurable AI.</p>
+
+  <h2>What is token.app?</h2>
+  <p>
+    token.app is a real-time pricing tracker for AI language model APIs and subscriptions.
+    We aggregate token pricing data from <a href="https://openrouter.ai" target="_blank" rel="noopener">OpenRouter</a>
+    and official provider pricing pages, making it easy to compare costs across the rapidly growing
+    AI provider landscape. The site covers 350+ models from 55+ providers and updates every hour.
+  </p>
+
+  <h2>Data Sources &amp; Methodology</h2>
+  <p>
+    Pricing data is sourced primarily from the <a href="https://openrouter.ai/api/v1/models" target="_blank" rel="noopener">OpenRouter Models API</a>,
+    which aggregates publicly listed prices from the major AI providers. We supplement this with
+    direct pricing data from provider pages for subscription products (ChatGPT, Claude.ai, Gemini Advanced, etc.).
+  </p>
+  <p>
+    Our Cloudflare Worker fetches and normalizes the raw data every hour, extracting:
+    input token price ($/1M tokens), output token price ($/1M tokens), context window size,
+    model release date, and supported input/output modalities (text, vision, audio, reasoning).
+    All prices are in US dollars unless otherwise noted.
+  </p>
+  <p>
+    <strong>Important:</strong> Prices shown are for reference only. AI providers can change pricing
+    at any time. Always verify current pricing with the official provider before making billing decisions.
+  </p>
+
+  <h2>Provider Coverage</h2>
+  <p>We track models from the following providers, with dedicated pages for each:</p>
+  <div class="provider-list">
+    <a href="/openai" class="provider-pill">OpenAI</a>
+    <a href="/anthropic" class="provider-pill">Anthropic</a>
+    <a href="/google" class="provider-pill">Google</a>
+    <a href="/meta-llama" class="provider-pill">Meta Llama</a>
+    <a href="/mistralai" class="provider-pill">Mistral AI</a>
+    <a href="/deepseek" class="provider-pill">DeepSeek</a>
+    <a href="/x-ai" class="provider-pill">xAI / Grok</a>
+    <a href="/qwen" class="provider-pill">Qwen</a>
+    <a href="/nvidia" class="provider-pill">NVIDIA</a>
+    <a href="/cohere" class="provider-pill">Cohere</a>
+  </div>
+  <p>And many more — see the <a href="/">full model table</a> for complete coverage.</p>
+
+  <h2>About Measurable AI</h2>
+  <p>
+    token.app is built and maintained by <a href="https://measurable.ai" target="_blank" rel="noopener">Measurable AI</a>,
+    a data and AI company focused on making AI infrastructure costs transparent and understandable.
+    The site runs on <a href="https://workers.cloudflare.com" target="_blank" rel="noopener">Cloudflare Workers</a>
+    with data stored in Cloudflare KV, making it fast and globally distributed.
+  </p>
+  <p>
+    We built token.app because AI token pricing is genuinely confusing — providers use different
+    units, price structures, and update their rates frequently. Our goal is a single, always-current
+    reference that developers and product teams can rely on when estimating API costs.
+  </p>
+
+  <h2>Contact &amp; Legal</h2>
+  <p>
+    For questions or data corrections, please reach out via <a href="https://measurable.ai" target="_blank" rel="noopener">measurable.ai</a>.
+    Use of this site is subject to our <a href="https://measurable.ai/en-US/termsOfUse" target="_blank" rel="noopener">Terms of Use</a>
+    and <a href="https://measurable.ai/en-US/privacyPolicy" target="_blank" rel="noopener">Privacy Policy</a>.
+  </p>
+</main>
+<footer>
+  <p>Built on <a href="https://workers.cloudflare.com">Cloudflare Workers</a> · Powered by <a href="https://measurable.ai" target="_blank" rel="noopener">Measurable AI</a></p>
+  <p style="margin-top:6px;"><a href="/">← Back to token.app</a> · <a href="https://measurable.ai/en-US/termsOfUse" target="_blank" rel="noopener">Terms</a> · <a href="https://measurable.ai/en-US/privacyPolicy" target="_blank" rel="noopener">Privacy</a></p>
+</footer>
 </body>
 </html>`;
 }
