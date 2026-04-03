@@ -1631,23 +1631,29 @@ function getProviderUrl(providerId) {
   return PROVIDER_URLS[providerId] ?? null;
 }
 
+function safeUrl(url) {
+  // Reject anything that isn't https:// — guards against javascript: or data: injection
+  // from supply-chain-compromised upstream data (e.g. OpenRouter API poisoning)
+  return (url && String(url).indexOf('https://') === 0) ? url : null;
+}
+
 function getModelUrl(m) {
+  var url;
   if (m.providerId === 'openai') {
-    return 'https://platform.openai.com/docs/models/' + m.slug;
-  }
-  if (m.providerId === 'mistralai') {
+    url = 'https://platform.openai.com/docs/models/' + m.slug;
+  } else if (m.providerId === 'mistralai') {
     var s = m.slug;
     var ci = s.indexOf(':'); if (ci !== -1) s = s.slice(0, ci);
     if (s.slice(-7) === '-latest') s = s.slice(0, -7);
-    return 'https://mistral.ai/models/' + s;
+    url = 'https://mistral.ai/models/' + s;
+  } else if (m.providerId === 'nvidia') {
+    url = 'https://build.nvidia.com/' + m.id;
+  } else if (m.providerId === 'deepseek') {
+    url = 'https://github.com/deepseek-ai/' + m.slug.split('/').join('-');
+  } else {
+    url = MODEL_PAGE_URLS[m.providerId] || PROVIDER_URLS[m.providerId] || 'https://openrouter.ai/' + m.id;
   }
-  if (m.providerId === 'nvidia') {
-    return 'https://build.nvidia.com/' + m.id;
-  }
-  if (m.providerId === 'deepseek') {
-    return 'https://github.com/deepseek-ai/' + m.slug.split('/').join('-');
-  }
-  return MODEL_PAGE_URLS[m.providerId] || PROVIDER_URLS[m.providerId] || 'https://openrouter.ai/' + m.id;
+  return safeUrl(url) || ('https://openrouter.ai/' + m.id);
 }
 
 function getProviderLogo(providerId) {

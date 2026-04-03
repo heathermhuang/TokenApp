@@ -7,7 +7,16 @@ import { getHtml, getProviderHtml, getAboutHtml } from './template';
 
 const app = new Hono<{ Bindings: Env }>();
 
-// CORS for API endpoints
+// Security headers on all responses
+app.use('*', async (c, next) => {
+  await next();
+  c.res.headers.set('X-Content-Type-Options', 'nosniff');
+  c.res.headers.set('X-Frame-Options', 'SAMEORIGIN');
+  c.res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+});
+
+// CORS for API endpoints — public data, open to all origins
+// Intent: this is a public pricing API. Restrict if that changes.
 app.use('/api/*', cors({ origin: '*' }));
 
 // ── API Routes ────────────────────────────────────────────────────────────────
@@ -43,7 +52,10 @@ app.get(
 // Admin trigger to force-refresh (simple token auth)
 app.post('/api/refresh', async (c) => {
   const authHeader = c.req.header('Authorization');
-  const expectedToken = c.env.REFRESH_SECRET ?? 'changeme';
+  const expectedToken = c.env.REFRESH_SECRET;
+  if (!expectedToken) {
+    return c.json({ error: 'REFRESH_SECRET env var not configured' }, 500);
+  }
   if (authHeader !== `Bearer ${expectedToken}`) {
     return c.json({ error: 'Unauthorized' }, 401);
   }
