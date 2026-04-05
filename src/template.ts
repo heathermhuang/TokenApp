@@ -1176,27 +1176,6 @@ export function getHtml(params: {
   </div>
 </section>
 
-<!-- ── About the Data ────────────────────────────────────────────────────────── -->
-<section class="about-data" id="about-data">
-  <h2>About This Data</h2>
-  <p>
-    token.app tracks real-time token pricing and subscription costs across the AI ecosystem.
-    We aggregate pricing data from <a href="https://openrouter.ai" target="_blank" rel="noopener">OpenRouter</a>
-    and official provider pricing pages, refreshing every hour so you always see current rates.
-    Coverage spans ${modelCount}+ models from ${providerCount}+ providers — including frontier labs like OpenAI,
-    Anthropic, Google DeepMind, Meta AI, Mistral, DeepSeek, xAI, Qwen, NVIDIA, and Cohere,
-    as well as dozens of fine-tuned and open-weight variants.
-  </p>
-  <p>
-    Every row in the table shows the model's input cost and output cost per 1 million tokens,
-    its context window size, and the modality types it supports (text, vision, audio, reasoning).
-    Prices reflect the listed API rate; enterprise or volume discounts may differ.
-    For the most accurate billing information always check the provider's official pricing page.
-    Data is provided by <a href="https://measurable.ai" target="_blank" rel="noopener">Measurable AI</a>
-    and is intended for research and comparison purposes.
-  </p>
-</section>
-
 <!-- ── Controls ─────────────────────────────────────────────────────────────── -->
 <div class="controls">
   <div class="main-tabs">
@@ -1310,6 +1289,27 @@ export function getHtml(params: {
       <p>As of 2025, several models support extremely large context windows. Google Gemini 1.5 Pro and 1.5 Flash support up to 2M tokens. Anthropic Claude models support up to 200K tokens. OpenAI GPT-4o supports 128K tokens. Larger context windows allow processing longer documents, conversations, and codebases in a single request.</p>
     </details>
   </div>
+</section>
+
+<!-- ── About the Data ────────────────────────────────────────────────────────── -->
+<section class="about-data" id="about-data">
+  <h2>About This Data</h2>
+  <p>
+    token.app tracks real-time token pricing and subscription costs across the AI ecosystem.
+    We aggregate pricing data from <a href="https://openrouter.ai" target="_blank" rel="noopener">OpenRouter</a>
+    and official provider pricing pages, refreshing every hour so you always see current rates.
+    Coverage spans ${modelCount}+ models from ${providerCount}+ providers — including frontier labs like OpenAI,
+    Anthropic, Google DeepMind, Meta AI, Mistral, DeepSeek, xAI, Qwen, NVIDIA, and Cohere,
+    as well as dozens of fine-tuned and open-weight variants.
+  </p>
+  <p>
+    Every row in the table shows the model's input cost and output cost per 1 million tokens,
+    its context window size, and the modality types it supports (text, vision, audio, reasoning).
+    Prices reflect the listed API rate; enterprise or volume discounts may differ.
+    For the most accurate billing information always check the provider's official pricing page.
+    Data is provided by <a href="https://measurable.ai" target="_blank" rel="noopener">Measurable AI</a>
+    and is intended for research and comparison purposes.
+  </p>
 </section>
 
 <!-- ── Footer ───────────────────────────────────────────────────────────────── -->
@@ -2003,7 +2003,7 @@ const TERMS_HTML = \`
 <h3>6. Changes to Service</h3>
 <p>We reserve the right to modify, suspend, or discontinue the service at any time without notice.</p>
 <h3>7. Contact</h3>
-<p>For questions, contact us at <a href="mailto:hello@measurable.ai">hello@measurable.ai</a>.</p>
+<p>For questions, contact us at <a href="mailto:heathermhuang@gmail.com">heathermhuang@gmail.com</a>.</p>
 \`;
 
 const PRIVACY_HTML = \`
@@ -2018,7 +2018,7 @@ const PRIVACY_HTML = \`
 <h3>Your Rights</h3>
 <p>You may decline analytics cookies using the banner on this site. You can also opt out globally using the <a href="https://tools.google.com/dlpage/gaoptout" target="_blank" rel="noopener">Google Analytics Opt-out Browser Add-on</a>.</p>
 <h3>Contact</h3>
-<p>For privacy inquiries, contact <a href="mailto:hello@measurable.ai">hello@measurable.ai</a>.</p>
+<p>For privacy inquiries, contact <a href="mailto:heathermhuang@gmail.com">heathermhuang@gmail.com</a>.</p>
 \`;
 
 function openModal(type) {

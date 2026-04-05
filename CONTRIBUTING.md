@@ -50,7 +50,7 @@ Open a GitHub issue with:
 
 ## Security issues
 
-Do not open a public issue for security vulnerabilities. Email [hello@measurable.ai](mailto:hello@measurable.ai) instead.
+Do not open a public issue for security vulnerabilities. Email [heathermhuang@gmail.com](mailto:heathermhuang@gmail.com) instead.
 
 ## License
 

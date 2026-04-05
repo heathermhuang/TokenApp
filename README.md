@@ -217,7 +217,7 @@ curl https://token-app.measurable.workers.dev/llms-full.txt
 - No user data collected beyond anonymous GA4 analytics (opt-in via consent banner)
 - CSO audit report available in `.gstack/security-reports/`
 
-To report a security issue, email [hello@measurable.ai](mailto:hello@measurable.ai).
+To report a security issue, email [heathermhuang@gmail.com](mailto:heathermhuang@gmail.com).
 
 ## Contributing
 
