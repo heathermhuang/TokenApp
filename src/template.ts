@@ -46,9 +46,9 @@ export function getHtml(params: {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>token.app — AI Token &amp; Subscription Pricing</title>
-  <meta name="description" content="Real-time AI model token pricing and subscription costs. Compare ${modelCount}+ models from ${providerCount}+ providers including OpenAI, Anthropic, Google, Meta, and more." />
+  <meta name="description" content="Real-time AI model token pricing, subscription costs, and usage rankings. Compare ${modelCount}+ models from ${providerCount}+ providers including OpenAI, Anthropic, Google, Meta, and more. See which models and AI agents are trending by daily, weekly, and monthly usage." />
   <meta property="og:title" content="token.app — AI Pricing Tracker" />
-  <meta property="og:description" content="Real-time token pricing for ${modelCount}+ AI models. Compare input/output costs, context windows, and subscription plans." />
+  <meta property="og:description" content="Real-time token pricing and usage rankings for ${modelCount}+ AI models. Compare costs, context windows, subscriptions, and see trending models and agents by 24H/7D/30D usage." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://token.app/" />
   <meta property="og:site_name" content="token.app" />
@@ -57,7 +57,7 @@ export function getHtml(params: {
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="token.app — AI Pricing Tracker" />
-  <meta name="twitter:description" content="Real-time token pricing for ${modelCount}+ AI models. Compare input/output costs, context windows, and subscription plans." />
+  <meta name="twitter:description" content="Real-time token pricing and usage rankings for ${modelCount}+ AI models. Compare costs, context windows, subscriptions, and see trending models and agents by 24H/7D/30D usage." />
   <meta name="twitter:image" content="https://token.app/og.png" />
   <meta name="author" content="Measurable AI" />
   <link rel="canonical" href="https://token.app/" />
@@ -76,9 +76,9 @@ export function getHtml(params: {
       "url": "https://measurable.ai/"
     },
     "license": "https://measurable.ai/en-US/termsOfUse",
-    "keywords": ["AI pricing", "LLM tokens", "API cost", "language models", "GPT", "Claude", "Gemini", "token pricing"],
+    "keywords": ["AI pricing", "LLM tokens", "API cost", "language models", "GPT", "Claude", "Gemini", "token pricing", "AI model rankings", "AI usage leaderboard", "most popular AI models", "AI agent rankings"],
     "measurementTechnique": "Automated hourly fetching from provider APIs and OpenRouter",
-    "variableMeasured": ["input token price", "output token price", "context window", "model availability"]
+    "variableMeasured": ["input token price", "output token price", "context window", "model availability", "token usage volume", "request volume"]
   }
   </script>
   <script type="application/ld+json">
@@ -132,6 +132,14 @@ export function getHtml(params: {
         "acceptedAnswer": {
           "@type": "Answer",
           "text": "DeepSeek models are significantly cheaper than OpenAI equivalents. DeepSeek V3 costs ${fmtPriceSsr(deepseekV3?.inputPer1M)} per 1M input tokens compared to GPT-4o at ${fmtPriceSsr(gpt4o?.inputPer1M)} per 1M input tokens — making it one of the most cost-effective frontier models available."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Which AI models and agents are most popular right now?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "token.app tracks real-time usage rankings for AI models and agents via OpenRouter. The Rankings tab shows leaderboards by total token volume, with filters for daily (24H), weekly (7D), and monthly (30D) time periods. Rankings update hourly to reflect current usage trends across hundreds of AI applications."
         }
       }
     ]
@@ -1479,6 +1487,10 @@ export function getHtml(params: {
       <summary>Which AI model has the largest context window?</summary>
       <p>As of 2025, several models support extremely large context windows. Google Gemini 1.5 Pro and 1.5 Flash support up to 2M tokens. Anthropic Claude models support up to 200K tokens. OpenAI GPT-4o supports 128K tokens. Larger context windows allow processing longer documents, conversations, and codebases in a single request.</p>
     </details>
+    <details class="faq-item">
+      <summary>Which AI models and agents are most popular right now?</summary>
+      <p>The Rankings tab shows real-time usage leaderboards for AI models and agents, sourced from OpenRouter. You can filter by time period — 24H (daily), 7D (weekly), or 30D (monthly) — to see which models are trending and which AI-powered apps and agents are consuming the most tokens. Rankings update hourly.</p>
+    </details>
   </div>
 </section>
 
@@ -1486,16 +1498,18 @@ export function getHtml(params: {
 <section class="about-data" id="about-data">
   <h2>About This Data</h2>
   <p>
-    token.app tracks real-time token pricing and subscription costs across the AI ecosystem.
-    We aggregate pricing data from <a href="https://openrouter.ai" target="_blank" rel="noopener">OpenRouter</a>
+    token.app tracks real-time token pricing, subscription costs, and usage rankings across the AI ecosystem.
+    We aggregate pricing data and usage leaderboards from <a href="https://openrouter.ai" target="_blank" rel="noopener">OpenRouter</a>
     and official provider pricing pages, refreshing every hour so you always see current rates.
     Coverage spans ${modelCount}+ models from ${providerCount}+ providers — including frontier labs like OpenAI,
     Anthropic, Google DeepMind, Meta AI, Mistral, DeepSeek, xAI, Qwen, NVIDIA, and Cohere,
     as well as dozens of fine-tuned and open-weight variants.
   </p>
   <p>
-    Every row in the table shows the model's input cost and output cost per 1 million tokens,
+    Every row in the pricing table shows the model's input cost and output cost per 1 million tokens,
     its context window size, and the modality types it supports (text, vision, audio, reasoning).
+    The Rankings tab shows model and agent usage leaderboards with daily, weekly, and monthly token volume,
+    so you can see which AI models and applications are trending right now.
     Prices reflect the listed API rate; enterprise or volume discounts may differ.
     For the most accurate billing information always check the provider's official pricing page.
     Data is provided by <a href="https://measurable.ai" target="_blank" rel="noopener">Measurable AI</a>
