@@ -232,38 +232,65 @@ export async function fetchRankingsFromOpenRouter(): Promise<RankingsData> {
 
   topModels.sort((a, b) => b.totalTokens - a.totalTokens);
 
-  // Parse app rankings from RSC payload (weekly data for more stable rankings)
+  // Parse app rankings from RSC payload
+  // The RSC payload uses double-escaped quotes (\\" instead of ") when fetched server-side.
+  // Normalize first, then find the rankMap.day JSON array by bracket-matching and JSON.parse it.
   const topApps: AppRanking[] = [];
-  const appPattern = /\{"app_id":\d+,"total_tokens":"(\d+)","total_requests":(\d+),"rank":(\d+),"app":\{"id":\d+,"created_at":"[^"]*","description":"((?:[^"\\]|\\.)*)","title":"((?:[^"\\]|\\.)*)","main_url":[^,]*,"origin_url":"?((?:[^",}]*))"?,"slug":"[^"]*","source_code_url":[^,]*,"icon_class_name":"[^"]*","favicon_url":("(?:[^"\\]|\\.)*"|null),"categories":\[([^\]]*)\]/g;
+  const normalizedHtml = html.replace(/\\"/g, '"');
 
-  let appMatch;
-  const seenApps = new Set<string>();
-  while ((appMatch = appPattern.exec(html)) !== null) {
-    const title = appMatch[5].replace(/\\"/g, '"');
-    if (seenApps.has(title)) continue;
-    seenApps.add(title);
+  const rankMapIdx = normalizedHtml.indexOf('"rankMap":{"day":[');
+  if (rankMapIdx >= 0) {
+    const arrayStart = normalizedHtml.indexOf('[', rankMapIdx + '"rankMap":{"day":'.length);
+    if (arrayStart >= 0) {
+      let depth = 0;
+      let arrayEnd = -1;
+      for (let i = arrayStart; i < Math.min(arrayStart + 100_000, normalizedHtml.length); i++) {
+        if (normalizedHtml[i] === '[') depth++;
+        else if (normalizedHtml[i] === ']') {
+          depth--;
+          if (depth === 0) { arrayEnd = i + 1; break; }
+        }
+      }
 
-    const categories = appMatch[8]
-      .replace(/"/g, '')
-      .split(',')
-      .map(c => c.trim())
-      .filter(Boolean);
+      if (arrayEnd > 0) {
+        try {
+          const items = JSON.parse(normalizedHtml.slice(arrayStart, arrayEnd)) as Array<{
+            rank: number;
+            total_tokens: string;
+            total_requests: number;
+            app: {
+              title: string;
+              description: string;
+              origin_url: string;
+              favicon_url: string | null;
+              categories: string[];
+            };
+          }>;
 
-    const faviconRaw = appMatch[7];
-    const faviconUrl = faviconRaw === 'null' ? null : faviconRaw.replace(/^"|"$/g, '').replace(/\\"/g, '"');
+          const seenApps = new Set<string>();
+          for (const item of items) {
+            const title = item.app?.title;
+            if (!title || seenApps.has(title)) continue;
+            seenApps.add(title);
 
-    topApps.push({
-      rank: parseInt(appMatch[3]),
-      title,
-      description: appMatch[4].replace(/\\"/g, '"').slice(0, 120),
-      categories,
-      originUrl: appMatch[6],
-      faviconUrl,
-      totalTokens: parseInt(appMatch[1]),
-      totalRequests: parseInt(appMatch[2]),
-    });
+            topApps.push({
+              rank: item.rank,
+              title,
+              description: (item.app.description ?? '').slice(0, 120),
+              categories: item.app.categories ?? [],
+              originUrl: item.app.origin_url ?? '',
+              faviconUrl: item.app.favicon_url ?? null,
+              totalTokens: parseInt(item.total_tokens) || 0,
+              totalRequests: item.total_requests ?? 0,
+            });
 
-    if (topApps.length >= 20) break;
+            if (topApps.length >= 20) break;
+          }
+        } catch {
+          // JSON parse failed — leave topApps empty
+        }
+      }
+    }
   }
 
   topApps.sort((a, b) => b.totalTokens - a.totalTokens);
