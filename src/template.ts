@@ -1,9 +1,10 @@
 export function getHtml(params: {
   initialModels?: string;
   initialSubscriptions?: string;
+  initialRankings?: string;
   lastUpdated?: string | null;
 }): string {
-  const { initialModels = '[]', initialSubscriptions = '[]', lastUpdated = null } = params;
+  const { initialModels = '[]', initialSubscriptions = '[]', initialRankings = 'null', lastUpdated = null } = params;
 
   // Compute counts server-side for accurate meta tags and hero description
   const parsedModels = JSON.parse(initialModels) as Array<{
@@ -814,6 +815,130 @@ export function getHtml(params: {
 
     .sub-link:hover { opacity: 1; text-decoration: underline; }
 
+    /* ── Rankings / Leaderboards ───────────────────────────────────────────── */
+    #rankings-section {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px 48px;
+    }
+
+    .rankings-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    @media (max-width: 768px) {
+      .rankings-grid { grid-template-columns: 1fr; }
+    }
+
+    .leaderboard {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .leaderboard-header {
+      padding: 16px 20px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .leaderboard-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 2px;
+    }
+
+    .leaderboard-subtitle {
+      font-size: 11px;
+      color: var(--text3);
+    }
+
+    .leaderboard-list {
+      list-style: none;
+    }
+
+    .lb-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 20px;
+      border-bottom: 1px solid var(--border);
+      transition: background 0.1s;
+    }
+
+    .lb-item:last-child { border-bottom: none; }
+    .lb-item:hover { background: var(--surface2); }
+
+    .lb-rank {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text3);
+      width: 24px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+
+    .lb-item:nth-child(1) .lb-rank { color: #fbbf24; }
+    .lb-item:nth-child(2) .lb-rank { color: #94a3b8; }
+    .lb-item:nth-child(3) .lb-rank { color: #cd7f32; }
+
+    .lb-icon {
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+
+    .lb-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .lb-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .lb-category {
+      font-size: 10px;
+      color: var(--text3);
+    }
+
+    .lb-stats {
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    .lb-tokens {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .lb-reqs {
+      font-size: 10px;
+      color: var(--text3);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .rankings-source {
+      text-align: center;
+      font-size: 11px;
+      color: var(--text3);
+      margin-top: 12px;
+    }
+
+    .rankings-source a { color: var(--accent); text-decoration: none; }
+    .rankings-source a:hover { text-decoration: underline; }
+
     /* ── Loading ───────────────────────────────────────────────────────────── */
     .loading {
       display: flex;
@@ -1181,6 +1306,7 @@ export function getHtml(params: {
   <div class="main-tabs">
     <button class="main-tab active" data-view="api">API Pricing</button>
     <button class="main-tab" data-view="subscriptions">Subscriptions</button>
+    <button class="main-tab" data-view="rankings">Rankings</button>
   </div>
 
   <div id="api-controls">
@@ -1250,6 +1376,32 @@ export function getHtml(params: {
   <div class="subs-grid" id="subs-grid">
     <!-- Injected by JS -->
   </div>
+</div>
+
+<!-- ── Rankings ──────────────────────────────────────────────────────────────── -->
+<h2 class="sr-only">Usage Rankings</h2>
+<div id="rankings-section" style="display:none;">
+  <div class="rankings-grid">
+    <div class="leaderboard">
+      <div class="leaderboard-header">
+        <div class="leaderboard-title">Token Usage Leaderboard</div>
+        <div class="leaderboard-subtitle">Top models by daily token volume on OpenRouter</div>
+      </div>
+      <ol class="leaderboard-list" id="model-leaderboard">
+        <li style="padding:40px;text-align:center;color:var(--text3)">Loading rankings…</li>
+      </ol>
+    </div>
+    <div class="leaderboard">
+      <div class="leaderboard-header">
+        <div class="leaderboard-title">Agent Usage Leaderboard</div>
+        <div class="leaderboard-subtitle">Top apps and agents by daily token volume on OpenRouter</div>
+      </div>
+      <ol class="leaderboard-list" id="app-leaderboard">
+        <li style="padding:40px;text-align:center;color:var(--text3)">Loading rankings…</li>
+      </ol>
+    </div>
+  </div>
+  <p class="rankings-source">Data sourced from <a href="https://openrouter.ai/rankings" target="_blank" rel="noopener">OpenRouter Rankings</a> · Updated hourly</p>
 </div>
 
 <!-- ── FAQ ────────────────────────────────────────────────────────────────────── -->
@@ -1354,7 +1506,8 @@ export function getHtml(params: {
 const state = {
   models: [],
   subscriptions: [],
-  view: 'api',       // 'api' | 'subscriptions'
+  rankings: null,
+  view: 'api',       // 'api' | 'subscriptions' | 'rankings'
   cat: 'all',
   subCat: 'all',
   providers: new Set(),
@@ -1437,6 +1590,9 @@ function getProviderStyle(providerId) {
     alibaba:      { color: '#fb923c', bg: 'rgba(251,146,60,0.12)' },
     kwaipilot:    { color: '#fb923c', bg: 'rgba(251,146,60,0.12)' },
     meituan:      { color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' },
+    qwen:         { color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' },
+    'z-ai':       { color: '#818cf8', bg: 'rgba(129,140,248,0.12)' },
+    zhipuai:      { color: '#818cf8', bg: 'rgba(129,140,248,0.12)' },
     // Research / others
     allenai:      { color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' },
     'ibm-granite':{ color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
@@ -1904,6 +2060,80 @@ function renderSubscriptions() {
   }).join('');
 }
 
+// ── Render Rankings ───────────────────────────────────────────────────────────
+function fmtTokens(n) {
+  if (!n || n === 0) return '0';
+  if (n >= 1e12) return (n / 1e12).toFixed(1) + 'T';
+  if (n >= 1e9) return (n / 1e9).toFixed(1) + 'B';
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+  return String(n);
+}
+
+function fmtReqs(n) {
+  if (!n || n === 0) return '0 reqs';
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M reqs';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K reqs';
+  return n.toLocaleString() + ' reqs';
+}
+
+function renderRankings() {
+  if (!state.rankings) return;
+
+  var modelList = document.getElementById('model-leaderboard');
+  var appList = document.getElementById('app-leaderboard');
+
+  var models = state.rankings.topModels || [];
+  var apps = state.rankings.topApps || [];
+
+  if (models.length > 0) {
+    modelList.innerHTML = models.slice(0, 15).map(function(m, i) {
+      var slug = m.modelSlug || '';
+      var parts = slug.split('/');
+      var provider = parts[0] || '';
+      var modelName = parts.slice(1).join('/') || slug;
+      var logoImg = providerLogoImg(provider);
+      return '<li class="lb-item">' +
+        '<span class="lb-rank">' + (i + 1) + '</span>' +
+        '<div class="lb-info">' +
+          '<div class="lb-name">' + escape(modelName) + '</div>' +
+          '<div class="lb-category">' + logoImg + ' ' + escape(provider) + '</div>' +
+        '</div>' +
+        '<div class="lb-stats">' +
+          '<div class="lb-tokens">' + fmtTokens(m.totalTokens) + '</div>' +
+          '<div class="lb-reqs">' + fmtReqs(m.totalRequests) + '</div>' +
+        '</div>' +
+      '</li>';
+    }).join('');
+  } else {
+    modelList.innerHTML = '<li style="padding:40px;text-align:center;color:var(--text3)">No model rankings available yet.</li>';
+  }
+
+  if (apps.length > 0) {
+    appList.innerHTML = apps.slice(0, 15).map(function(a, i) {
+      var cats = (a.categories || []).join(', ').replace(/-/g, ' ');
+      var icon = a.faviconUrl
+        ? '<img class="lb-icon" src="' + escape(a.faviconUrl) + '" alt="" onerror="this.style.display=\'none\'">'
+        : '';
+      var link = a.originUrl ? '<a href="' + escape(a.originUrl) + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">' + escape(a.title) + '</a>' : escape(a.title);
+      return '<li class="lb-item">' +
+        '<span class="lb-rank">' + (i + 1) + '</span>' +
+        icon +
+        '<div class="lb-info">' +
+          '<div class="lb-name">' + link + '</div>' +
+          '<div class="lb-category">' + escape(cats) + '</div>' +
+        '</div>' +
+        '<div class="lb-stats">' +
+          '<div class="lb-tokens">' + fmtTokens(a.totalTokens) + '</div>' +
+          '<div class="lb-reqs">' + fmtReqs(a.totalRequests) + '</div>' +
+        '</div>' +
+      '</li>';
+    }).join('');
+  } else {
+    appList.innerHTML = '<li style="padding:40px;text-align:center;color:var(--text3)">No app rankings available yet.</li>';
+  }
+}
+
 // ── Stats ──────────────────────────────────────────────────────────────────────
 function updateStats() {
   const providers = new Set(state.models.map(m => m.providerId));
@@ -1946,25 +2176,31 @@ function bindSortHeaders() {
 // ── View Switch ────────────────────────────────────────────────────────────────
 function switchView(view) {
   state.view = view;
-  const apiSection = document.getElementById('api-section');
-  const subsSection = document.getElementById('subs-section');
-  const apiControls = document.getElementById('api-controls');
-  const subsControls = document.getElementById('subs-controls');
+  var apiSection = document.getElementById('api-section');
+  var subsSection = document.getElementById('subs-section');
+  var rankingsSection = document.getElementById('rankings-section');
+  var apiControls = document.getElementById('api-controls');
+  var subsControls = document.getElementById('subs-controls');
 
   document.querySelectorAll('.main-tab').forEach(t => t.classList.remove('active'));
   document.querySelector(\`.main-tab[data-view="\${view}"]\`).classList.add('active');
 
+  apiSection.style.display = 'none';
+  subsSection.style.display = 'none';
+  rankingsSection.style.display = 'none';
+  apiControls.style.display = 'none';
+  subsControls.style.display = 'none';
+
   if (view === 'api') {
     apiSection.style.display = '';
-    subsSection.style.display = 'none';
     apiControls.style.display = '';
-    subsControls.style.display = 'none';
-  } else {
-    apiSection.style.display = 'none';
+  } else if (view === 'subscriptions') {
     subsSection.style.display = '';
-    apiControls.style.display = 'none';
     subsControls.style.display = '';
     renderSubscriptions();
+  } else if (view === 'rankings') {
+    rankingsSection.style.display = '';
+    renderRankings();
   }
 }
 
@@ -2039,39 +2275,46 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal()
 // ── Init ───────────────────────────────────────────────────────────────────────
 async function init() {
   // Use server-injected initial data if available
-  const initialModels = ${initialModels};
-  const initialSubs = ${initialSubscriptions};
-  const lastUpdated = ${lastUpdated ? JSON.stringify(lastUpdated) : 'null'};
+  var initialModels = ${initialModels};
+  var initialSubs = ${initialSubscriptions};
+  var initialRankings = ${initialRankings};
+  var lastUpdated = ${lastUpdated ? JSON.stringify(lastUpdated) : 'null'};
 
   if (initialModels && initialModels.length > 0) {
     state.models = initialModels;
     state.subscriptions = initialSubs;
+    state.rankings = initialRankings;
     updateStats();
     renderProviderFilters();
     renderTable();
     if (lastUpdated) {
-      const upd = fmtUpdated(lastUpdated);
+      var upd = fmtUpdated(lastUpdated);
       document.getElementById('nav-updated').textContent = upd;
       document.getElementById('table-updated').textContent = 'Last updated: ' + upd;
     }
   } else {
     // Fetch from API
     try {
-      const [modelsRes, subsRes] = await Promise.all([
+      var [modelsRes, subsRes, rankingsRes] = await Promise.all([
         fetch('/api/models'),
         fetch('/api/subscriptions'),
+        fetch('/api/rankings'),
       ]);
-      const { models, lastUpdated: lu } = await modelsRes.json();
-      const subs = await subsRes.json();
+      var { models, lastUpdated: lu } = await modelsRes.json();
+      var subs = await subsRes.json();
       state.models = models;
       state.subscriptions = subs;
+      try {
+        var rankingsData = await rankingsRes.json();
+        if (!rankingsData.error) state.rankings = rankingsData;
+      } catch(e) {}
       updateStats();
       renderProviderFilters();
       renderTable();
       if (lu) {
-        const upd = fmtUpdated(lu);
-        document.getElementById('nav-updated').textContent = upd;
-        document.getElementById('table-updated').textContent = 'Last updated: ' + upd;
+        var upd2 = fmtUpdated(lu);
+        document.getElementById('nav-updated').textContent = upd2;
+        document.getElementById('table-updated').textContent = 'Last updated: ' + upd2;
       }
     } catch (err) {
       document.getElementById('models-tbody').innerHTML =

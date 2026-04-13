@@ -89,10 +89,37 @@ export interface OpenRouterResponse {
   data: OpenRouterModel[];
 }
 
+// ── Rankings data (scraped from OpenRouter) ──────────────────────────────────
+
+export interface ModelRanking {
+  modelSlug: string;       // e.g. "qwen/qwen3.6-plus-04-02"
+  totalTokens: number;     // prompt + completion
+  totalRequests: number;
+  date: string;
+}
+
+export interface AppRanking {
+  rank: number;
+  title: string;
+  description: string;
+  categories: string[];
+  originUrl: string;
+  faviconUrl: string | null;
+  totalTokens: number;
+  totalRequests: number;
+}
+
+export interface RankingsData {
+  topModels: ModelRanking[];
+  topApps: AppRanking[];
+  fetchedAt: string;
+}
+
 // ── KV storage keys ───────────────────────────────────────────────────────────
 
 export const KV_KEYS = {
   MODELS: 'models:all',
   MODELS_UPDATED: 'models:last_updated',
   SUBSCRIPTIONS: 'subscriptions:all',
+  RANKINGS: 'rankings:all',
 } as const;

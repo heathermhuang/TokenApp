@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { cache } from 'hono/cache';
 import type { Env } from './types';
-import { getModels, getSubscriptions, refreshAllData } from './fetchers';
+import { getModels, getSubscriptions, getRankings, refreshAllData } from './fetchers';
 import { getHtml, getProviderHtml, getAboutHtml } from './template';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -45,6 +45,23 @@ app.get(
     } catch (err) {
       console.error('Failed to get subscriptions:', err);
       return c.json({ error: 'Failed to load subscriptions' }, 500);
+    }
+  }
+);
+
+app.get(
+  '/api/rankings',
+  cache({ cacheName: 'token-app-rankings', cacheControl: 'max-age=3600, stale-while-revalidate=86400' }),
+  async (c) => {
+    try {
+      const rankings = await getRankings(c.env);
+      if (!rankings) {
+        return c.json({ error: 'Rankings data not yet available' }, 404);
+      }
+      return c.json(rankings);
+    } catch (err) {
+      console.error('Failed to get rankings:', err);
+      return c.json({ error: 'Failed to load rankings' }, 500);
     }
   }
 );
@@ -210,24 +227,24 @@ app.get('/llms-full.txt', async (c) => {
         const rows = pModels
           .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
           .map((m) => {
-            const ctx = m.contextLength
-              ? (m.contextLength >= 1000000
-                  ? (m.contextLength / 1000000).toFixed(0) + 'M'
-                  : m.contextLength >= 1000
-                  ? (m.contextLength / 1000).toFixed(0) + 'K'
-                  : String(m.contextLength)) + ' ctx'
+            const ctx = m.contextWindow
+              ? (m.contextWindow >= 1000000
+                  ? (m.contextWindow / 1000000).toFixed(0) + 'M'
+                  : m.contextWindow >= 1000
+                  ? (m.contextWindow / 1000).toFixed(0) + 'K'
+                  : String(m.contextWindow)) + ' ctx'
               : '';
-            return `  - ${m.name || m.id}: input ${fmt(m.inputPrice)}/1M tokens, output ${fmt(m.outputPrice)}/1M tokens${ctx ? ', ' + ctx : ''}`;
+            return `  - ${m.name || m.id}: input ${fmt(m.inputPer1M)}/1M tokens, output ${fmt(m.outputPer1M)}/1M tokens${ctx ? ', ' + ctx : ''}`;
           })
           .join('\n');
         return `### ${providerId}\n${rows}`;
       })
       .join('\n\n');
 
-    const subBlocks = subs
+    const subBlocks = (subs as Array<{name: string; providerId: string; tiers: Array<{name: string; monthlyPrice: number | null; annualMonthlyPrice: number | null}>}>)
       .map((s) => {
         const tiers = s.tiers
-          .map((t) => `  - ${t.name}: $${t.price}/mo${t.annualPrice ? ' (or $' + t.annualPrice + '/mo annual)' : ''}`)
+          .map((t) => `  - ${t.name}: ${t.monthlyPrice != null ? '$' + t.monthlyPrice + '/mo' : 'Contact Sales'}${t.annualMonthlyPrice && t.annualMonthlyPrice < (t.monthlyPrice ?? Infinity) ? ' (or $' + t.annualMonthlyPrice + '/mo annual)' : ''}`)
           .join('\n');
         return `### ${s.name}\nProvider: ${s.providerId}\n${tiers}`;
       })
@@ -420,14 +437,16 @@ for (const slug of PROVIDER_SLUGS) {
 app.get('/', async (c) => {
   try {
     // Server-side render with initial data (avoids client-side waterfall)
-    const [{ models, lastUpdated }, subs] = await Promise.all([
+    const [{ models, lastUpdated }, subs, rankings] = await Promise.all([
       getModels(c.env),
       getSubscriptions(c.env),
+      getRankings(c.env),
     ]);
 
     const html = getHtml({
       initialModels: JSON.stringify(models),
       initialSubscriptions: JSON.stringify(subs),
+      initialRankings: rankings ? JSON.stringify(rankings) : 'null',
       lastUpdated,
     });
 
