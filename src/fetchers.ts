@@ -1,4 +1,4 @@
-import type { Env, NormalizedModel, OpenRouterModel, OpenRouterResponse, RankingsData, ModelRanking, AppRanking } from './types';
+import type { Env, NormalizedModel, OpenRouterModel, OpenRouterResponse, RankingsData, ModelRanking, AppRanking, RankingPeriod } from './types';
 import { KV_KEYS } from './types';
 import { getProvider } from './providers';
 import { SUBSCRIPTIONS } from './subscriptions';
@@ -234,70 +234,78 @@ export async function fetchRankingsFromOpenRouter(): Promise<RankingsData> {
 
   // Parse app rankings from RSC payload
   // The RSC payload uses double-escaped quotes (\\" instead of ") when fetched server-side.
-  // Normalize first, then find the rankMap.day JSON array by bracket-matching and JSON.parse it.
-  const topApps: AppRanking[] = [];
+  // Normalize first, then extract day/week/month arrays from the rankMap object.
   const normalizedHtml = html.replace(/\\"/g, '"');
+  const periods: RankingPeriod[] = ['day', 'week', 'month'];
+  const topApps: Record<RankingPeriod, AppRanking[]> = { day: [], week: [], month: [] };
 
-  const rankMapIdx = normalizedHtml.indexOf('"rankMap":{"day":[');
-  if (rankMapIdx >= 0) {
-    const arrayStart = normalizedHtml.indexOf('[', rankMapIdx + '"rankMap":{"day":'.length);
-    if (arrayStart >= 0) {
-      let depth = 0;
-      let arrayEnd = -1;
-      for (let i = arrayStart; i < Math.min(arrayStart + 100_000, normalizedHtml.length); i++) {
-        if (normalizedHtml[i] === '[') depth++;
-        else if (normalizedHtml[i] === ']') {
-          depth--;
-          if (depth === 0) { arrayEnd = i + 1; break; }
-        }
-      }
+  for (const period of periods) {
+    const needle = `"${period}":[`;
+    // Find this period key inside the rankMap object
+    const rankMapIdx = normalizedHtml.indexOf('"rankMap":{');
+    if (rankMapIdx < 0) continue;
 
-      if (arrayEnd > 0) {
-        try {
-          const items = JSON.parse(normalizedHtml.slice(arrayStart, arrayEnd)) as Array<{
-            rank: number;
-            total_tokens: string;
-            total_requests: number;
-            app: {
-              title: string;
-              description: string;
-              origin_url: string;
-              favicon_url: string | null;
-              categories: string[];
-            };
-          }>;
+    const periodIdx = normalizedHtml.indexOf(needle, rankMapIdx);
+    if (periodIdx < 0) continue;
 
-          const seenApps = new Set<string>();
-          for (const item of items) {
-            const title = item.app?.title;
-            if (!title || seenApps.has(title)) continue;
-            seenApps.add(title);
+    const arrayStart = normalizedHtml.indexOf('[', periodIdx);
+    if (arrayStart < 0) continue;
 
-            topApps.push({
-              rank: item.rank,
-              title,
-              description: (item.app.description ?? '').slice(0, 120),
-              categories: item.app.categories ?? [],
-              originUrl: item.app.origin_url ?? '',
-              faviconUrl: item.app.favicon_url ?? null,
-              totalTokens: parseInt(item.total_tokens) || 0,
-              totalRequests: item.total_requests ?? 0,
-            });
-
-            if (topApps.length >= 20) break;
-          }
-        } catch {
-          // JSON parse failed — leave topApps empty
-        }
+    let depth = 0;
+    let arrayEnd = -1;
+    for (let i = arrayStart; i < Math.min(arrayStart + 100_000, normalizedHtml.length); i++) {
+      if (normalizedHtml[i] === '[') depth++;
+      else if (normalizedHtml[i] === ']') {
+        depth--;
+        if (depth === 0) { arrayEnd = i + 1; break; }
       }
     }
-  }
 
-  topApps.sort((a, b) => b.totalTokens - a.totalTokens);
+    if (arrayEnd <= 0) continue;
+
+    try {
+      const items = JSON.parse(normalizedHtml.slice(arrayStart, arrayEnd)) as Array<{
+        rank: number;
+        total_tokens: string;
+        total_requests: number;
+        app: {
+          title: string;
+          description: string;
+          origin_url: string;
+          favicon_url: string | null;
+          categories: string[];
+        };
+      }>;
+
+      const seenApps = new Set<string>();
+      for (const item of items) {
+        const title = item.app?.title;
+        if (!title || seenApps.has(title)) continue;
+        seenApps.add(title);
+
+        topApps[period].push({
+          rank: item.rank,
+          title,
+          description: (item.app.description ?? '').slice(0, 120),
+          categories: item.app.categories ?? [],
+          originUrl: item.app.origin_url ?? '',
+          faviconUrl: item.app.favicon_url ?? null,
+          totalTokens: parseInt(item.total_tokens) || 0,
+          totalRequests: item.total_requests ?? 0,
+        });
+
+        if (topApps[period].length >= 20) break;
+      }
+    } catch {
+      // JSON parse failed for this period — leave it empty
+    }
+
+    topApps[period].sort((a, b) => b.totalTokens - a.totalTokens);
+  }
 
   return {
     topModels: topModels.slice(0, 20),
-    topApps: topApps.slice(0, 20),
+    topApps,
     fetchedAt: new Date().toISOString(),
   };
 }

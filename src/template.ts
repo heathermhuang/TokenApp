@@ -947,6 +947,30 @@ export function getHtml(params: {
     .rankings-source a { color: var(--accent); text-decoration: none; }
     .rankings-source a:hover { text-decoration: underline; }
 
+    .period-toggle {
+      display: inline-flex;
+      gap: 4px;
+      padding: 3px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    .period-btn {
+      padding: 4px 12px;
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text3);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .period-btn:hover { color: var(--text); }
+    .period-btn.active { background: var(--accent-dim); color: var(--accent); }
+
     /* ── Loading ───────────────────────────────────────────────────────────── */
     .loading {
       display: flex;
@@ -1393,7 +1417,7 @@ export function getHtml(params: {
     <div class="leaderboard">
       <div class="leaderboard-header">
         <div class="leaderboard-title">Token Usage Leaderboard</div>
-        <div class="leaderboard-subtitle">Top models by daily token volume on OpenRouter</div>
+        <div class="leaderboard-subtitle">Top models by weekly token volume on OpenRouter</div>
       </div>
       <ol class="leaderboard-list" id="model-leaderboard">
         <li style="padding:40px;text-align:center;color:var(--text3)">Loading rankings…</li>
@@ -1401,8 +1425,15 @@ export function getHtml(params: {
     </div>
     <div class="leaderboard">
       <div class="leaderboard-header">
-        <div class="leaderboard-title">Agent Usage Leaderboard</div>
-        <div class="leaderboard-subtitle">Top apps and agents by daily token volume on OpenRouter</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+          <div class="leaderboard-title">Agent Usage Leaderboard</div>
+          <div class="period-toggle" id="period-toggle">
+            <button class="period-btn active" data-period="day">24H</button>
+            <button class="period-btn" data-period="week">7D</button>
+            <button class="period-btn" data-period="month">30D</button>
+          </div>
+        </div>
+        <div class="leaderboard-subtitle" id="app-leaderboard-subtitle">Top apps and agents by daily token volume on OpenRouter</div>
       </div>
       <ol class="leaderboard-list" id="app-leaderboard">
         <li style="padding:40px;text-align:center;color:var(--text3)">Loading rankings…</li>
@@ -1515,6 +1546,7 @@ const state = {
   models: [],
   subscriptions: [],
   rankings: null,
+  rankingsPeriod: 'day',  // 'day' | 'week' | 'month'
   view: 'api',       // 'api' | 'subscriptions' | 'rankings'
   cat: 'all',
   subCat: 'all',
@@ -2092,7 +2124,9 @@ function renderRankings() {
   var appList = document.getElementById('app-leaderboard');
 
   var models = state.rankings.topModels || [];
-  var apps = state.rankings.topApps || [];
+  var appsData = state.rankings.topApps || {};
+  // Support both old format (array) and new format (record by period)
+  var apps = Array.isArray(appsData) ? appsData : (appsData[state.rankingsPeriod] || appsData.day || []);
 
   if (models.length > 0) {
     modelList.innerHTML = models.slice(0, 15).map(function(m, i) {
@@ -2368,6 +2402,19 @@ document.addEventListener('DOMContentLoaded', () => {
       btn.classList.add('active');
       renderSubscriptions();
     });
+  });
+
+  // Rankings period toggle
+  document.getElementById('period-toggle').addEventListener('click', function(e) {
+    var btn = e.target.closest('[data-period]');
+    if (!btn) return;
+    state.rankingsPeriod = btn.dataset.period;
+    document.querySelectorAll('#period-toggle .period-btn').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    var labels = { day: 'daily', week: 'weekly', month: 'monthly' };
+    document.getElementById('app-leaderboard-subtitle').textContent =
+      'Top apps and agents by ' + labels[state.rankingsPeriod] + ' token volume on OpenRouter';
+    renderRankings();
   });
 
   // Search

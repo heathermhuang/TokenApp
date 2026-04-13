@@ -109,9 +109,11 @@ export interface AppRanking {
   totalRequests: number;
 }
 
+export type RankingPeriod = 'day' | 'week' | 'month';
+
 export interface RankingsData {
   topModels: ModelRanking[];
-  topApps: AppRanking[];
+  topApps: Record<RankingPeriod, AppRanking[]>;
   fetchedAt: string;
 }
 
