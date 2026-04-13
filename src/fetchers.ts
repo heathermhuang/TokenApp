@@ -312,7 +312,7 @@ export async function fetchRankingsFromOpenRouter(): Promise<RankingsData> {
 
 // ── KV refresh (called by cron) ───────────────────────────────────────────────
 
-export async function refreshAllData(env: Env): Promise<{ models: number }> {
+export async function refreshAllData(env: Env): Promise<{ models: number; rankings?: string; rankingsError?: string }> {
   const models = await fetchModelsFromOpenRouter();
 
   await env.TOKEN_APP_KV.put(KV_KEYS.MODELS, JSON.stringify(models), {
@@ -324,16 +324,23 @@ export async function refreshAllData(env: Env): Promise<{ models: number }> {
   await env.TOKEN_APP_KV.put(KV_KEYS.SUBSCRIPTIONS, JSON.stringify(SUBSCRIPTIONS));
 
   // Fetch and store rankings (best-effort, don't fail the whole refresh)
+  let rankingsStatus: string | undefined;
+  let rankingsError: string | undefined;
   try {
     const rankings = await fetchRankingsFromOpenRouter();
     await env.TOKEN_APP_KV.put(KV_KEYS.RANKINGS, JSON.stringify(rankings), {
       expirationTtl: 7200,
     });
+    const dayCount = rankings.topApps.day?.length ?? 0;
+    const weekCount = rankings.topApps.week?.length ?? 0;
+    const monthCount = rankings.topApps.month?.length ?? 0;
+    rankingsStatus = `${rankings.topModels.length} models, apps: ${dayCount}d/${weekCount}w/${monthCount}m`;
   } catch (err) {
     console.error('Rankings fetch failed (non-fatal):', err);
+    rankingsError = String(err);
   }
 
-  return { models: models.length };
+  return { models: models.length, rankings: rankingsStatus, rankingsError };
 }
 
 // ── Read from KV (with stale-while-revalidate fallback) ──────────────────────
