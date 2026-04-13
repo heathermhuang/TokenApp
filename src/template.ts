@@ -4,10 +4,18 @@ export function getHtml(params: {
   initialRankings?: string;
   lastUpdated?: string | null;
 }): string {
-  const { initialModels = '[]', initialSubscriptions = '[]', initialRankings = 'null', lastUpdated = null } = params;
+  const { lastUpdated = null } = params;
+
+  // Escape backticks and ${ in JSON data to avoid breaking the template literal
+  function safeLiteral(s: string): string {
+    return s.replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
+  }
+  const initialModels = safeLiteral(params.initialModels ?? '[]');
+  const initialSubscriptions = safeLiteral(params.initialSubscriptions ?? '[]');
+  const initialRankings = safeLiteral(params.initialRankings ?? 'null');
 
   // Compute counts server-side for accurate meta tags and hero description
-  const parsedModels = JSON.parse(initialModels) as Array<{
+  const parsedModels = JSON.parse(params.initialModels ?? '[]') as Array<{
     providerId: string;
     id: string;
     name: string;
@@ -2113,7 +2121,7 @@ function renderRankings() {
     appList.innerHTML = apps.slice(0, 15).map(function(a, i) {
       var cats = (a.categories || []).join(', ').replace(/-/g, ' ');
       var icon = a.faviconUrl
-        ? '<img class="lb-icon" src="' + escape(a.faviconUrl) + '" alt="" onerror="this.style.display=\'none\'">'
+        ? '<img class="lb-icon" src="' + escape(a.faviconUrl) + '" alt="" onerror="this.hidden=true">'
         : '';
       var link = a.originUrl ? '<a href="' + escape(a.originUrl) + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">' + escape(a.title) + '</a>' : escape(a.title);
       return '<li class="lb-item">' +
