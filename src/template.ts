@@ -189,15 +189,15 @@ export function getHtml(params: {
       --border: #dcdce8;
       --border2: #c8c8d8;
       --text: #111118;
-      --text2: #484860;
-      --text3: #8888a0;
-      --accent: #5254d0;
-      --accent-dim: rgba(82,84,208,0.1);
-      --green: #16a34a;
-      --yellow: #ca8a04;
-      --orange: #ea580c;
-      --red: #dc2626;
-      --nav-bg: rgba(244,244,248,0.9);
+      --text2: #3d3d52;
+      --text3: #62627a;
+      --accent: #4746b8;
+      --accent-dim: rgba(71,70,184,0.1);
+      --green: #15803d;
+      --yellow: #a16207;
+      --orange: #c2410c;
+      --red: #b91c1c;
+      --nav-bg: rgba(244,244,248,0.92);
       --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
       --shadow-md: 0 4px 16px rgba(0,0,0,0.12);
     }
@@ -626,6 +626,16 @@ export function getHtml(params: {
     .badge-video       { background: rgba(99,102,241,0.12);  color: #818cf8; border-color: rgba(99,102,241,0.25); }
     .badge-deprecated  { background: rgba(100,116,139,0.12); color: #64748b; border-color: rgba(100,116,139,0.25); font-style: italic; }
     .badge-active      { background: rgba(34,197,94,0.10);   color: #22c55e; border-color: rgba(34,197,94,0.25); }
+
+    /* Light-mode badge contrast overrides */
+    html[data-theme="light"] .badge-text       { color: #64748b; background: rgba(100,116,139,0.10); border-color: rgba(100,116,139,0.25); }
+    html[data-theme="light"] .badge-vision     { color: #2563eb; background: rgba(37,99,235,0.08); }
+    html[data-theme="light"] .badge-reasoning  { color: #7c3aed; background: rgba(124,58,237,0.08); }
+    html[data-theme="light"] .badge-audio      { color: #a16207; background: rgba(161,98,7,0.10); }
+    html[data-theme="light"] .badge-active     { color: #15803d; background: rgba(21,128,61,0.08); border-color: rgba(21,128,61,0.2); }
+    html[data-theme="light"] .badge-image-gen  { color: #a21caf; background: rgba(162,28,175,0.08); border-color: rgba(162,28,175,0.2); }
+    html[data-theme="light"] .badge-video      { color: #4338ca; background: rgba(67,56,202,0.08); border-color: rgba(67,56,202,0.2); }
+    html[data-theme="light"] .badge-deprecated { color: #475569; background: rgba(71,85,105,0.08); border-color: rgba(71,85,105,0.2); }
 
     /* ── Provider logos ─────────────────────────────────────────────────── */
     .provider-chip { display: inline-flex; align-items: center; gap: 5px; }
@@ -2626,9 +2636,9 @@ export function getProviderHtml(params: {
     html[data-theme="light"] {
       --bg: #f4f4f8; --surface: #ffffff; --surface2: #ebebf2;
       --border: #dcdce8; --border2: #c8c8d8;
-      --text: #111118; --text2: #484860; --text3: #8888a0;
-      --accent: #5254d0; --accent-dim: rgba(82,84,208,0.1);
-      --green: #16a34a; --nav-bg: rgba(244,244,248,0.9);
+      --text: #111118; --text2: #3d3d52; --text3: #62627a;
+      --accent: #4746b8; --accent-dim: rgba(71,70,184,0.1);
+      --green: #15803d; --nav-bg: rgba(244,244,248,0.92);
     }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; min-height: 100vh; }
     nav { position: sticky; top: 0; z-index: 100; background: var(--nav-bg); backdrop-filter: blur(14px); border-bottom: 1px solid var(--border); padding: 0 24px; height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
@@ -2742,8 +2752,8 @@ export function getAboutHtml(): string {
     }
     html[data-theme="light"] {
       --bg: #f4f4f8; --surface: #ffffff; --surface2: #ebebf2;
-      --border: #dcdce8; --text: #111118; --text2: #484860; --text3: #8888a0;
-      --accent: #5254d0; --nav-bg: rgba(244,244,248,0.9);
+      --border: #dcdce8; --text: #111118; --text2: #3d3d52; --text3: #62627a;
+      --accent: #4746b8; --nav-bg: rgba(244,244,248,0.92);
     }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.65; min-height: 100vh; }
     nav { position: sticky; top: 0; z-index: 100; background: var(--nav-bg); backdrop-filter: blur(14px); border-bottom: 1px solid var(--border); padding: 0 24px; height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
