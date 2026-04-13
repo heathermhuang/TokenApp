@@ -606,6 +606,8 @@ export function getHtml(params: {
     .price-high { color: var(--orange); }
     .price-expensive { color: var(--red); }
 
+    html[data-theme="light"] .price-cheap { color: #16a34a; }
+
     .badge {
       display: inline-flex;
       align-items: center;
@@ -1629,7 +1631,8 @@ function escape(s) {
 }
 
 function getProviderStyle(providerId) {
-  const map = {
+  var isLight = document.documentElement.getAttribute('data-theme') === 'light';
+  var dark = {
     openai:       { color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
     anthropic:    { color: '#f97316', bg: 'rgba(249,115,22,0.12)' },
     google:       { color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' },
@@ -1642,7 +1645,6 @@ function getProviderStyle(providerId) {
     cursor:       { color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' },
     windsurf:     { color: '#38bdf8', bg: 'rgba(56,189,248,0.12)' },
     microsoft:    { color: '#60a5fa', bg: 'rgba(0,120,212,0.12)' },
-    // Chinese providers
     baidu:        { color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
     bytedance:    { color: '#f43f5e', bg: 'rgba(244,63,94,0.12)' },
     'bytedance-seed': { color: '#f43f5e', bg: 'rgba(244,63,94,0.12)' },
@@ -1657,13 +1659,48 @@ function getProviderStyle(providerId) {
     qwen:         { color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' },
     'z-ai':       { color: '#818cf8', bg: 'rgba(129,140,248,0.12)' },
     zhipuai:      { color: '#818cf8', bg: 'rgba(129,140,248,0.12)' },
-    // Research / others
     allenai:      { color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' },
     'ibm-granite':{ color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
     openrouter:   { color: '#94a3b8', bg: 'rgba(148,163,184,0.12)' },
     nvidia:       { color: '#76b900', bg: 'rgba(118,185,0,0.12)' },
   };
-  return map[providerId] ?? { color: '#94a3b8', bg: 'rgba(148,163,184,0.12)' };
+  var light = {
+    openai:       { color: '#059669', bg: 'rgba(5,150,105,0.08)' },
+    anthropic:    { color: '#c2410c', bg: 'rgba(194,65,12,0.08)' },
+    google:       { color: '#2563eb', bg: 'rgba(37,99,235,0.08)' },
+    'meta-llama': { color: '#4f46e5', bg: 'rgba(79,70,229,0.08)' },
+    mistralai:    { color: '#c2410c', bg: 'rgba(194,65,12,0.08)' },
+    deepseek:     { color: '#0284c7', bg: 'rgba(2,132,199,0.08)' },
+    'x-ai':       { color: '#475569', bg: 'rgba(71,85,105,0.08)' },
+    cohere:       { color: '#15803d', bg: 'rgba(21,128,61,0.08)' },
+    perplexityai: { color: '#7c3aed', bg: 'rgba(124,58,237,0.08)' },
+    cursor:       { color: '#2563eb', bg: 'rgba(37,99,235,0.08)' },
+    windsurf:     { color: '#0284c7', bg: 'rgba(2,132,199,0.08)' },
+    microsoft:    { color: '#1d4ed8', bg: 'rgba(29,78,216,0.08)' },
+    baidu:        { color: '#1d4ed8', bg: 'rgba(29,78,216,0.08)' },
+    bytedance:    { color: '#be123c', bg: 'rgba(190,18,60,0.08)' },
+    'bytedance-seed': { color: '#be123c', bg: 'rgba(190,18,60,0.08)' },
+    minimax:      { color: '#7c3aed', bg: 'rgba(124,58,237,0.08)' },
+    moonshotai:   { color: '#475569', bg: 'rgba(71,85,105,0.08)' },
+    tencent:      { color: '#15803d', bg: 'rgba(21,128,61,0.08)' },
+    xiaomi:       { color: '#c2410c', bg: 'rgba(194,65,12,0.08)' },
+    stepfun:      { color: '#a16207', bg: 'rgba(161,98,7,0.08)' },
+    alibaba:      { color: '#c2410c', bg: 'rgba(194,65,12,0.08)' },
+    kwaipilot:    { color: '#c2410c', bg: 'rgba(194,65,12,0.08)' },
+    meituan:      { color: '#a16207', bg: 'rgba(161,98,7,0.08)' },
+    qwen:         { color: '#a16207', bg: 'rgba(161,98,7,0.08)' },
+    'z-ai':       { color: '#4f46e5', bg: 'rgba(79,70,229,0.08)' },
+    zhipuai:      { color: '#4f46e5', bg: 'rgba(79,70,229,0.08)' },
+    allenai:      { color: '#2563eb', bg: 'rgba(37,99,235,0.08)' },
+    'ibm-granite':{ color: '#1d4ed8', bg: 'rgba(29,78,216,0.08)' },
+    openrouter:   { color: '#475569', bg: 'rgba(71,85,105,0.08)' },
+    nvidia:       { color: '#4d7c0f', bg: 'rgba(77,124,15,0.08)' },
+  };
+  var map = isLight ? light : dark;
+  var fallback = isLight
+    ? { color: '#475569', bg: 'rgba(71,85,105,0.08)' }
+    : { color: '#94a3b8', bg: 'rgba(148,163,184,0.12)' };
+  return map[providerId] ?? fallback;
 }
 
 const PROVIDER_DOMAINS = {
@@ -2395,6 +2432,10 @@ function toggleTheme() {
   var next = current === 'light' ? 'dark' : 'light';
   document.documentElement.setAttribute('data-theme', next);
   localStorage.setItem('theme', next);
+  // Re-render to pick up theme-aware provider chip colors
+  if (state.view === 'api') renderTable();
+  else if (state.view === 'subscriptions') renderSubscriptions();
+  else if (state.view === 'rankings') renderRankings();
 }
 
 // ── Event Bindings ─────────────────────────────────────────────────────────────
