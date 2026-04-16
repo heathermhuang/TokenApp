@@ -188,7 +188,7 @@ export function getUsageHtml(params: {
     <h2>Load usage</h2>
     <div class="import-grid">
       <div>
-        <p class="notice" style="margin-bottom: 10px;">Click a prompt, copy it, and use your AI of choice to generate a standardized block.</p>
+        <p class="notice" style="margin-bottom: 10px;">Copy the first prompt and paste it into any AI — it auto-detects whether you have data to normalize or local logs to read.</p>
         <div class="prompt-list" id="prompt-list"></div>
       </div>
       <div>

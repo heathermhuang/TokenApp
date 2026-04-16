@@ -4,6 +4,10 @@
 // Design: every prompt must tell the model to wrap output in
 //   ```tokenapp-usage\n{ ... }\n```
 // so a single regex on the browser side can extract it regardless of source.
+//
+// Two prompts: one smart prompt that auto-branches on whatever the target AI
+// has access to (pasted data OR local log files), and one narrower prompt for
+// estimating a single chat's tokens from inside that chat.
 
 export interface PromptSpec {
   id: string;
@@ -15,7 +19,7 @@ export interface PromptSpec {
 
 const SCHEMA_DESCRIPTION = `{
   "schema": "tokenapp.usage.v1",
-  "source": "<openai-api | anthropic-api | openrouter | cursor | claude-code | codex-cli | gemini-api | vertex | chatgpt-chat | manual | other>",
+  "source": "<openai-api | anthropic-api | openrouter | cursor | claude-code | codex-cli | aider | chatgpt-chat | manual | other>",
   "capturedAt": "<ISO8601 UTC timestamp>",
   "currency": "USD",
   "events": [
@@ -29,119 +33,72 @@ const SCHEMA_DESCRIPTION = `{
       "cacheCreationTokens": <integer, 0 if unknown>,
       "requests": <integer or null>,
       "costUSD": <number or null>,
+      "sessionId": "<optional 8-char id>",
       "taskContext": "<optional short label>"
     }
   ],
-  "notes": "<one line describing ambiguity, missing fields, or currency conversion>"
+  "notes": "<one line describing which branch ran, any skipped files, ambiguity, or FX conversion>"
 }`;
-
-const UNIVERSAL_RULES = `RULES
-1. If input has only spend, no tokens: set inputTokens/outputTokens to null but keep costUSD.
-2. If input has only tokens, no cost: leave costUSD null — TokenApp reprices from list price.
-3. Roll rows up to ONE event per (day, model) unless the source is per-request and fewer than 500 rows total.
-4. Normalize model names: strip date suffixes that don't affect price. "gpt-4o-2024-08-06" → "gpt-4o". "claude-3-5-sonnet-20241022" → "claude-3.5-sonnet". Prefer dot version notation (e.g. "claude-sonnet-4.5", "claude-3.5-sonnet") — this matches the canonical price table.
-5. Convert non-USD amounts to USD using approximate FX for the event date and record it in "notes".
-6. If the provider is ambiguous, pick the most likely and note it.
-7. Never fabricate rows. If a field isn't in the input, omit it.
-8. Never include PII (email, account ID, API key) or message content.`;
 
 export const USAGE_PROMPTS: PromptSpec[] = [
   {
     id: 'universal',
-    title: 'Reformat a CSV or dashboard paste',
-    subtitle: 'Works with ChatGPT, Claude, Gemini, Grok, DeepSeek — any chat.',
-    where: 'Paste your raw usage data FIRST, then paste this prompt BELOW it in the chat.',
+    title: 'Get my usage',
+    subtitle: 'One prompt — auto-detects whether you pasted data or have local log access.',
+    where: 'Paste into any AI. If you have raw usage data (CSV, dashboard export), paste it ABOVE this prompt first. In Claude Code / Cursor / Codex CLI, no extra input needed — it will read your local logs.',
     body: `You are a data normalizer for token.app (TokenApp), an AI usage dashboard.
 
 TASK
-Convert the usage data I pasted above into a single JSON document matching the tokenapp.usage.v1 schema. Output the JSON inside a \`\`\`tokenapp-usage fenced block and nothing else — no commentary, no preface, no trailing summary.
+Produce a single tokenapp.usage.v1 JSON document of my AI spend and wrap it in a \`\`\`tokenapp-usage fenced block. Output only that block — no commentary, no preface, no trailing summary.
+
+Pick the FIRST branch below that applies to your current environment and execute it.
+
+BRANCH A — Raw usage data was pasted ABOVE this prompt
+(CSV, billing dashboard screenshot-transcribed text, JSON from an API, etc.)
+  → Normalize it into tokenapp.usage.v1 using the RULES below. Set "source" to the best-fit value (e.g. "openai-api", "anthropic-api", "openrouter", "manual").
+
+BRANCH B — You have file-system access (you are a coding agent: Claude Code, Cursor agent, Codex CLI, Aider, etc.)
+  Try these log sources in order and use the first that exists. You may use more than one if multiple apply — merge the events.
+  1. Claude Code:  \`~/.claude/projects/**/*.jsonl\`
+       • Keep lines where \`message.role == "assistant"\` AND \`message.usage\` exists.
+       • ts = top-level \`timestamp\`. provider = \`"anthropic"\`. modelId = normalize(\`message.model\`).
+       • tokens from \`message.usage\`: \`input_tokens\`, \`output_tokens\`, \`cache_read_input_tokens\`, \`cache_creation_input_tokens\`.
+       • sessionId = first 8 hex chars of sha1(filename). taskContext = the folder name directly under \`projects/\`.
+       • source = \`"claude-code"\`.
+  2. Cursor:       \`~/Library/Application Support/Cursor/User/globalStorage/**/*.json\` (macOS)
+                   \`~/.config/Cursor/User/globalStorage/**/*.json\` (Linux)
+       • source = \`"cursor"\`. Infer provider from model prefix.
+  3. Codex CLI:    \`~/.codex/**/*.jsonl\`
+       • source = \`"codex-cli"\`. provider = \`"openai"\` unless the log says otherwise.
+  4. Aider:        \`.aider.chat.history.md\` in the cwd or any parent.
+       • source = \`"aider"\`. Infer provider + model from the log's model markers.
+
+BRANCH C — Neither A nor B applies
+  → Output an empty events array with a helpful note:
+\`\`\`tokenapp-usage
+{ "schema": "tokenapp.usage.v1", "source": "other", "capturedAt": "<now>", "currency": "USD", "events": [],
+  "notes": "No data pasted above and no local logs accessible. Paste a usage CSV/export above this prompt and re-run, or use the 'Estimate this chat' prompt from /usage." }
+\`\`\`
 
 SCHEMA (tokenapp.usage.v1)
 ${SCHEMA_DESCRIPTION}
 
-${UNIVERSAL_RULES}
+RULES
+1. Normalize modelId: lowercase, strip date suffixes ("claude-sonnet-4-6-20260301" → "claude-sonnet-4.6"; "gpt-4o-2024-08-06" → "gpt-4o"), prefer dot version ("claude-3.5-sonnet" not "claude-3-5-sonnet").
+2. Aggregate events by (day, modelId, sessionId). If that exceeds 2000 rows, drop sessionId and aggregate by (day, modelId) instead.
+3. If the input has only spend and no tokens, set inputTokens/outputTokens to null but keep costUSD. If it has tokens and no cost, leave costUSD null — TokenApp will reprice from list price.
+4. Convert non-USD amounts to USD using approximate FX for the event date; mention the FX in "notes".
+5. Never include message content, tool inputs/outputs, file paths beyond the project folder name, API keys, emails, or any PII.
+6. Never fabricate rows. If a field isn't in the input, omit it.
 
-Now convert the data I pasted above. Output only the fenced \`\`\`tokenapp-usage block.`,
-  },
-
-  {
-    id: 'claude-code',
-    title: 'Read Claude Code history',
-    subtitle: 'Autonomous — reads ~/.claude/projects/ JSONL logs.',
-    where: 'Paste into a Claude Code session. Claude Code has the file access it needs.',
-    body: `You have file access. Produce a tokenapp.usage.v1 export of my Claude Code history.
-
-STEPS
-1. Glob ~/.claude/projects/**/*.jsonl
-2. For each file, read line-by-line. Each line is a JSON object. Keep only lines where message.role == "assistant" AND message.usage exists.
-3. For each kept line, emit one event:
-   - ts: top-level "timestamp" (ISO8601)
-   - provider: "anthropic"
-   - modelId: normalize message.model — strip date suffix AND convert dash-version to dot-version (e.g. "claude-sonnet-4-6-20260301" → "claude-sonnet-4.6", "claude-3-5-sonnet-20241022" → "claude-3.5-sonnet")
-   - inputTokens: message.usage.input_tokens
-   - outputTokens: message.usage.output_tokens
-   - cachedInputTokens: message.usage.cache_read_input_tokens || 0
-   - cacheCreationTokens: message.usage.cache_creation_input_tokens || 0
-   - requests: 1
-   - costUSD: null
-   - sessionId: first 8 hex chars of sha1(filename)
-   - taskContext: the project-slug directory name (the folder under projects/)
-4. Aggregate by (day, modelId, sessionId). Sum tokens and requests. If total rows would exceed 2000, drop sessionId and aggregate by (day, modelId) only.
-5. Never include message.content, tool inputs/outputs, file paths beyond the project-slug, or any user text.
-
-OUTPUT
-A single fenced block, no commentary before or after:
-
-\`\`\`tokenapp-usage
-{
-  "schema": "tokenapp.usage.v1",
-  "source": "claude-code",
-  "capturedAt": "<ISO8601 now UTC>",
-  "currency": "USD",
-  "events": [ ... ],
-  "notes": "Parsed from ~/.claude/projects JSONL logs. costUSD intentionally null — TokenApp reprices."
-}
-\`\`\`
-
-If a file is unparseable, skip it and note the skipped count in "notes".`,
-  },
-
-  {
-    id: 'coding-agent',
-    title: 'Read Cursor / Codex CLI / Aider logs',
-    subtitle: 'Autonomous — detects which tool is installed and reads its logs.',
-    where: 'Paste into an agent with file access (Cursor Agent mode, a Codex CLI session, etc).',
-    body: `You have file access. Produce a tokenapp.usage.v1 export of my coding-agent history.
-
-LOCATIONS (try in order, use the first that exists)
-- Cursor (macOS):  ~/Library/Application Support/Cursor/User/globalStorage/**/*.json
-- Cursor (Linux):  ~/.config/Cursor/User/globalStorage/**/*.json
-- Codex CLI:       ~/.codex/**/*.jsonl
-- Aider:           find . -name ".aider.chat.history.md" (current directory and upwards)
-
-STEPS
-1. Detect which tool is present. Set "source" accordingly: "cursor" | "codex-cli" | "aider".
-2. Parse the logs. For each assistant turn that has a usage or tokens record, emit one event following tokenapp.usage.v1.
-3. Normalize modelId to lowercase canonical form; strip date suffixes. Infer provider from model prefix when present, otherwise from tool defaults (Cursor → likely "openai" or "anthropic"; Codex CLI → "openai"; Aider → whatever is configured in the log).
-4. Aggregate by (day, modelId). Drop per-request granularity if over 2000 rows.
-5. Never include message content, file contents, or paths beyond the project folder name.
-
-OUTPUT
-Single fenced \`\`\`tokenapp-usage block, JSON only, no commentary. Schema:
-
-${SCHEMA_DESCRIPTION}
-
-If relevant logs don't exist, output:
-\`\`\`tokenapp-usage
-{ "schema": "tokenapp.usage.v1", "source": "other", "capturedAt": "<now>", "events": [], "notes": "No logs found at expected paths." }
-\`\`\``,
+Now execute. Output only the fenced \`\`\`tokenapp-usage block.`,
   },
 
   {
     id: 'chat-estimate',
-    title: 'Estimate a ChatGPT / Claude.ai / Gemini conversation',
-    subtitle: 'For subscription users — estimates one conversation so you can extrapolate.',
-    where: 'Paste into the chat where you want to estimate. Works best near the end of a long conversation.',
+    title: 'Estimate this chat',
+    subtitle: 'For subscription users — estimate the current conversation so you can extrapolate.',
+    where: 'Paste into the chat you want to estimate (ChatGPT, Claude.ai, Gemini). Works best near the end of a long conversation.',
     body: `You cannot see my billing or account usage. Don't pretend. Instead: estimate THIS conversation's token usage so I can extrapolate across my subscription.
 
 STEPS
