@@ -61,9 +61,8 @@ BRANCH B — You have file-system access (you are a coding agent: Claude Code, C
   Try these log sources in order and use the first that exists. You may use more than one if multiple apply — merge the events.
   1. Claude Code:  \`~/.claude/projects/**/*.jsonl\`
        • Keep lines where \`message.role == "assistant"\` AND \`message.usage\` exists.
-       • ts = top-level \`timestamp\`. provider = \`"anthropic"\`. modelId = normalize(\`message.model\`).
+       • ts = top-level \`timestamp\`. provider = \`"anthropic"\`. modelId = normalize(\`message.model\`) — skip the \`<synthetic>\` pseudo-model.
        • tokens from \`message.usage\`: \`input_tokens\`, \`output_tokens\`, \`cache_read_input_tokens\`, \`cache_creation_input_tokens\`.
-       • sessionId = first 8 hex chars of sha1(filename). taskContext = the folder name directly under \`projects/\`.
        • source = \`"claude-code"\`.
   2. Cursor:       \`~/Library/Application Support/Cursor/User/globalStorage/**/*.json\` (macOS)
                    \`~/.config/Cursor/User/globalStorage/**/*.json\` (Linux)
@@ -85,7 +84,7 @@ ${SCHEMA_DESCRIPTION}
 
 RULES
 1. Normalize modelId: lowercase, strip date suffixes ("claude-sonnet-4-6-20260301" → "claude-sonnet-4.6"; "gpt-4o-2024-08-06" → "gpt-4o"), prefer dot version ("claude-3.5-sonnet" not "claude-3-5-sonnet").
-2. Aggregate events by (day, modelId, sessionId). If that exceeds 2000 rows, drop sessionId and aggregate by (day, modelId) instead.
+2. Aggregate events by (day, modelId) — one row per model per day. Omit sessionId and taskContext from the output unless the user explicitly asked for per-session breakdown. This keeps the paste small (tens of rows, not hundreds).
 3. If the input has only spend and no tokens, set inputTokens/outputTokens to null but keep costUSD. If it has tokens and no cost, leave costUSD null — TokenApp will reprice from list price.
 4. Convert non-USD amounts to USD using approximate FX for the event date; mention the FX in "notes".
 5. Never include message content, tool inputs/outputs, file paths beyond the project folder name, API keys, emails, or any PII.
