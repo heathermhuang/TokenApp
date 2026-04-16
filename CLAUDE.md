@@ -30,15 +30,22 @@ AI model pricing tracker and comparison tool built on Cloudflare Workers with Ho
 - **`\'` is invalid in JS template literals**: backslash is silently ignored for single quotes. Use `this.hidden=true` instead of `this.style.display='none'` in inline handlers.
 
 ## Current Work
-- **Last updated**: 2026-04-13
-- **What shipped**:
-  - Added 24H/7D/30D period toggle to Agent Usage Leaderboard (e377c34)
-  - Fetcher now parses all three rankMap periods (day, week, month) from OpenRouter RSC payload
-  - Added rankings diagnostics to `/api/refresh` endpoint (a885201)
-  - Updated SEO/AEO — meta tags, JSON-LD, FAQ, and About section mention rankings (6fe708e)
-  - Set up `REFRESH_SECRET` via `wrangler secret put` (value: `tokenapp-refresh-2026`)
-- **Uncommitted changes**: `.claude/` directory (launch.json for preview server), `CLAUDE.md`
-- **Next steps**:
-  - Model leaderboard only has weekly data (OpenRouter limitation) — no period toggle for models
-  - Could add click-through links on model leaderboard items (link to OpenRouter model page)
-  - Could add rank change indicators (up/down arrows) if OpenRouter provides delta data
+- **Last updated**: 2026-04-16
+- **What shipped this session**: nothing committed — `/usage` dashboard built end-to-end but sitting uncommitted
+- **Uncommitted changes**:
+  - `src/usage-prompts.ts` (new) — 4 copy-paste prompts that make any LLM emit `tokenapp.usage.v1` JSON fenced in ` ```tokenapp-usage `
+  - `src/usage-schema.ts` (new) — dependency-free parser: `extractFenceOrBareJson`, `normalizeModelId`, `parseUsagePaste`, `eventFingerprint` (dedupe)
+  - `src/usage-pricer.ts` (new) — `buildDashboard`: totals, spendOverTime, byModel/byProvider, subscription breakeven (≥7 days extrapolated), cheaper equivalents
+  - `src/usage-template.ts` (new) — full `/usage` page HTML (prompt modal + paste box + KPI cards + SVG spend chart + tables), client-side localStorage only
+  - `src/types.ts` — added `UsageEvent`, `UsageExport`, `UsageStore`
+  - `src/index.ts` — registered `GET /usage`, added to sitemap.xml + llms.txt
+- **Verified**: wrangler dev on :8799 returned HTTP 200, headless node test parsed + priced 6 sample events (total $2.478), subBreakeven + cheaperEquivalents rendered correctly
+- **Known issue**: `claude-sonnet-4-5` returns null from `findModel` in `usage-pricer.ts` — shows up in `unmatchedModels`. Likely a canonical-id mismatch vs the OpenRouter price table. Small fix in `normalizeModelId` or `findModel` fallbacks.
+- **Next steps (prioritized)**:
+  1. **P0 — ship `/usage`**: fix the `claude-sonnet-4-5` match, commit the 6 files, deploy. Add entry link from homepage hero + `/subscriptions`.
+  2. **P1 — cross-linking**: byModel rows → `/models/{provider}/{slug}`; subBreakeven rows → `/subscriptions`; "Load my usage" button on `/models` reading localStorage.
+  3. **P1 — forecasting on `/usage`**: month-end projection + "switch model X → Y" slider that recomputes projected cost client-side.
+  4. **P1 — landing: "Best coding agent by cost"** (Cursor / Claude Code / Codex / Aider) — high SEO intent, showcases `/usage`.
+  5. **P2 — `/usage` polish**: calendar heatmap, `taskContext` / `sessionId` grouping, per-provider export guides with screenshots.
+  6. **P3 carry-over**: model leaderboard click-throughs to OpenRouter pages; rank-delta arrows if OR exposes deltas.
+- **Skip**: benchmark overlays (needs server submission — breaks no-accounts posture), image/receipt import (expensive, prompt flow covers it).
