@@ -4,6 +4,7 @@ import { cache } from 'hono/cache';
 import type { Env } from './types';
 import { getModels, getSubscriptions, getRankings, refreshAllData } from './fetchers';
 import { getHtml, getProviderHtml, getAboutHtml } from './template';
+import { getUsageHtml } from './usage-template';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -174,6 +175,7 @@ It also tracks subscription plans (ChatGPT Plus, Claude Pro, Gemini Advanced, Ki
 - [Qwen / Alibaba pricing](https://token.app/qwen): Qwen3, QwQ, Qwen2.5
 - [NVIDIA pricing](https://token.app/nvidia): NVIDIA-hosted open-source models
 - [Cohere pricing](https://token.app/cohere): Command A, Command R+
+- [Usage Dashboard](https://token.app/usage): Track your own AI spend — paste an export from any provider, get charts and subscription breakeven. Entirely client-side, no account needed.
 - [About / Methodology](https://token.app/about): Data sources, update frequency, methodology
 
 ## Machine-readable data
@@ -331,6 +333,11 @@ app.get('/sitemap.xml', (c) => {
     <priority>0.9</priority>
   </url>
   <url>
+    <loc>https://token.app/usage</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://token.app/about</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
@@ -410,6 +417,29 @@ app.get('/about', (c) => {
   return c.html(getAboutHtml(), 200, {
     'Cache-Control': 'public, max-age=3600',
   });
+});
+
+// ── Usage dashboard ───────────────────────────────────────────────────────────
+
+app.get('/usage', async (c) => {
+  try {
+    const [{ models, lastUpdated }, subs] = await Promise.all([
+      getModels(c.env),
+      getSubscriptions(c.env),
+    ]);
+    const html = getUsageHtml({
+      initialModels: JSON.stringify(models),
+      initialSubscriptions: JSON.stringify(subs),
+      lastUpdated,
+    });
+    return c.html(html, 200, {
+      'Cache-Control': 'public, max-age=60, stale-while-revalidate=300',
+    });
+  } catch (err) {
+    console.error('Usage page SSR failed:', err);
+    const html = getUsageHtml({});
+    return c.html(html, 200, { 'Cache-Control': 'public, max-age=30' });
+  }
 });
 
 // ── Provider pages ────────────────────────────────────────────────────────────

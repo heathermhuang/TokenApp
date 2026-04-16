@@ -117,7 +117,47 @@ export interface RankingsData {
   fetchedAt: string;
 }
 
-// ── KV storage keys ───────────────────────────────────────────────────────────
+// ── Usage dashboard (Phase 1 — BYO-export, client-side only) ─────────────────
+//
+// Users paste a `tokenapp.usage.v1` JSON block into /usage. One of the prompts
+// in `usage-prompts.ts` produces this format from any provider's raw data.
+// Parsing, pricing, and persistence all happen in the browser — nothing is
+// sent to the server beyond what /api/models already exposes.
+
+export interface UsageEvent {
+  ts: string;             // ISO8601 (day precision OK)
+  provider: string;       // 'openai' | 'anthropic' | 'google' | ... (free-form; normalized downstream)
+  modelId: string;        // canonical id, lowercase, e.g. 'gpt-4o', 'claude-sonnet-4-6'
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  cachedInputTokens?: number;
+  cacheCreationTokens?: number;
+  requests?: number | null;
+  costUSD?: number | null;  // null → TokenApp reprices from list price
+  sessionId?: string;
+  taskContext?: string;
+}
+
+export interface UsageExport {
+  schema: 'tokenapp.usage.v1';
+  source: string;            // 'openai-api' | 'anthropic-api' | 'openrouter' | 'cursor' | 'claude-code' | ...
+  capturedAt: string;        // ISO8601
+  currency?: string;         // defaults to USD
+  events: UsageEvent[];
+  notes?: string;
+}
+
+// Persisted blob in localStorage — deduped accumulation across multiple imports.
+export interface UsageStore {
+  version: 1;
+  events: UsageEvent[];      // deduped by fingerprint(ts + modelId + inputTokens + outputTokens + sessionId?)
+  imports: Array<{
+    source: string;
+    capturedAt: string;
+    eventCount: number;
+    notes?: string;
+  }>;
+}
 
 export const KV_KEYS = {
   MODELS: 'models:all',
