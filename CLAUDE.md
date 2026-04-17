@@ -30,22 +30,24 @@ AI model pricing tracker and comparison tool built on Cloudflare Workers with Ho
 - **`\'` is invalid in JS template literals**: backslash is silently ignored for single quotes. Use `this.hidden=true` instead of `this.style.display='none'` in inline handlers.
 
 ## Current Work
-- **Last updated**: 2026-04-16
-- **What shipped this session**: nothing committed — `/usage` dashboard built end-to-end but sitting uncommitted
-- **Uncommitted changes**:
-  - `src/usage-prompts.ts` (new) — 4 copy-paste prompts that make any LLM emit `tokenapp.usage.v1` JSON fenced in ` ```tokenapp-usage `
-  - `src/usage-schema.ts` (new) — dependency-free parser: `extractFenceOrBareJson`, `normalizeModelId`, `parseUsagePaste`, `eventFingerprint` (dedupe)
-  - `src/usage-pricer.ts` (new) — `buildDashboard`: totals, spendOverTime, byModel/byProvider, subscription breakeven (≥7 days extrapolated), cheaper equivalents
-  - `src/usage-template.ts` (new) — full `/usage` page HTML (prompt modal + paste box + KPI cards + SVG spend chart + tables), client-side localStorage only
-  - `src/types.ts` — added `UsageEvent`, `UsageExport`, `UsageStore`
-  - `src/index.ts` — registered `GET /usage`, added to sitemap.xml + llms.txt
-- **Verified**: wrangler dev on :8799 returned HTTP 200, headless node test parsed + priced 6 sample events (total $2.478), subBreakeven + cheaperEquivalents rendered correctly
-- **Known issue**: `claude-sonnet-4-5` returns null from `findModel` in `usage-pricer.ts` — shows up in `unmatchedModels`. Likely a canonical-id mismatch vs the OpenRouter price table. Small fix in `normalizeModelId` or `findModel` fallbacks.
+- **Last updated**: 2026-04-17
+- **What shipped this session**: full Keyring stack merged to main and deployed to prod in 3 deploys.
+  - [#1](https://github.com/heathermhuang/TokenApp/pull/1) `feat(keyring): registry + client SDK v0` → `ef8013b`
+  - [#5](https://github.com/heathermhuang/TokenApp/pull/5) `feat(keyring): native seeds for Groq/Together/Fireworks` → `0dfb234` (replaced auto-closed #2/#4)
+  - [#6](https://github.com/heathermhuang/TokenApp/pull/6) `feat(keyring): capabilities + publishable package + /keyring demo` → `a8baac9` (replaced #3)
+- **Live in prod**:
+  - `https://token.app/registry.json` (200, ~188 KB, 11 providers, 521 models)
+  - `https://token.app/keyring` (200, BYOK demo page)
+- **Repo hygiene gotcha this session**: local `main` was 14 commits ahead of `origin/main` but all 14 were already in PR #1's squash — the "unpushed work" was a duplicate ghost. Resolved with `git reset --hard origin/main`. Side-effect: `--delete-branch` on PR #1 merge auto-closed the stacked PRs #2 and #3 because their base branches vanished. Had to cherry-pick their unique commits onto fresh branches (#5, #6) and reopen. If stacking again, don't `--delete-branch` until the whole stack lands, or retarget stacked PRs to `main` first.
+- **Local state**: on `main` at `a8baac9`, clean (apart from untracked `.claude/`). Replacement branches `feat/keyring-native-seeds-v2` and `feat/keyring-capabilities-package-demo-v2` already deleted by squash-merge. Stale local `feat/keyring-native-seeds` and `feat/keyring-capabilities-package-demo` branches can be pruned.
 - **Next steps (prioritized)**:
-  1. **P0 — ship `/usage`**: fix the `claude-sonnet-4-5` match, commit the 6 files, deploy. Add entry link from homepage hero + `/subscriptions`.
-  2. **P1 — cross-linking**: byModel rows → `/models/{provider}/{slug}`; subBreakeven rows → `/subscriptions`; "Load my usage" button on `/models` reading localStorage.
-  3. **P1 — forecasting on `/usage`**: month-end projection + "switch model X → Y" slider that recomputes projected cost client-side.
-  4. **P1 — landing: "Best coding agent by cost"** (Cursor / Claude Code / Codex / Aider) — high SEO intent, showcases `/usage`.
-  5. **P2 — `/usage` polish**: calendar heatmap, `taskContext` / `sessionId` grouping, per-provider export guides with screenshots.
-  6. **P3 carry-over**: model leaderboard click-throughs to OpenRouter pages; rank-delta arrows if OR exposes deltas.
-- **Skip**: benchmark overlays (needs server submission — breaks no-accounts posture), image/receipt import (expensive, prompt flow covers it).
+  1. **P0 — publish `keyring-client` to npm**: check name availability, fall back to scoped `@tokenapp/keyring-client`, publish v0.1.0 from `packages/keyring/`.
+  2. **P1 — homepage entry for `/keyring`**: hero or nav link so the demo gets discovered.
+  3. **P1 — resume `/usage` roadmap** (interrupted by keyring work):
+     - cross-linking: byModel rows → `/models/{provider}/{slug}`; subBreakeven rows → `/subscriptions`; "Load my usage" button on `/models` reading localStorage
+     - forecasting: month-end projection + "switch model X → Y" slider
+     - landing: "Best coding agent by cost" (Cursor / Claude Code / Codex / Aider)
+  4. **P2 — keyring v0.2**: expand native seeds (Mistral, DeepSeek direct, xAI), add `validateKey` coverage for more providers, CI check that `/registry.json` schema doesn't regress.
+  5. **P2 — `/usage` polish**: calendar heatmap, per-provider export guides with screenshots.
+  6. **P3 — keyring protocol phase**: wallet-style approval flow where apps request capabilities and the user approves a key scoped to that app. Only worth starting once the registry + SDK have real adoption.
+- **Skip**: benchmark overlays (needs server submission — breaks no-accounts posture), image/receipt import for `/usage` (prompt flow covers it).
