@@ -10,6 +10,7 @@ import type { NormalizedModel } from '../../../src/types';
 import type { KeyringRegistry, Provider, RegistryModel, ModelCapability } from './schema';
 import { PROVIDER_SEEDS, type ProviderSeed } from './providers';
 import { NATIVE_MODEL_SEEDS, NATIVE_SEED_PRICING_AS_OF } from './native-seed';
+import { deriveExtraCapabilities, deriveAliases } from './capabilities';
 
 export interface BuildOptions {
   sourceCommit?: string;
@@ -54,7 +55,7 @@ function attachModels(seed: ProviderSeed, allModels: NormalizedModel[]): Provide
   const byId = new Map<string, RegistryModel>();
   for (const m of fromOpenRouter) byId.set(m.id, m);
   for (const m of native) byId.set(m.id, m);
-  const models = Array.from(byId.values());
+  const models = Array.from(byId.values()).map((m) => enrichModel(m, seed.id));
 
   const pricingAsOf = NATIVE_SEED_PRICING_AS_OF[seed.id];
 
@@ -112,4 +113,25 @@ function deriveCapabilities(m: NormalizedModel): ModelCapability[] {
   if (m.outputModalities.includes('audio')) caps.push('audio-out');
   if (m.isReasoning) caps.push('reasoning');
   return caps;
+}
+
+// Second pass: merge rule-based capabilities and aliases onto every model
+// (both OpenRouter-sourced and native-seed). Runs after the two seeds collide
+// so that the enrichment sees the final providerModelId.
+function enrichModel(model: RegistryModel, providerId: string): RegistryModel {
+  const input = {
+    providerId,
+    canonicalId: model.id,
+    providerModelId: model.providerModelId,
+    displayName: model.displayName,
+    releasedAt: model.releasedAt,
+  };
+  const extraCaps = deriveExtraCapabilities(input);
+  const mergedCaps = Array.from(new Set([...model.capabilities, ...extraCaps]));
+  const aliases = deriveAliases(input);
+  return {
+    ...model,
+    capabilities: mergedCaps,
+    ...(aliases.length ? { aliases } : {}),
+  };
 }
