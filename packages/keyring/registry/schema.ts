@@ -33,6 +33,11 @@ export interface Provider {
   protocol: ProtocolConfig;
   keyValidation?: KeyValidation;
 
+  // ISO8601 date. Present for providers whose model list + pricing come from a
+  // hand-curated snapshot (see native-seed.ts) rather than the hourly OpenRouter
+  // refresh. Absent when models are live-sourced from token.app's cron.
+  pricingAsOf?: string;
+
   // Capability flags that affect how a vault/relay would integrate later.
   // Not required for v0 direct-key clients.
   capabilities: {
