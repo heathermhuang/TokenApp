@@ -1,12 +1,21 @@
 export function getHtml(params: {
   initialModels?: string;
   initialSubscriptions?: string;
+  initialRankings?: string;
   lastUpdated?: string | null;
 }): string {
-  const { initialModels = '[]', initialSubscriptions = '[]', lastUpdated = null } = params;
+  const { lastUpdated = null } = params;
+
+  // Escape backticks and ${ in JSON data to avoid breaking the template literal
+  function safeLiteral(s: string): string {
+    return s.replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
+  }
+  const initialModels = safeLiteral(params.initialModels ?? '[]');
+  const initialSubscriptions = safeLiteral(params.initialSubscriptions ?? '[]');
+  const initialRankings = safeLiteral(params.initialRankings ?? 'null');
 
   // Compute counts server-side for accurate meta tags and hero description
-  const parsedModels = JSON.parse(initialModels) as Array<{
+  const parsedModels = JSON.parse(params.initialModels ?? '[]') as Array<{
     providerId: string;
     id: string;
     name: string;
@@ -37,9 +46,9 @@ export function getHtml(params: {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>token.app — AI Token &amp; Subscription Pricing</title>
-  <meta name="description" content="Real-time AI model token pricing and subscription costs. Compare ${modelCount}+ models from ${providerCount}+ providers including OpenAI, Anthropic, Google, Meta, and more." />
+  <meta name="description" content="Real-time AI model token pricing, subscription costs, and usage rankings. Compare ${modelCount}+ models from ${providerCount}+ providers including OpenAI, Anthropic, Google, Meta, and more. See which models and AI agents are trending by daily, weekly, and monthly usage." />
   <meta property="og:title" content="token.app — AI Pricing Tracker" />
-  <meta property="og:description" content="Real-time token pricing for ${modelCount}+ AI models. Compare input/output costs, context windows, and subscription plans." />
+  <meta property="og:description" content="Real-time token pricing and usage rankings for ${modelCount}+ AI models. Compare costs, context windows, subscriptions, and see trending models and agents by 24H/7D/30D usage." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://token.app/" />
   <meta property="og:site_name" content="token.app" />
@@ -48,7 +57,7 @@ export function getHtml(params: {
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="token.app — AI Pricing Tracker" />
-  <meta name="twitter:description" content="Real-time token pricing for ${modelCount}+ AI models. Compare input/output costs, context windows, and subscription plans." />
+  <meta name="twitter:description" content="Real-time token pricing and usage rankings for ${modelCount}+ AI models. Compare costs, context windows, subscriptions, and see trending models and agents by 24H/7D/30D usage." />
   <meta name="twitter:image" content="https://token.app/og.png" />
   <meta name="author" content="Measurable AI" />
   <link rel="canonical" href="https://token.app/" />
@@ -67,9 +76,9 @@ export function getHtml(params: {
       "url": "https://measurable.ai/"
     },
     "license": "https://measurable.ai/en-US/termsOfUse",
-    "keywords": ["AI pricing", "LLM tokens", "API cost", "language models", "GPT", "Claude", "Gemini", "token pricing"],
+    "keywords": ["AI pricing", "LLM tokens", "API cost", "language models", "GPT", "Claude", "Gemini", "token pricing", "AI model rankings", "AI usage leaderboard", "most popular AI models", "AI agent rankings"],
     "measurementTechnique": "Automated hourly fetching from provider APIs and OpenRouter",
-    "variableMeasured": ["input token price", "output token price", "context window", "model availability"]
+    "variableMeasured": ["input token price", "output token price", "context window", "model availability", "token usage volume", "request volume"]
   }
   </script>
   <script type="application/ld+json">
@@ -124,6 +133,14 @@ export function getHtml(params: {
           "@type": "Answer",
           "text": "DeepSeek models are significantly cheaper than OpenAI equivalents. DeepSeek V3 costs ${fmtPriceSsr(deepseekV3?.inputPer1M)} per 1M input tokens compared to GPT-4o at ${fmtPriceSsr(gpt4o?.inputPer1M)} per 1M input tokens — making it one of the most cost-effective frontier models available."
         }
+      },
+      {
+        "@type": "Question",
+        "name": "Which AI models and agents are most popular right now?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "token.app tracks real-time usage rankings for AI models and agents via OpenRouter. The Rankings tab shows leaderboards by total token volume, with filters for daily (24H), weekly (7D), and monthly (30D) time periods. Rankings update hourly to reflect current usage trends across hundreds of AI applications."
+        }
       }
     ]
   }
@@ -172,15 +189,15 @@ export function getHtml(params: {
       --border: #dcdce8;
       --border2: #c8c8d8;
       --text: #111118;
-      --text2: #484860;
-      --text3: #8888a0;
-      --accent: #5254d0;
-      --accent-dim: rgba(82,84,208,0.1);
-      --green: #16a34a;
-      --yellow: #ca8a04;
-      --orange: #ea580c;
-      --red: #dc2626;
-      --nav-bg: rgba(244,244,248,0.9);
+      --text2: #3d3d52;
+      --text3: #62627a;
+      --accent: #4746b8;
+      --accent-dim: rgba(71,70,184,0.1);
+      --green: #15803d;
+      --yellow: #a16207;
+      --orange: #c2410c;
+      --red: #b91c1c;
+      --nav-bg: rgba(244,244,248,0.92);
       --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
       --shadow-md: 0 4px 16px rgba(0,0,0,0.12);
     }
@@ -589,6 +606,8 @@ export function getHtml(params: {
     .price-high { color: var(--orange); }
     .price-expensive { color: var(--red); }
 
+    html[data-theme="light"] .price-cheap { color: #16a34a; }
+
     .badge {
       display: inline-flex;
       align-items: center;
@@ -609,6 +628,16 @@ export function getHtml(params: {
     .badge-video       { background: rgba(99,102,241,0.12);  color: #818cf8; border-color: rgba(99,102,241,0.25); }
     .badge-deprecated  { background: rgba(100,116,139,0.12); color: #64748b; border-color: rgba(100,116,139,0.25); font-style: italic; }
     .badge-active      { background: rgba(34,197,94,0.10);   color: #22c55e; border-color: rgba(34,197,94,0.25); }
+
+    /* Light-mode badge contrast overrides */
+    html[data-theme="light"] .badge-text       { color: #64748b; background: rgba(100,116,139,0.10); border-color: rgba(100,116,139,0.25); }
+    html[data-theme="light"] .badge-vision     { color: #2563eb; background: rgba(37,99,235,0.08); }
+    html[data-theme="light"] .badge-reasoning  { color: #7c3aed; background: rgba(124,58,237,0.08); }
+    html[data-theme="light"] .badge-audio      { color: #a16207; background: rgba(161,98,7,0.10); }
+    html[data-theme="light"] .badge-active     { color: #15803d; background: rgba(21,128,61,0.08); border-color: rgba(21,128,61,0.2); }
+    html[data-theme="light"] .badge-image-gen  { color: #a21caf; background: rgba(162,28,175,0.08); border-color: rgba(162,28,175,0.2); }
+    html[data-theme="light"] .badge-video      { color: #4338ca; background: rgba(67,56,202,0.08); border-color: rgba(67,56,202,0.2); }
+    html[data-theme="light"] .badge-deprecated { color: #475569; background: rgba(71,85,105,0.08); border-color: rgba(71,85,105,0.2); }
 
     /* ── Provider logos ─────────────────────────────────────────────────── */
     .provider-chip { display: inline-flex; align-items: center; gap: 5px; }
@@ -813,6 +842,154 @@ export function getHtml(params: {
     }
 
     .sub-link:hover { opacity: 1; text-decoration: underline; }
+
+    /* ── Rankings / Leaderboards ───────────────────────────────────────────── */
+    #rankings-section {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px 48px;
+    }
+
+    .rankings-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    @media (max-width: 768px) {
+      .rankings-grid { grid-template-columns: 1fr; }
+    }
+
+    .leaderboard {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .leaderboard-header {
+      padding: 16px 20px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .leaderboard-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 2px;
+    }
+
+    .leaderboard-subtitle {
+      font-size: 11px;
+      color: var(--text3);
+    }
+
+    .leaderboard-list {
+      list-style: none;
+    }
+
+    .lb-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 20px;
+      border-bottom: 1px solid var(--border);
+      transition: background 0.1s;
+    }
+
+    .lb-item:last-child { border-bottom: none; }
+    .lb-item:hover { background: var(--surface2); }
+
+    .lb-rank {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text3);
+      width: 24px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+
+    .lb-item:nth-child(1) .lb-rank { color: #fbbf24; }
+    .lb-item:nth-child(2) .lb-rank { color: #94a3b8; }
+    .lb-item:nth-child(3) .lb-rank { color: #cd7f32; }
+
+    .lb-icon {
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+
+    .lb-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .lb-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .lb-category {
+      font-size: 10px;
+      color: var(--text3);
+    }
+
+    .lb-stats {
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    .lb-tokens {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .lb-reqs {
+      font-size: 10px;
+      color: var(--text3);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .rankings-source {
+      text-align: center;
+      font-size: 11px;
+      color: var(--text3);
+      margin-top: 12px;
+    }
+
+    .rankings-source a { color: var(--accent); text-decoration: none; }
+    .rankings-source a:hover { text-decoration: underline; }
+
+    .period-toggle {
+      display: inline-flex;
+      gap: 4px;
+      padding: 3px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    .period-btn {
+      padding: 4px 12px;
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text3);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .period-btn:hover { color: var(--text); }
+    .period-btn.active { background: var(--accent-dim); color: var(--accent); }
 
     /* ── Loading ───────────────────────────────────────────────────────────── */
     .loading {
@@ -1181,6 +1358,7 @@ export function getHtml(params: {
   <div class="main-tabs">
     <button class="main-tab active" data-view="api">API Pricing</button>
     <button class="main-tab" data-view="subscriptions">Subscriptions</button>
+    <button class="main-tab" data-view="rankings">Rankings</button>
   </div>
 
   <div id="api-controls">
@@ -1252,6 +1430,39 @@ export function getHtml(params: {
   </div>
 </div>
 
+<!-- ── Rankings ──────────────────────────────────────────────────────────────── -->
+<h2 class="sr-only">Usage Rankings</h2>
+<div id="rankings-section" style="display:none;">
+  <div class="rankings-grid">
+    <div class="leaderboard">
+      <div class="leaderboard-header">
+        <div class="leaderboard-title">Token Usage Leaderboard</div>
+        <div class="leaderboard-subtitle">Top models by weekly token volume on OpenRouter</div>
+      </div>
+      <ol class="leaderboard-list" id="model-leaderboard">
+        <li style="padding:40px;text-align:center;color:var(--text3)">Loading rankings…</li>
+      </ol>
+    </div>
+    <div class="leaderboard">
+      <div class="leaderboard-header">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+          <div class="leaderboard-title">Agent Usage Leaderboard</div>
+          <div class="period-toggle" id="period-toggle">
+            <button class="period-btn active" data-period="day">24H</button>
+            <button class="period-btn" data-period="week">7D</button>
+            <button class="period-btn" data-period="month">30D</button>
+          </div>
+        </div>
+        <div class="leaderboard-subtitle" id="app-leaderboard-subtitle">Top apps and agents by daily token volume on OpenRouter</div>
+      </div>
+      <ol class="leaderboard-list" id="app-leaderboard">
+        <li style="padding:40px;text-align:center;color:var(--text3)">Loading rankings…</li>
+      </ol>
+    </div>
+  </div>
+  <p class="rankings-source">Data sourced from <a href="https://openrouter.ai/rankings" target="_blank" rel="noopener">OpenRouter Rankings</a> · Updated hourly</p>
+</div>
+
 <!-- ── FAQ ────────────────────────────────────────────────────────────────────── -->
 <section class="faq-section" id="faq">
   <h2>Frequently Asked Questions</h2>
@@ -1288,6 +1499,10 @@ export function getHtml(params: {
       <summary>Which AI model has the largest context window?</summary>
       <p>As of 2025, several models support extremely large context windows. Google Gemini 1.5 Pro and 1.5 Flash support up to 2M tokens. Anthropic Claude models support up to 200K tokens. OpenAI GPT-4o supports 128K tokens. Larger context windows allow processing longer documents, conversations, and codebases in a single request.</p>
     </details>
+    <details class="faq-item">
+      <summary>Which AI models and agents are most popular right now?</summary>
+      <p>The Rankings tab shows real-time usage leaderboards for AI models and agents, sourced from OpenRouter. You can filter by time period — 24H (daily), 7D (weekly), or 30D (monthly) — to see which models are trending and which AI-powered apps and agents are consuming the most tokens. Rankings update hourly.</p>
+    </details>
   </div>
 </section>
 
@@ -1295,16 +1510,18 @@ export function getHtml(params: {
 <section class="about-data" id="about-data">
   <h2>About This Data</h2>
   <p>
-    token.app tracks real-time token pricing and subscription costs across the AI ecosystem.
-    We aggregate pricing data from <a href="https://openrouter.ai" target="_blank" rel="noopener">OpenRouter</a>
+    token.app tracks real-time token pricing, subscription costs, and usage rankings across the AI ecosystem.
+    We aggregate pricing data and usage leaderboards from <a href="https://openrouter.ai" target="_blank" rel="noopener">OpenRouter</a>
     and official provider pricing pages, refreshing every hour so you always see current rates.
     Coverage spans ${modelCount}+ models from ${providerCount}+ providers — including frontier labs like OpenAI,
     Anthropic, Google DeepMind, Meta AI, Mistral, DeepSeek, xAI, Qwen, NVIDIA, and Cohere,
     as well as dozens of fine-tuned and open-weight variants.
   </p>
   <p>
-    Every row in the table shows the model's input cost and output cost per 1 million tokens,
+    Every row in the pricing table shows the model's input cost and output cost per 1 million tokens,
     its context window size, and the modality types it supports (text, vision, audio, reasoning).
+    The Rankings tab shows model and agent usage leaderboards with daily, weekly, and monthly token volume,
+    so you can see which AI models and applications are trending right now.
     Prices reflect the listed API rate; enterprise or volume discounts may differ.
     For the most accurate billing information always check the provider's official pricing page.
     Data is provided by <a href="https://measurable.ai" target="_blank" rel="noopener">Measurable AI</a>
@@ -1354,7 +1571,9 @@ export function getHtml(params: {
 const state = {
   models: [],
   subscriptions: [],
-  view: 'api',       // 'api' | 'subscriptions'
+  rankings: null,
+  rankingsPeriod: 'day',  // 'day' | 'week' | 'month'
+  view: 'api',       // 'api' | 'subscriptions' | 'rankings'
   cat: 'all',
   subCat: 'all',
   providers: new Set(),
@@ -1412,7 +1631,8 @@ function escape(s) {
 }
 
 function getProviderStyle(providerId) {
-  const map = {
+  var isLight = document.documentElement.getAttribute('data-theme') === 'light';
+  var dark = {
     openai:       { color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
     anthropic:    { color: '#f97316', bg: 'rgba(249,115,22,0.12)' },
     google:       { color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' },
@@ -1425,7 +1645,6 @@ function getProviderStyle(providerId) {
     cursor:       { color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' },
     windsurf:     { color: '#38bdf8', bg: 'rgba(56,189,248,0.12)' },
     microsoft:    { color: '#60a5fa', bg: 'rgba(0,120,212,0.12)' },
-    // Chinese providers
     baidu:        { color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
     bytedance:    { color: '#f43f5e', bg: 'rgba(244,63,94,0.12)' },
     'bytedance-seed': { color: '#f43f5e', bg: 'rgba(244,63,94,0.12)' },
@@ -1437,13 +1656,51 @@ function getProviderStyle(providerId) {
     alibaba:      { color: '#fb923c', bg: 'rgba(251,146,60,0.12)' },
     kwaipilot:    { color: '#fb923c', bg: 'rgba(251,146,60,0.12)' },
     meituan:      { color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' },
-    // Research / others
+    qwen:         { color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' },
+    'z-ai':       { color: '#818cf8', bg: 'rgba(129,140,248,0.12)' },
+    zhipuai:      { color: '#818cf8', bg: 'rgba(129,140,248,0.12)' },
     allenai:      { color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' },
     'ibm-granite':{ color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
     openrouter:   { color: '#94a3b8', bg: 'rgba(148,163,184,0.12)' },
     nvidia:       { color: '#76b900', bg: 'rgba(118,185,0,0.12)' },
   };
-  return map[providerId] ?? { color: '#94a3b8', bg: 'rgba(148,163,184,0.12)' };
+  var light = {
+    openai:       { color: '#059669', bg: 'rgba(5,150,105,0.08)' },
+    anthropic:    { color: '#c2410c', bg: 'rgba(194,65,12,0.08)' },
+    google:       { color: '#2563eb', bg: 'rgba(37,99,235,0.08)' },
+    'meta-llama': { color: '#4f46e5', bg: 'rgba(79,70,229,0.08)' },
+    mistralai:    { color: '#c2410c', bg: 'rgba(194,65,12,0.08)' },
+    deepseek:     { color: '#0284c7', bg: 'rgba(2,132,199,0.08)' },
+    'x-ai':       { color: '#475569', bg: 'rgba(71,85,105,0.08)' },
+    cohere:       { color: '#15803d', bg: 'rgba(21,128,61,0.08)' },
+    perplexityai: { color: '#7c3aed', bg: 'rgba(124,58,237,0.08)' },
+    cursor:       { color: '#2563eb', bg: 'rgba(37,99,235,0.08)' },
+    windsurf:     { color: '#0284c7', bg: 'rgba(2,132,199,0.08)' },
+    microsoft:    { color: '#1d4ed8', bg: 'rgba(29,78,216,0.08)' },
+    baidu:        { color: '#1d4ed8', bg: 'rgba(29,78,216,0.08)' },
+    bytedance:    { color: '#be123c', bg: 'rgba(190,18,60,0.08)' },
+    'bytedance-seed': { color: '#be123c', bg: 'rgba(190,18,60,0.08)' },
+    minimax:      { color: '#7c3aed', bg: 'rgba(124,58,237,0.08)' },
+    moonshotai:   { color: '#475569', bg: 'rgba(71,85,105,0.08)' },
+    tencent:      { color: '#15803d', bg: 'rgba(21,128,61,0.08)' },
+    xiaomi:       { color: '#c2410c', bg: 'rgba(194,65,12,0.08)' },
+    stepfun:      { color: '#a16207', bg: 'rgba(161,98,7,0.08)' },
+    alibaba:      { color: '#c2410c', bg: 'rgba(194,65,12,0.08)' },
+    kwaipilot:    { color: '#c2410c', bg: 'rgba(194,65,12,0.08)' },
+    meituan:      { color: '#a16207', bg: 'rgba(161,98,7,0.08)' },
+    qwen:         { color: '#a16207', bg: 'rgba(161,98,7,0.08)' },
+    'z-ai':       { color: '#4f46e5', bg: 'rgba(79,70,229,0.08)' },
+    zhipuai:      { color: '#4f46e5', bg: 'rgba(79,70,229,0.08)' },
+    allenai:      { color: '#2563eb', bg: 'rgba(37,99,235,0.08)' },
+    'ibm-granite':{ color: '#1d4ed8', bg: 'rgba(29,78,216,0.08)' },
+    openrouter:   { color: '#475569', bg: 'rgba(71,85,105,0.08)' },
+    nvidia:       { color: '#4d7c0f', bg: 'rgba(77,124,15,0.08)' },
+  };
+  var map = isLight ? light : dark;
+  var fallback = isLight
+    ? { color: '#475569', bg: 'rgba(71,85,105,0.08)' }
+    : { color: '#94a3b8', bg: 'rgba(148,163,184,0.12)' };
+  return map[providerId] ?? fallback;
 }
 
 const PROVIDER_DOMAINS = {
@@ -1904,6 +2161,82 @@ function renderSubscriptions() {
   }).join('');
 }
 
+// ── Render Rankings ───────────────────────────────────────────────────────────
+function fmtTokens(n) {
+  if (!n || n === 0) return '0';
+  if (n >= 1e12) return (n / 1e12).toFixed(1) + 'T';
+  if (n >= 1e9) return (n / 1e9).toFixed(1) + 'B';
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+  return String(n);
+}
+
+function fmtReqs(n) {
+  if (!n || n === 0) return '0 reqs';
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M reqs';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K reqs';
+  return n.toLocaleString() + ' reqs';
+}
+
+function renderRankings() {
+  if (!state.rankings) return;
+
+  var modelList = document.getElementById('model-leaderboard');
+  var appList = document.getElementById('app-leaderboard');
+
+  var models = state.rankings.topModels || [];
+  var appsData = state.rankings.topApps || {};
+  // Support both old format (array) and new format (record by period)
+  var apps = Array.isArray(appsData) ? appsData : (appsData[state.rankingsPeriod] || appsData.day || []);
+
+  if (models.length > 0) {
+    modelList.innerHTML = models.slice(0, 15).map(function(m, i) {
+      var slug = m.modelSlug || '';
+      var parts = slug.split('/');
+      var provider = parts[0] || '';
+      var modelName = parts.slice(1).join('/') || slug;
+      var logoImg = providerLogoImg(provider);
+      return '<li class="lb-item">' +
+        '<span class="lb-rank">' + (i + 1) + '</span>' +
+        '<div class="lb-info">' +
+          '<div class="lb-name">' + escape(modelName) + '</div>' +
+          '<div class="lb-category">' + logoImg + ' ' + escape(provider) + '</div>' +
+        '</div>' +
+        '<div class="lb-stats">' +
+          '<div class="lb-tokens">' + fmtTokens(m.totalTokens) + '</div>' +
+          '<div class="lb-reqs">' + fmtReqs(m.totalRequests) + '</div>' +
+        '</div>' +
+      '</li>';
+    }).join('');
+  } else {
+    modelList.innerHTML = '<li style="padding:40px;text-align:center;color:var(--text3)">No model rankings available yet.</li>';
+  }
+
+  if (apps.length > 0) {
+    appList.innerHTML = apps.slice(0, 15).map(function(a, i) {
+      var cats = (a.categories || []).join(', ').replace(/-/g, ' ');
+      var icon = a.faviconUrl
+        ? '<img class="lb-icon" src="' + escape(a.faviconUrl) + '" alt="" onerror="this.hidden=true">'
+        : '';
+      var link = a.originUrl ? '<a href="' + escape(a.originUrl) + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">' + escape(a.title) + '</a>' : escape(a.title);
+      return '<li class="lb-item">' +
+        '<span class="lb-rank">' + (i + 1) + '</span>' +
+        icon +
+        '<div class="lb-info">' +
+          '<div class="lb-name">' + link + '</div>' +
+          '<div class="lb-category">' + escape(cats) + '</div>' +
+        '</div>' +
+        '<div class="lb-stats">' +
+          '<div class="lb-tokens">' + fmtTokens(a.totalTokens) + '</div>' +
+          '<div class="lb-reqs">' + fmtReqs(a.totalRequests) + '</div>' +
+        '</div>' +
+      '</li>';
+    }).join('');
+  } else {
+    appList.innerHTML = '<li style="padding:40px;text-align:center;color:var(--text3)">No app rankings available yet.</li>';
+  }
+}
+
 // ── Stats ──────────────────────────────────────────────────────────────────────
 function updateStats() {
   const providers = new Set(state.models.map(m => m.providerId));
@@ -1946,25 +2279,31 @@ function bindSortHeaders() {
 // ── View Switch ────────────────────────────────────────────────────────────────
 function switchView(view) {
   state.view = view;
-  const apiSection = document.getElementById('api-section');
-  const subsSection = document.getElementById('subs-section');
-  const apiControls = document.getElementById('api-controls');
-  const subsControls = document.getElementById('subs-controls');
+  var apiSection = document.getElementById('api-section');
+  var subsSection = document.getElementById('subs-section');
+  var rankingsSection = document.getElementById('rankings-section');
+  var apiControls = document.getElementById('api-controls');
+  var subsControls = document.getElementById('subs-controls');
 
   document.querySelectorAll('.main-tab').forEach(t => t.classList.remove('active'));
   document.querySelector(\`.main-tab[data-view="\${view}"]\`).classList.add('active');
 
+  apiSection.style.display = 'none';
+  subsSection.style.display = 'none';
+  rankingsSection.style.display = 'none';
+  apiControls.style.display = 'none';
+  subsControls.style.display = 'none';
+
   if (view === 'api') {
     apiSection.style.display = '';
-    subsSection.style.display = 'none';
     apiControls.style.display = '';
-    subsControls.style.display = 'none';
-  } else {
-    apiSection.style.display = 'none';
+  } else if (view === 'subscriptions') {
     subsSection.style.display = '';
-    apiControls.style.display = 'none';
     subsControls.style.display = '';
     renderSubscriptions();
+  } else if (view === 'rankings') {
+    rankingsSection.style.display = '';
+    renderRankings();
   }
 }
 
@@ -2039,39 +2378,46 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal()
 // ── Init ───────────────────────────────────────────────────────────────────────
 async function init() {
   // Use server-injected initial data if available
-  const initialModels = ${initialModels};
-  const initialSubs = ${initialSubscriptions};
-  const lastUpdated = ${lastUpdated ? JSON.stringify(lastUpdated) : 'null'};
+  var initialModels = ${initialModels};
+  var initialSubs = ${initialSubscriptions};
+  var initialRankings = ${initialRankings};
+  var lastUpdated = ${lastUpdated ? JSON.stringify(lastUpdated) : 'null'};
 
   if (initialModels && initialModels.length > 0) {
     state.models = initialModels;
     state.subscriptions = initialSubs;
+    state.rankings = initialRankings;
     updateStats();
     renderProviderFilters();
     renderTable();
     if (lastUpdated) {
-      const upd = fmtUpdated(lastUpdated);
+      var upd = fmtUpdated(lastUpdated);
       document.getElementById('nav-updated').textContent = upd;
       document.getElementById('table-updated').textContent = 'Last updated: ' + upd;
     }
   } else {
     // Fetch from API
     try {
-      const [modelsRes, subsRes] = await Promise.all([
+      var [modelsRes, subsRes, rankingsRes] = await Promise.all([
         fetch('/api/models'),
         fetch('/api/subscriptions'),
+        fetch('/api/rankings'),
       ]);
-      const { models, lastUpdated: lu } = await modelsRes.json();
-      const subs = await subsRes.json();
+      var { models, lastUpdated: lu } = await modelsRes.json();
+      var subs = await subsRes.json();
       state.models = models;
       state.subscriptions = subs;
+      try {
+        var rankingsData = await rankingsRes.json();
+        if (!rankingsData.error) state.rankings = rankingsData;
+      } catch(e) {}
       updateStats();
       renderProviderFilters();
       renderTable();
       if (lu) {
-        const upd = fmtUpdated(lu);
-        document.getElementById('nav-updated').textContent = upd;
-        document.getElementById('table-updated').textContent = 'Last updated: ' + upd;
+        var upd2 = fmtUpdated(lu);
+        document.getElementById('nav-updated').textContent = upd2;
+        document.getElementById('table-updated').textContent = 'Last updated: ' + upd2;
       }
     } catch (err) {
       document.getElementById('models-tbody').innerHTML =
@@ -2086,6 +2432,10 @@ function toggleTheme() {
   var next = current === 'light' ? 'dark' : 'light';
   document.documentElement.setAttribute('data-theme', next);
   localStorage.setItem('theme', next);
+  // Re-render to pick up theme-aware provider chip colors
+  if (state.view === 'api') renderTable();
+  else if (state.view === 'subscriptions') renderSubscriptions();
+  else if (state.view === 'rankings') renderRankings();
 }
 
 // ── Event Bindings ─────────────────────────────────────────────────────────────
@@ -2117,6 +2467,19 @@ document.addEventListener('DOMContentLoaded', () => {
       btn.classList.add('active');
       renderSubscriptions();
     });
+  });
+
+  // Rankings period toggle
+  document.getElementById('period-toggle').addEventListener('click', function(e) {
+    var btn = e.target.closest('[data-period]');
+    if (!btn) return;
+    state.rankingsPeriod = btn.dataset.period;
+    document.querySelectorAll('#period-toggle .period-btn').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    var labels = { day: 'daily', week: 'weekly', month: 'monthly' };
+    document.getElementById('app-leaderboard-subtitle').textContent =
+      'Top apps and agents by ' + labels[state.rankingsPeriod] + ' token volume on OpenRouter';
+    renderRankings();
   });
 
   // Search
@@ -2314,9 +2677,9 @@ export function getProviderHtml(params: {
     html[data-theme="light"] {
       --bg: #f4f4f8; --surface: #ffffff; --surface2: #ebebf2;
       --border: #dcdce8; --border2: #c8c8d8;
-      --text: #111118; --text2: #484860; --text3: #8888a0;
-      --accent: #5254d0; --accent-dim: rgba(82,84,208,0.1);
-      --green: #16a34a; --nav-bg: rgba(244,244,248,0.9);
+      --text: #111118; --text2: #3d3d52; --text3: #62627a;
+      --accent: #4746b8; --accent-dim: rgba(71,70,184,0.1);
+      --green: #15803d; --nav-bg: rgba(244,244,248,0.92);
     }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; min-height: 100vh; }
     nav { position: sticky; top: 0; z-index: 100; background: var(--nav-bg); backdrop-filter: blur(14px); border-bottom: 1px solid var(--border); padding: 0 24px; height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
@@ -2430,8 +2793,8 @@ export function getAboutHtml(): string {
     }
     html[data-theme="light"] {
       --bg: #f4f4f8; --surface: #ffffff; --surface2: #ebebf2;
-      --border: #dcdce8; --text: #111118; --text2: #484860; --text3: #8888a0;
-      --accent: #5254d0; --nav-bg: rgba(244,244,248,0.9);
+      --border: #dcdce8; --text: #111118; --text2: #3d3d52; --text3: #62627a;
+      --accent: #4746b8; --nav-bg: rgba(244,244,248,0.92);
     }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.65; min-height: 100vh; }
     nav { position: sticky; top: 0; z-index: 100; background: var(--nav-bg); backdrop-filter: blur(14px); border-bottom: 1px solid var(--border); padding: 0 24px; height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }

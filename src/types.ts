@@ -89,10 +89,79 @@ export interface OpenRouterResponse {
   data: OpenRouterModel[];
 }
 
-// ── KV storage keys ───────────────────────────────────────────────────────────
+// ── Rankings data (scraped from OpenRouter) ──────────────────────────────────
+
+export interface ModelRanking {
+  modelSlug: string;       // e.g. "qwen/qwen3.6-plus-04-02"
+  totalTokens: number;     // prompt + completion
+  totalRequests: number;
+  date: string;
+}
+
+export interface AppRanking {
+  rank: number;
+  title: string;
+  description: string;
+  categories: string[];
+  originUrl: string;
+  faviconUrl: string | null;
+  totalTokens: number;
+  totalRequests: number;
+}
+
+export type RankingPeriod = 'day' | 'week' | 'month';
+
+export interface RankingsData {
+  topModels: ModelRanking[];
+  topApps: Record<RankingPeriod, AppRanking[]>;
+  fetchedAt: string;
+}
+
+// ── Usage dashboard (Phase 1 — BYO-export, client-side only) ─────────────────
+//
+// Users paste a `tokenapp.usage.v1` JSON block into /usage. One of the prompts
+// in `usage-prompts.ts` produces this format from any provider's raw data.
+// Parsing, pricing, and persistence all happen in the browser — nothing is
+// sent to the server beyond what /api/models already exposes.
+
+export interface UsageEvent {
+  ts: string;             // ISO8601 (day precision OK)
+  provider: string;       // 'openai' | 'anthropic' | 'google' | ... (free-form; normalized downstream)
+  modelId: string;        // canonical id, lowercase, e.g. 'gpt-4o', 'claude-sonnet-4-6'
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  cachedInputTokens?: number;
+  cacheCreationTokens?: number;
+  requests?: number | null;
+  costUSD?: number | null;  // null → TokenApp reprices from list price
+  sessionId?: string;
+  taskContext?: string;
+}
+
+export interface UsageExport {
+  schema: 'tokenapp.usage.v1';
+  source: string;            // 'openai-api' | 'anthropic-api' | 'openrouter' | 'cursor' | 'claude-code' | ...
+  capturedAt: string;        // ISO8601
+  currency?: string;         // defaults to USD
+  events: UsageEvent[];
+  notes?: string;
+}
+
+// Persisted blob in localStorage — deduped accumulation across multiple imports.
+export interface UsageStore {
+  version: 1;
+  events: UsageEvent[];      // deduped by fingerprint(ts + modelId + inputTokens + outputTokens + sessionId?)
+  imports: Array<{
+    source: string;
+    capturedAt: string;
+    eventCount: number;
+    notes?: string;
+  }>;
+}
 
 export const KV_KEYS = {
   MODELS: 'models:all',
   MODELS_UPDATED: 'models:last_updated',
   SUBSCRIPTIONS: 'subscriptions:all',
+  RANKINGS: 'rankings:all',
 } as const;

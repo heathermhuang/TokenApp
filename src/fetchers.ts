@@ -1,4 +1,4 @@
-import type { Env, NormalizedModel, OpenRouterModel, OpenRouterResponse } from './types';
+import type { Env, NormalizedModel, OpenRouterModel, OpenRouterResponse, RankingsData, ModelRanking, AppRanking, RankingPeriod } from './types';
 import { KV_KEYS } from './types';
 import { getProvider } from './providers';
 import { SUBSCRIPTIONS } from './subscriptions';
@@ -175,9 +175,144 @@ export async function fetchModelsFromOpenRouter(): Promise<NormalizedModel[]> {
     });
 }
 
+// ── Fetch rankings from OpenRouter ───────────────────────────────────────────
+
+export async function fetchRankingsFromOpenRouter(): Promise<RankingsData> {
+  const resp = await fetch('https://openrouter.ai/rankings', {
+    headers: {
+      'User-Agent': 'token.app/1.0 (https://token.app)',
+    },
+    signal: AbortSignal.timeout(30_000),
+  });
+
+  if (!resp.ok) {
+    throw new Error(`OpenRouter rankings fetch error: ${resp.status}`);
+  }
+
+  const html = await resp.text();
+
+  // Parse model rankings from RSC payload
+  const topModels: ModelRanking[] = [];
+  const modelMatch = html.match(/rankingData[\\"]* *: *\[(\{.*?\})\]/s);
+  if (modelMatch) {
+    try {
+      const raw = '[' + modelMatch[1] + ']';
+      const cleaned = raw.replace(/\\"/g, '"');
+      const items = JSON.parse(cleaned) as Array<{
+        model_permaslug?: string;
+        variant_permaslug?: string;
+        total_prompt_tokens?: number;
+        total_completion_tokens?: number;
+        count?: number;
+        date?: string;
+      }>;
+
+      for (const item of items) {
+        topModels.push({
+          modelSlug: item.model_permaslug ?? item.variant_permaslug ?? '',
+          totalTokens: (item.total_prompt_tokens ?? 0) + (item.total_completion_tokens ?? 0),
+          totalRequests: item.count ?? 0,
+          date: item.date ?? '',
+        });
+      }
+    } catch {
+      // Fallback: extract items individually
+      const itemPattern = /\{"date":"([^"]*)"[^}]*"model_permaslug":"([^"]*)"[^}]*"total_completion_tokens":(\d+)[^}]*"total_prompt_tokens":(\d+)[^}]*"count":(\d+)/g;
+      let m;
+      while ((m = itemPattern.exec(html)) !== null) {
+        topModels.push({
+          modelSlug: m[2],
+          totalTokens: parseInt(m[4]) + parseInt(m[3]),
+          totalRequests: parseInt(m[5]),
+          date: m[1],
+        });
+      }
+    }
+  }
+
+  topModels.sort((a, b) => b.totalTokens - a.totalTokens);
+
+  // Parse app rankings from RSC payload
+  // The RSC payload uses double-escaped quotes (\\" instead of ") when fetched server-side.
+  // Normalize first, then extract day/week/month arrays from the rankMap object.
+  const normalizedHtml = html.replace(/\\"/g, '"');
+  const periods: RankingPeriod[] = ['day', 'week', 'month'];
+  const topApps: Record<RankingPeriod, AppRanking[]> = { day: [], week: [], month: [] };
+
+  for (const period of periods) {
+    const needle = `"${period}":[`;
+    // Find this period key inside the rankMap object
+    const rankMapIdx = normalizedHtml.indexOf('"rankMap":{');
+    if (rankMapIdx < 0) continue;
+
+    const periodIdx = normalizedHtml.indexOf(needle, rankMapIdx);
+    if (periodIdx < 0) continue;
+
+    const arrayStart = normalizedHtml.indexOf('[', periodIdx);
+    if (arrayStart < 0) continue;
+
+    let depth = 0;
+    let arrayEnd = -1;
+    for (let i = arrayStart; i < Math.min(arrayStart + 100_000, normalizedHtml.length); i++) {
+      if (normalizedHtml[i] === '[') depth++;
+      else if (normalizedHtml[i] === ']') {
+        depth--;
+        if (depth === 0) { arrayEnd = i + 1; break; }
+      }
+    }
+
+    if (arrayEnd <= 0) continue;
+
+    try {
+      const items = JSON.parse(normalizedHtml.slice(arrayStart, arrayEnd)) as Array<{
+        rank: number;
+        total_tokens: string;
+        total_requests: number;
+        app: {
+          title: string;
+          description: string;
+          origin_url: string;
+          favicon_url: string | null;
+          categories: string[];
+        };
+      }>;
+
+      const seenApps = new Set<string>();
+      for (const item of items) {
+        const title = item.app?.title;
+        if (!title || seenApps.has(title)) continue;
+        seenApps.add(title);
+
+        topApps[period].push({
+          rank: item.rank,
+          title,
+          description: (item.app.description ?? '').slice(0, 120),
+          categories: item.app.categories ?? [],
+          originUrl: item.app.origin_url ?? '',
+          faviconUrl: item.app.favicon_url ?? null,
+          totalTokens: parseInt(item.total_tokens) || 0,
+          totalRequests: item.total_requests ?? 0,
+        });
+
+        if (topApps[period].length >= 20) break;
+      }
+    } catch {
+      // JSON parse failed for this period — leave it empty
+    }
+
+    topApps[period].sort((a, b) => b.totalTokens - a.totalTokens);
+  }
+
+  return {
+    topModels: topModels.slice(0, 20),
+    topApps,
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
 // ── KV refresh (called by cron) ───────────────────────────────────────────────
 
-export async function refreshAllData(env: Env): Promise<{ models: number }> {
+export async function refreshAllData(env: Env): Promise<{ models: number; rankings?: string; rankingsError?: string }> {
   const models = await fetchModelsFromOpenRouter();
 
   await env.TOKEN_APP_KV.put(KV_KEYS.MODELS, JSON.stringify(models), {
@@ -188,7 +323,24 @@ export async function refreshAllData(env: Env): Promise<{ models: number }> {
   // Store subscriptions (static data, updated on deploy)
   await env.TOKEN_APP_KV.put(KV_KEYS.SUBSCRIPTIONS, JSON.stringify(SUBSCRIPTIONS));
 
-  return { models: models.length };
+  // Fetch and store rankings (best-effort, don't fail the whole refresh)
+  let rankingsStatus: string | undefined;
+  let rankingsError: string | undefined;
+  try {
+    const rankings = await fetchRankingsFromOpenRouter();
+    await env.TOKEN_APP_KV.put(KV_KEYS.RANKINGS, JSON.stringify(rankings), {
+      expirationTtl: 7200,
+    });
+    const dayCount = rankings.topApps.day?.length ?? 0;
+    const weekCount = rankings.topApps.week?.length ?? 0;
+    const monthCount = rankings.topApps.month?.length ?? 0;
+    rankingsStatus = `${rankings.topModels.length} models, apps: ${dayCount}d/${weekCount}w/${monthCount}m`;
+  } catch (err) {
+    console.error('Rankings fetch failed (non-fatal):', err);
+    rankingsError = String(err);
+  }
+
+  return { models: models.length, rankings: rankingsStatus, rankingsError };
 }
 
 // ── Read from KV (with stale-while-revalidate fallback) ──────────────────────
@@ -227,4 +379,10 @@ export async function getSubscriptions(env: Env) {
     return SUBSCRIPTIONS;
   }
   return JSON.parse(raw);
+}
+
+export async function getRankings(env: Env): Promise<RankingsData | null> {
+  const raw = await env.TOKEN_APP_KV.get(KV_KEYS.RANKINGS);
+  if (!raw) return null;
+  return JSON.parse(raw) as RankingsData;
 }

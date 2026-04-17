@@ -2,8 +2,10 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { cache } from 'hono/cache';
 import type { Env } from './types';
-import { getModels, getSubscriptions, refreshAllData } from './fetchers';
+import { getModels, getSubscriptions, getRankings, refreshAllData } from './fetchers';
 import { getHtml, getProviderHtml, getAboutHtml } from './template';
+import { getUsageHtml } from './usage-template';
+import { buildRegistry } from '../packages/keyring/registry/build';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -48,6 +50,42 @@ app.get(
     }
   }
 );
+
+app.get(
+  '/api/rankings',
+  cache({ cacheName: 'token-app-rankings', cacheControl: 'max-age=3600, stale-while-revalidate=86400' }),
+  async (c) => {
+    try {
+      const rankings = await getRankings(c.env);
+      if (!rankings) {
+        return c.json({ error: 'Rankings data not yet available' }, 404);
+      }
+      return c.json(rankings);
+    } catch (err) {
+      console.error('Failed to get rankings:', err);
+      return c.json({ error: 'Failed to load rankings' }, 500);
+    }
+  }
+);
+
+// Keyring registry — public BYOK provider + model manifest.
+// Canonical URL: GET /registry.json (also aliased as /api/registry).
+app.use('/registry.json', cors({ origin: '*' }));
+app.get(
+  '/registry.json',
+  cache({ cacheName: 'token-app-registry', cacheControl: 'max-age=300, stale-while-revalidate=3600' }),
+  async (c) => {
+    try {
+      const { models } = await getModels(c.env);
+      const registry = buildRegistry(models);
+      return c.json(registry);
+    } catch (err) {
+      console.error('Failed to build registry:', err);
+      return c.json({ error: 'Failed to build registry', message: String(err) }, 500);
+    }
+  }
+);
+app.get('/api/registry', (c) => c.redirect('/registry.json', 301));
 
 // Admin trigger to force-refresh (simple token auth)
 app.post('/api/refresh', async (c) => {
@@ -157,6 +195,7 @@ It also tracks subscription plans (ChatGPT Plus, Claude Pro, Gemini Advanced, Ki
 - [Qwen / Alibaba pricing](https://token.app/qwen): Qwen3, QwQ, Qwen2.5
 - [NVIDIA pricing](https://token.app/nvidia): NVIDIA-hosted open-source models
 - [Cohere pricing](https://token.app/cohere): Command A, Command R+
+- [Usage Dashboard](https://token.app/usage): Track your own AI spend — paste an export from any provider, get charts and subscription breakeven. Entirely client-side, no account needed.
 - [About / Methodology](https://token.app/about): Data sources, update frequency, methodology
 
 ## Machine-readable data
@@ -210,24 +249,24 @@ app.get('/llms-full.txt', async (c) => {
         const rows = pModels
           .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
           .map((m) => {
-            const ctx = m.contextLength
-              ? (m.contextLength >= 1000000
-                  ? (m.contextLength / 1000000).toFixed(0) + 'M'
-                  : m.contextLength >= 1000
-                  ? (m.contextLength / 1000).toFixed(0) + 'K'
-                  : String(m.contextLength)) + ' ctx'
+            const ctx = m.contextWindow
+              ? (m.contextWindow >= 1000000
+                  ? (m.contextWindow / 1000000).toFixed(0) + 'M'
+                  : m.contextWindow >= 1000
+                  ? (m.contextWindow / 1000).toFixed(0) + 'K'
+                  : String(m.contextWindow)) + ' ctx'
               : '';
-            return `  - ${m.name || m.id}: input ${fmt(m.inputPrice)}/1M tokens, output ${fmt(m.outputPrice)}/1M tokens${ctx ? ', ' + ctx : ''}`;
+            return `  - ${m.name || m.id}: input ${fmt(m.inputPer1M)}/1M tokens, output ${fmt(m.outputPer1M)}/1M tokens${ctx ? ', ' + ctx : ''}`;
           })
           .join('\n');
         return `### ${providerId}\n${rows}`;
       })
       .join('\n\n');
 
-    const subBlocks = subs
+    const subBlocks = (subs as Array<{name: string; providerId: string; tiers: Array<{name: string; monthlyPrice: number | null; annualMonthlyPrice: number | null}>}>)
       .map((s) => {
         const tiers = s.tiers
-          .map((t) => `  - ${t.name}: $${t.price}/mo${t.annualPrice ? ' (or $' + t.annualPrice + '/mo annual)' : ''}`)
+          .map((t) => `  - ${t.name}: ${t.monthlyPrice != null ? '$' + t.monthlyPrice + '/mo' : 'Contact Sales'}${t.annualMonthlyPrice && t.annualMonthlyPrice < (t.monthlyPrice ?? Infinity) ? ' (or $' + t.annualMonthlyPrice + '/mo annual)' : ''}`)
           .join('\n');
         return `### ${s.name}\nProvider: ${s.providerId}\n${tiers}`;
       })
@@ -314,6 +353,11 @@ app.get('/sitemap.xml', (c) => {
     <priority>0.9</priority>
   </url>
   <url>
+    <loc>https://token.app/usage</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://token.app/about</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
@@ -395,6 +439,29 @@ app.get('/about', (c) => {
   });
 });
 
+// ── Usage dashboard ───────────────────────────────────────────────────────────
+
+app.get('/usage', async (c) => {
+  try {
+    const [{ models, lastUpdated }, subs] = await Promise.all([
+      getModels(c.env),
+      getSubscriptions(c.env),
+    ]);
+    const html = getUsageHtml({
+      initialModels: JSON.stringify(models),
+      initialSubscriptions: JSON.stringify(subs),
+      lastUpdated,
+    });
+    return c.html(html, 200, {
+      'Cache-Control': 'public, max-age=60, stale-while-revalidate=300',
+    });
+  } catch (err) {
+    console.error('Usage page SSR failed:', err);
+    const html = getUsageHtml({});
+    return c.html(html, 200, { 'Cache-Control': 'public, max-age=30' });
+  }
+});
+
 // ── Provider pages ────────────────────────────────────────────────────────────
 
 async function handleProviderPage(c: any, providerId: string) {
@@ -420,14 +487,16 @@ for (const slug of PROVIDER_SLUGS) {
 app.get('/', async (c) => {
   try {
     // Server-side render with initial data (avoids client-side waterfall)
-    const [{ models, lastUpdated }, subs] = await Promise.all([
+    const [{ models, lastUpdated }, subs, rankings] = await Promise.all([
       getModels(c.env),
       getSubscriptions(c.env),
+      getRankings(c.env),
     ]);
 
     const html = getHtml({
       initialModels: JSON.stringify(models),
       initialSubscriptions: JSON.stringify(subs),
+      initialRankings: rankings ? JSON.stringify(rankings) : 'null',
       lastUpdated,
     });
 

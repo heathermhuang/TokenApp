@@ -5,3 +5,4 @@ dist/
 .env
 .dev.vars
 .gstack/
+wrangler.toml
