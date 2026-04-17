@@ -1,0 +1,54 @@
+{
+  "name": "keyring-client",
+  "version": "0.1.0",
+  "description": "BYOK LLM client + public registry. One JSON manifest for every major provider (auth, endpoints, protocol family, models); pluggable key storage; protocol-family adapters for OpenAI/Anthropic/Google/Cohere.",
+  "type": "module",
+  "main": "./dist/client/index.js",
+  "types": "./dist/client/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.js"
+    },
+    "./registry": {
+      "types": "./dist/registry/schema.d.ts",
+      "import": "./dist/registry/schema.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "keywords": [
+    "llm",
+    "ai",
+    "byok",
+    "openai",
+    "anthropic",
+    "gemini",
+    "claude",
+    "keyring",
+    "registry",
+    "openrouter"
+  ],
+  "license": "MIT",
+  "homepage": "https://token.app/keyring",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/heathermhuang/TokenApp.git",
+    "directory": "packages/keyring"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "sideEffects": false
+}
