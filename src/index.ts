@@ -5,6 +5,7 @@ import type { Env } from './types';
 import { getModels, getSubscriptions, getRankings, refreshAllData } from './fetchers';
 import { getHtml, getProviderHtml, getAboutHtml } from './template';
 import { getUsageHtml } from './usage-template';
+import { buildRegistry } from '../packages/keyring/registry/build';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -66,6 +67,25 @@ app.get(
     }
   }
 );
+
+// Keyring registry — public BYOK provider + model manifest.
+// Canonical URL: GET /registry.json (also aliased as /api/registry).
+app.use('/registry.json', cors({ origin: '*' }));
+app.get(
+  '/registry.json',
+  cache({ cacheName: 'token-app-registry', cacheControl: 'max-age=300, stale-while-revalidate=3600' }),
+  async (c) => {
+    try {
+      const { models } = await getModels(c.env);
+      const registry = buildRegistry(models);
+      return c.json(registry);
+    } catch (err) {
+      console.error('Failed to build registry:', err);
+      return c.json({ error: 'Failed to build registry', message: String(err) }, 500);
+    }
+  }
+);
+app.get('/api/registry', (c) => c.redirect('/registry.json', 301));
 
 // Admin trigger to force-refresh (simple token auth)
 app.post('/api/refresh', async (c) => {
