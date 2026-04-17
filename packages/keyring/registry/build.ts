@@ -9,6 +9,7 @@
 import type { NormalizedModel } from '../../../src/types';
 import type { KeyringRegistry, Provider, RegistryModel, ModelCapability } from './schema';
 import { PROVIDER_SEEDS, type ProviderSeed } from './providers';
+import { NATIVE_MODEL_SEEDS, NATIVE_SEED_PRICING_AS_OF } from './native-seed';
 
 export interface BuildOptions {
   sourceCommit?: string;
@@ -43,14 +44,25 @@ function attachModels(seed: ProviderSeed, allModels: NormalizedModel[]): Provide
       (m) => m.providerId === providerIdOnOpenRouter && !m.isDeprecated
     );
   }
-  // nativeOnly providers (Groq, Together, Fireworks) get an empty list in v0.
-  // Follow-up: ship hand-curated model seeds per provider, or scrape their
-  // /models endpoints. For now the client can still use them if the user
-  // hand-types a model id.
 
-  const models = matched.map((m) => toRegistryModel(m, seed.id));
+  const fromOpenRouter = matched.map((m) => toRegistryModel(m, seed.id));
+  const native = NATIVE_MODEL_SEEDS[seed.id] ?? [];
 
-  return { ...providerFields, models } as Provider;
+  // Native seeds win on id collision — they carry the provider-native
+  // `providerModelId` (e.g. 'accounts/fireworks/models/...') which is required
+  // to actually call that provider's API.
+  const byId = new Map<string, RegistryModel>();
+  for (const m of fromOpenRouter) byId.set(m.id, m);
+  for (const m of native) byId.set(m.id, m);
+  const models = Array.from(byId.values());
+
+  const pricingAsOf = NATIVE_SEED_PRICING_AS_OF[seed.id];
+
+  return {
+    ...providerFields,
+    ...(pricingAsOf ? { pricingAsOf } : {}),
+    models,
+  } as Provider;
 }
 
 function toRegistryModel(m: NormalizedModel, providerKeyringId: string): RegistryModel {
