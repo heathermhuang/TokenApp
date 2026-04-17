@@ -5,6 +5,7 @@ import type { Env } from './types';
 import { getModels, getSubscriptions, getRankings, refreshAllData } from './fetchers';
 import { getHtml, getProviderHtml, getAboutHtml } from './template';
 import { getUsageHtml } from './usage-template';
+import { getKeyringHtml } from './keyring-template';
 import { buildRegistry } from '../packages/keyring/registry/build';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -86,6 +87,9 @@ app.get(
   }
 );
 app.get('/api/registry', (c) => c.redirect('/registry.json', 301));
+
+// Keyring demo page — live BYOK flow with the registry.
+app.get('/keyring', (c) => c.html(getKeyringHtml()));
 
 // Admin trigger to force-refresh (simple token auth)
 app.post('/api/refresh', async (c) => {
