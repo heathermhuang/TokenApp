@@ -17,6 +17,7 @@ import { injectWebMcp, buildAgentSkillsIndex } from './agent-extras';
 import {
   buildAuthorizationServerMetadata,
   buildOpenIdConfiguration,
+  buildProtectedResourceMetadata,
   EMPTY_JWKS,
 } from './oauth-discovery';
 
@@ -40,6 +41,7 @@ const LINK_HEADER = [
   '</.well-known/mcp>; rel="service-desc"; type="application/json"; title="MCP server card"',
   '</.well-known/oauth-authorization-server>; rel="oauth-authorization-server"; type="application/json"',
   '</.well-known/openid-configuration>; rel="openid-configuration"; type="application/json"',
+  '</.well-known/oauth-protected-resource>; rel="oauth-protected-resource"; type="application/json"',
   '</mcp>; rel="service"; type="application/json"; title="MCP JSON-RPC endpoint"',
 ].join(', ');
 
@@ -140,7 +142,10 @@ app.post('/api/refresh', async (c) => {
     return c.json({ error: 'REFRESH_SECRET env var not configured' }, 500);
   }
   if (authHeader !== `Bearer ${expectedToken}`) {
-    return c.json({ error: 'Unauthorized' }, 401);
+    const origin = new URL(c.req.url).origin;
+    return c.json({ error: 'Unauthorized' }, 401, {
+      'WWW-Authenticate': `Bearer realm="token.app", scope="admin:refresh", resource_metadata="${origin}/.well-known/oauth-protected-resource"`,
+    });
   }
   try {
     const result = await refreshAllData(c.env);
@@ -203,6 +208,11 @@ app.get('/.well-known/api-catalog', (c) => {
             type: 'application/json',
             title: 'OpenID Connect discovery',
           },
+          {
+            href: `${origin}/.well-known/oauth-protected-resource`,
+            type: 'application/json',
+            title: 'OAuth 2.0 Protected Resource Metadata (RFC 9728)',
+          },
         ],
       },
     ],
@@ -248,6 +258,12 @@ app.get('/.well-known/openid-configuration', (c) => {
 app.get('/.well-known/jwks.json', (c) =>
   c.json(EMPTY_JWKS, 200, { 'Cache-Control': 'public, max-age=3600' })
 );
+app.get('/.well-known/oauth-protected-resource', (c) => {
+  const origin = new URL(c.req.url).origin;
+  return c.json(buildProtectedResourceMetadata(origin), 200, {
+    'Cache-Control': 'public, max-age=3600',
+  });
+});
 
 // Stub OAuth endpoints. We don't run an interactive authorization server;
 // these return 501 with a descriptive body so conformance probes find a

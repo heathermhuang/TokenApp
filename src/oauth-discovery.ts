@@ -40,3 +40,17 @@ export function buildOpenIdConfiguration(origin: string) {
 // Empty JWKS — we don't issue or verify JWTs. A valid empty document keeps
 // the jwks_uri pointer from 404ing for conformance checks.
 export const EMPTY_JWKS = { keys: [] as unknown[] };
+
+// RFC 9728 Protected Resource Metadata. Declares token.app as a resource
+// server whose authorization server is itself. Only /api/refresh is
+// actually protected; the rest of the surface is public and requires no
+// token. `scopes_supported` is advertised for the protected endpoint.
+export function buildProtectedResourceMetadata(origin: string) {
+  return {
+    resource: origin,
+    authorization_servers: [origin],
+    scopes_supported: ['admin:refresh'],
+    bearer_methods_supported: ['header'],
+    resource_documentation: `${origin}/about`,
+  };
+}
