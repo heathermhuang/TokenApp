@@ -14,6 +14,11 @@ import {
 } from './markdown-pages';
 import { handleMcpRequest, buildMcpServerCard } from './mcp';
 import { injectWebMcp, buildAgentSkillsIndex } from './agent-extras';
+import {
+  buildAuthorizationServerMetadata,
+  buildOpenIdConfiguration,
+  EMPTY_JWKS,
+} from './oauth-discovery';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -33,6 +38,8 @@ const LINK_HEADER = [
   '</llms-full.txt>; rel="alternate"; type="text/plain"; title="Full pricing data"',
   '</.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+json"',
   '</.well-known/mcp>; rel="service-desc"; type="application/json"; title="MCP server card"',
+  '</.well-known/oauth-authorization-server>; rel="oauth-authorization-server"; type="application/json"',
+  '</.well-known/openid-configuration>; rel="openid-configuration"; type="application/json"',
   '</mcp>; rel="service"; type="application/json"; title="MCP JSON-RPC endpoint"',
 ].join(', ');
 
@@ -186,6 +193,16 @@ app.get('/.well-known/api-catalog', (c) => {
         ],
         'service-meta': [
           { href: `${origin}/.well-known/mcp`, type: 'application/json' },
+          {
+            href: `${origin}/.well-known/oauth-authorization-server`,
+            type: 'application/json',
+            title: 'OAuth 2.0 authorization server metadata (RFC 8414)',
+          },
+          {
+            href: `${origin}/.well-known/openid-configuration`,
+            type: 'application/json',
+            title: 'OpenID Connect discovery',
+          },
         ],
       },
     ],
@@ -212,6 +229,91 @@ for (const path of MCP_CARD_PATHS) {
     });
   });
 }
+
+// OAuth 2.0 / OIDC discovery metadata. See src/oauth-discovery.ts for the
+// rationale — token.app has no user accounts, only an admin refresh token
+// shaped as client_credentials, and we publish honest minimal metadata.
+app.get('/.well-known/oauth-authorization-server', (c) => {
+  const origin = new URL(c.req.url).origin;
+  return c.json(buildAuthorizationServerMetadata(origin), 200, {
+    'Cache-Control': 'public, max-age=3600',
+  });
+});
+app.get('/.well-known/openid-configuration', (c) => {
+  const origin = new URL(c.req.url).origin;
+  return c.json(buildOpenIdConfiguration(origin), 200, {
+    'Cache-Control': 'public, max-age=3600',
+  });
+});
+app.get('/.well-known/jwks.json', (c) =>
+  c.json(EMPTY_JWKS, 200, { 'Cache-Control': 'public, max-age=3600' })
+);
+
+// Stub OAuth endpoints. We don't run an interactive authorization server;
+// these return 501 with a descriptive body so conformance probes find a
+// real endpoint but misconfigured clients aren't silently accepted.
+app.get('/oauth/authorize', (c) =>
+  c.json(
+    {
+      error: 'unsupported_response_type',
+      error_description:
+        'token.app does not operate an interactive OAuth authorization server. Public data requires no authentication; the admin /api/refresh endpoint accepts a static Bearer token via client_credentials at /oauth/token.',
+    },
+    501
+  )
+);
+app.post('/oauth/token', async (c) => {
+  // Minimal client_credentials validator — mirrors /api/refresh auth so
+  // the advertised grant type is actually accepted. Accepts
+  // application/x-www-form-urlencoded or JSON.
+  const expected = c.env.REFRESH_SECRET;
+  if (!expected) {
+    return c.json({ error: 'server_error', error_description: 'REFRESH_SECRET not configured' }, 500);
+  }
+  let grantType: string | undefined;
+  let clientSecret: string | undefined;
+  const ct = c.req.header('content-type') || '';
+  try {
+    if (ct.includes('application/json')) {
+      const body = (await c.req.json()) as Record<string, unknown>;
+      grantType = typeof body.grant_type === 'string' ? body.grant_type : undefined;
+      clientSecret = typeof body.client_secret === 'string' ? body.client_secret : undefined;
+    } else {
+      const form = await c.req.parseBody();
+      grantType = typeof form.grant_type === 'string' ? form.grant_type : undefined;
+      clientSecret = typeof form.client_secret === 'string' ? form.client_secret : undefined;
+    }
+  } catch {
+    return c.json({ error: 'invalid_request' }, 400);
+  }
+  // HTTP Basic fallback for client_secret_basic.
+  const auth = c.req.header('authorization');
+  if (!clientSecret && auth?.toLowerCase().startsWith('basic ')) {
+    try {
+      const decoded = atob(auth.slice(6).trim());
+      const sep = decoded.indexOf(':');
+      if (sep >= 0) clientSecret = decoded.slice(sep + 1);
+    } catch {
+      // fall through to invalid_client
+    }
+  }
+  if (grantType !== 'client_credentials') {
+    return c.json({ error: 'unsupported_grant_type' }, 400);
+  }
+  if (!clientSecret || clientSecret !== expected) {
+    return c.json({ error: 'invalid_client' }, 401);
+  }
+  return c.json(
+    {
+      access_token: expected,
+      token_type: 'Bearer',
+      expires_in: 3600,
+      scope: 'admin:refresh',
+    },
+    200,
+    { 'Cache-Control': 'no-store', Pragma: 'no-cache' }
+  );
+});
 
 // Agent Skills index (agentskills.io). Scanners probe two candidate paths.
 const AGENT_SKILLS_PATHS = [
