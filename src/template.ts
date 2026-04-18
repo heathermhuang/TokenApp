@@ -243,6 +243,70 @@ export function getHtml(params: {
 
     .nav-brand .diamond { color: var(--accent); font-size: 18px; }
 
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      margin-left: 8px;
+      font-size: 13px;
+    }
+
+    .nav-link {
+      color: var(--text3);
+      text-decoration: none;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: color 0.15s;
+    }
+    .nav-link:hover { color: var(--text); }
+
+    .nav-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 6px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      color: #fff;
+      background: var(--accent);
+      border-radius: 4px;
+      line-height: 1.4;
+    }
+
+    .hero-announce {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin: 14px auto 0;
+      padding: 6px 12px 6px 10px;
+      font-size: 13px;
+      color: var(--text2);
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      text-decoration: none;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+    .hero-announce:hover {
+      border-color: var(--accent);
+      color: var(--text);
+    }
+    .hero-announce .hero-announce-badge {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      color: #fff;
+      background: var(--accent);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .hero-announce .arrow { color: var(--text3); transition: transform 0.15s; }
+    .hero-announce:hover .arrow { transform: translateX(2px); color: var(--accent); }
+
     .nav-meta {
       display: flex;
       align-items: center;
@@ -1250,6 +1314,9 @@ export function getHtml(params: {
     @media (max-width: 768px) {
       /* Nav */
       .nav-meta { display: none; }
+      .nav-links { gap: 12px; font-size: 12px; margin-left: 0; }
+      .nav-links .nav-badge { display: none; }
+      .hero-announce { font-size: 12px; padding: 5px 10px 5px 8px; }
 
       /* Hero: tighter vertical rhythm */
       .hero { padding: 16px 16px 14px; }
@@ -1303,6 +1370,11 @@ export function getHtml(params: {
     <span class="diamond">◈</span>
     <span>token.app</span>
   </a>
+  <div class="nav-links">
+    <a href="/keyring" class="nav-link">Keyring<span class="nav-badge">New</span></a>
+    <a href="/usage" class="nav-link">Usage</a>
+    <a href="/about" class="nav-link">About</a>
+  </div>
   <div class="nav-meta">
     <span id="nav-model-count">Loading…</span>
     <span class="dot">·</span>
@@ -1333,6 +1405,11 @@ export function getHtml(params: {
 <section class="hero">
   <h1>AI Token &amp; Subscription<br/><span>Pricing Tracker</span></h1>
   <p>Real-time token costs and subscription pricing across the AI ecosystem. Compare <span id="stat-desc-models">—</span> models from <span id="stat-desc-providers">—</span> providers.</p>
+  <a href="/keyring" class="hero-announce">
+    <span class="hero-announce-badge">New</span>
+    <span>Bring your own key — try the BYOK keyring demo</span>
+    <span class="arrow">→</span>
+  </a>
   <div class="stats-row">
     <div class="stat">
       <span class="stat-value" id="stat-models">—</span>
@@ -1531,7 +1608,8 @@ export function getHtml(params: {
 
 <!-- ── Footer ───────────────────────────────────────────────────────────────── -->
 <footer>
-  <p>Data sourced from <a href="https://openrouter.ai">OpenRouter</a> and provider pricing pages. Prices shown for reference — always verify with official sources.</p>
+  <p><a href="/keyring">Keyring</a> · <a href="/usage">Usage</a> · <a href="/about">About</a> · <a href="/llms.txt">llms.txt</a> · <a href="/registry.json">registry.json</a> · <a href="/mcp">MCP</a></p>
+  <p style="margin-top: 8px;">Data sourced from <a href="https://openrouter.ai">OpenRouter</a> and provider pricing pages. Prices shown for reference — always verify with official sources.</p>
   <p style="margin-top: 6px;">Built on <a href="https://workers.cloudflare.com">Cloudflare Workers</a> · Updates every hour</p>
   <p class="footer-powered">
     Powered by <a href="https://measurable.ai" target="_blank" rel="noopener">Measurable AI</a>
