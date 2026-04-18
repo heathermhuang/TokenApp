@@ -7,6 +7,13 @@ import { getHtml, getProviderHtml, getAboutHtml } from './template';
 import { getUsageHtml } from './usage-template';
 import { getKeyringHtml } from './keyring-template';
 import { buildRegistry } from '../packages/keyring/registry/build';
+import {
+  buildHomeMarkdown,
+  buildProviderMarkdown,
+  buildAboutMarkdown,
+} from './markdown-pages';
+import { handleMcpRequest, buildMcpServerCard } from './mcp';
+import { injectWebMcp, buildAgentSkillsIndex } from './agent-extras';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -17,6 +24,33 @@ app.use('*', async (c, next) => {
   c.res.headers.set('X-Frame-Options', 'SAMEORIGIN');
   c.res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
 });
+
+// Agent-discovery Link headers — advertise machine-readable resources.
+// Advertised once on every response; small overhead, big signal for crawlers.
+const LINK_HEADER = [
+  '</sitemap.xml>; rel="sitemap"; type="application/xml"',
+  '</llms.txt>; rel="describedby"; type="text/plain"',
+  '</llms-full.txt>; rel="alternate"; type="text/plain"; title="Full pricing data"',
+  '</.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+json"',
+  '</.well-known/mcp>; rel="service-desc"; type="application/json"; title="MCP server card"',
+  '</mcp>; rel="service"; type="application/json"; title="MCP JSON-RPC endpoint"',
+].join(', ');
+
+app.use('*', async (c, next) => {
+  await next();
+  // Only set Link on successful HTML/text responses; avoid noise on JSON API.
+  const ct = c.res.headers.get('content-type') || '';
+  if (ct.startsWith('text/')) {
+    c.res.headers.set('Link', LINK_HEADER);
+  }
+});
+
+// Accept: text/markdown content negotiation helper.
+// Treat `text/markdown` as preferred only when explicitly listed (not via */*).
+function wantsMarkdown(accept: string | undefined): boolean {
+  if (!accept) return false;
+  return /\btext\/markdown\b/i.test(accept);
+}
 
 // CORS for API endpoints — public data, open to all origins
 // Intent: this is a public pricing API. Restrict if that changes.
@@ -106,6 +140,129 @@ app.post('/api/refresh', async (c) => {
     return c.json({ ok: true, ...result });
   } catch (err) {
     return c.json({ error: String(err) }, 500);
+  }
+});
+
+// ── Agent Discovery ──────────────────────────────────────────────────────────
+
+// RFC 9727 API Catalog — linkset of public JSON APIs and alternate representations.
+app.get('/.well-known/api-catalog', (c) => {
+  const origin = new URL(c.req.url).origin;
+  const linkset = {
+    linkset: [
+      {
+        anchor: `${origin}/`,
+        'service-desc': [
+          {
+            href: `${origin}/api/models`,
+            type: 'application/json',
+            title: 'Models pricing API',
+          },
+          {
+            href: `${origin}/api/subscriptions`,
+            type: 'application/json',
+            title: 'Subscription plans API',
+          },
+          {
+            href: `${origin}/api/rankings`,
+            type: 'application/json',
+            title: 'Model usage rankings API',
+          },
+          {
+            href: `${origin}/registry.json`,
+            type: 'application/json',
+            title: 'BYOK keyring registry',
+          },
+          {
+            href: `${origin}/mcp`,
+            type: 'application/json',
+            title: 'MCP JSON-RPC endpoint (POST)',
+          },
+        ],
+        'service-doc': [
+          { href: `${origin}/llms.txt`, type: 'text/plain' },
+          { href: `${origin}/llms-full.txt`, type: 'text/plain' },
+          { href: `${origin}/about`, type: 'text/html' },
+        ],
+        'service-meta': [
+          { href: `${origin}/.well-known/mcp`, type: 'application/json' },
+        ],
+      },
+    ],
+  };
+  return c.json(linkset, 200, {
+    'Content-Type': 'application/linkset+json',
+    'Cache-Control': 'public, max-age=3600',
+  });
+});
+
+// MCP server discovery card.
+// Scanners probe multiple candidate paths; serve the card from all of them.
+const MCP_CARD_PATHS = [
+  '/.well-known/mcp',
+  '/.well-known/mcp.json',
+  '/.well-known/mcp/server-card.json',
+  '/.well-known/mcp/server-cards.json',
+];
+for (const path of MCP_CARD_PATHS) {
+  app.get(path, (c) => {
+    const origin = new URL(c.req.url).origin;
+    return c.json(buildMcpServerCard(origin), 200, {
+      'Cache-Control': 'public, max-age=3600',
+    });
+  });
+}
+
+// Agent Skills index (agentskills.io). Scanners probe two candidate paths.
+const AGENT_SKILLS_PATHS = [
+  '/.well-known/agent-skills/index.json',
+  '/.well-known/skills/index.json',
+];
+for (const path of AGENT_SKILLS_PATHS) {
+  app.get(path, (c) => {
+    const origin = new URL(c.req.url).origin;
+    return c.json(buildAgentSkillsIndex(origin), 200, {
+      'Cache-Control': 'public, max-age=3600',
+    });
+  });
+}
+
+// MCP JSON-RPC endpoint (streamable HTTP transport).
+app.use('/mcp', cors({ origin: '*' }));
+app.get('/mcp', (c) => {
+  // Simple GET: return the server card so humans hitting /mcp in a browser
+  // see something useful. MCP clients POST JSON-RPC here.
+  const origin = new URL(c.req.url).origin;
+  return c.json(buildMcpServerCard(origin));
+});
+app.post('/mcp', async (c) => {
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json(
+      { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } },
+      400
+    );
+  }
+  try {
+    const [{ models }, subscriptions] = await Promise.all([
+      getModels(c.env),
+      getSubscriptions(c.env),
+    ]);
+    const registry = buildRegistry(models);
+    const response = await handleMcpRequest(body, { models, subscriptions, registry });
+    return c.json(response);
+  } catch (err) {
+    console.error('MCP handler failed:', err);
+    return c.json(
+      {
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32603, message: 'Internal error', data: String(err) },
+      },
+      500
+    );
   }
 });
 
@@ -438,8 +595,16 @@ app.get('/og.png', (c) => {
 // ── About page ────────────────────────────────────────────────────────────────
 
 app.get('/about', (c) => {
-  return c.html(getAboutHtml(), 200, {
+  if (wantsMarkdown(c.req.header('Accept'))) {
+    return c.body(buildAboutMarkdown(), 200, {
+      'Content-Type': 'text/markdown; charset=utf-8',
+      'Cache-Control': 'public, max-age=3600',
+      Vary: 'Accept',
+    });
+  }
+  return c.html(injectWebMcp(getAboutHtml()), 200, {
     'Cache-Control': 'public, max-age=3600',
+    Vary: 'Accept',
   });
 });
 
@@ -472,9 +637,17 @@ async function handleProviderPage(c: any, providerId: string) {
   try {
     const { models } = await getModels(c.env);
     const filtered = models.filter((m: any) => m.providerId === providerId);
-    const html = getProviderHtml({ providerId, models: filtered });
+    if (wantsMarkdown(c.req.header('Accept'))) {
+      return c.body(buildProviderMarkdown(providerId, filtered), 200, {
+        'Content-Type': 'text/markdown; charset=utf-8',
+        'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600',
+        Vary: 'Accept',
+      });
+    }
+    const html = injectWebMcp(getProviderHtml({ providerId, models: filtered }));
     return c.html(html, 200, {
       'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600',
+      Vary: 'Accept',
     });
   } catch (err) {
     console.error('Provider page failed:', err);
@@ -497,15 +670,24 @@ app.get('/', async (c) => {
       getRankings(c.env),
     ]);
 
-    const html = getHtml({
+    if (wantsMarkdown(c.req.header('Accept'))) {
+      return c.body(buildHomeMarkdown(models, subs as any, lastUpdated), 200, {
+        'Content-Type': 'text/markdown; charset=utf-8',
+        'Cache-Control': 'public, max-age=60, stale-while-revalidate=300',
+        Vary: 'Accept',
+      });
+    }
+
+    const html = injectWebMcp(getHtml({
       initialModels: JSON.stringify(models),
       initialSubscriptions: JSON.stringify(subs),
       initialRankings: rankings ? JSON.stringify(rankings) : 'null',
       lastUpdated,
-    });
+    }));
 
     return c.html(html, 200, {
       'Cache-Control': 'public, max-age=60, stale-while-revalidate=300',
+      Vary: 'Accept',
     });
   } catch (err) {
     // Fallback: serve shell without initial data, client fetches it
