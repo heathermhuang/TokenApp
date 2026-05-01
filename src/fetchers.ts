@@ -128,6 +128,7 @@ export function normalizeModel(raw: OpenRouterModel): NormalizedModel {
       raw.name.toLowerCase().includes('(old)'),
     createdAt: raw.created ?? null,
     description: raw.description,
+    huggingFaceId: raw.hugging_face_id || null,
   };
 }
 

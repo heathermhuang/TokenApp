@@ -1866,7 +1866,7 @@ const PROVIDER_URLS = {
   perplexityai:         'https://www.perplexity.ai/',
   perplexity:           'https://www.perplexity.ai/',
   nvidia:               'https://build.nvidia.com/models',
-  amazon:               'https://aws.amazon.com/bedrock/foundation-models/',
+  amazon:               'https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html',
   microsoft:            'https://ai.azure.com/explore/models',
   inflection:           'https://inflection.ai/',
   writer:               'https://writer.com/',
@@ -1926,13 +1926,13 @@ const MODEL_PAGE_URLS = {
   google:               'https://ai.google.dev/gemini-api/docs/models',
   'meta-llama':         'https://ai.meta.com/models/',
   mistralai:            'https://mistral.ai/technology/',
-  deepseek:             'https://github.com/deepseek-ai',
+  deepseek:             'https://huggingface.co/deepseek-ai',
   'x-ai':               'https://x.ai/grok',
   cohere:               'https://cohere.com/models',
   perplexityai:         'https://docs.perplexity.ai/models/model-cards',
   perplexity:           'https://docs.perplexity.ai/models/model-cards',
   nvidia:               'https://build.nvidia.com/models',
-  amazon:               'https://aws.amazon.com/bedrock/foundation-models/',
+  amazon:               'https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html',
   microsoft:            'https://ai.azure.com/explore/models',
   qwen:                 'https://qwenlm.github.io/',
   alibaba:              'https://qwenlm.github.io/',
@@ -1974,17 +1974,14 @@ function safeUrl(url) {
 
 function getModelUrl(m) {
   var url;
-  if (m.providerId === 'openai') {
+  // Prefer Hugging Face model card when OpenRouter advertises one — canonical for
+  // open-weight families (DeepSeek, Qwen, Llama, Mistral, etc.) and always 200s.
+  if (m.huggingFaceId) {
+    url = 'https://huggingface.co/' + m.huggingFaceId;
+  } else if (m.providerId === 'openai') {
     url = 'https://platform.openai.com/docs/models/' + m.slug;
-  } else if (m.providerId === 'mistralai') {
-    var s = m.slug;
-    var ci = s.indexOf(':'); if (ci !== -1) s = s.slice(0, ci);
-    if (s.slice(-7) === '-latest') s = s.slice(0, -7);
-    url = 'https://mistral.ai/models/' + s;
   } else if (m.providerId === 'nvidia') {
     url = 'https://build.nvidia.com/' + m.id;
-  } else if (m.providerId === 'deepseek') {
-    url = 'https://github.com/deepseek-ai/' + m.slug.split('/').join('-');
   } else {
     url = MODEL_PAGE_URLS[m.providerId] || PROVIDER_URLS[m.providerId] || 'https://openrouter.ai/' + m.id;
   }

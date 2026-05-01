@@ -27,6 +27,7 @@ export interface NormalizedModel {
   isDeprecated: boolean;
   createdAt: number | null;    // unix timestamp
   description?: string;
+  huggingFaceId?: string | null;  // e.g. "deepseek-ai/DeepSeek-V3" — when present, canonical model card link
 }
 
 // ── Subscription data (static) ────────────────────────────────────────────────
@@ -83,6 +84,8 @@ export interface OpenRouterModel {
     prompt_tokens: string;
     completion_tokens: string;
   };
+  hugging_face_id?: string | null;
+  canonical_slug?: string | null;
 }
 
 export interface OpenRouterResponse {
