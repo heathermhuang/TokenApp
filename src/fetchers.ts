@@ -507,6 +507,18 @@ async function aggregateRange(env: Env, kind: 'model' | 'app', days: number): Pr
   return result.results ?? [];
 }
 
+// Count distinct calendar days of app snapshots in the trailing `days` window.
+// Gates week/month aggregations: with < N days of history, SUMming daily
+// snapshots would label a 1- or 2-day total as a "7D"/"30D" total — fake.
+async function countAppDaysInRange(env: Env, days: number): Promise<number> {
+  const cutoff = new Date(Date.now() - days * 86400_000).toISOString();
+  const row = await env.RANKINGS_DB
+    .prepare(`SELECT COUNT(DISTINCT snapshot_day) AS n FROM rankings_snapshots WHERE kind = 'app' AND period = 'day' AND snapshot_at >= ?`)
+    .bind(cutoff)
+    .first<{ n: number }>();
+  return Number(row?.n) || 0;
+}
+
 async function aggregateApps(env: Env, days: number): Promise<AppRanking[]> {
   const rows = await aggregateRange(env, 'app', days);
   return rows.map((r, i) => ({
@@ -636,26 +648,36 @@ export async function getSubscriptions(env: Env) {
 // this — the period toggle effectively only affects the apps panel.
 //
 // Apps: 'day' = latest day snapshot; 'week' = SUM over the last 7 daily
-// snapshots; 'month' = SUM over the last 30 daily snapshots. The week/month
-// aggregations populate over time as history accumulates.
+// snapshots BUT only when 7 distinct calendar days of history exist;
+// 'month' = same with 30. With insufficient history we return an empty list
+// plus `appsHistoryDays` so the UI can render an honest progress state
+// instead of a fabricated total derived from fewer than N days of data.
 //
 // Falls back to KV (legacy single-period blob) when D1 reads fail.
 export async function getRankings(
   env: Env,
   period: RankingPeriod = 'day',
 ): Promise<RankingsData | null> {
+  const requiredDays = period === 'week' ? 7 : period === 'month' ? 30 : 0;
   try {
     const modelsTask = readLatestModels(env, 'week');
-    let appsTask: Promise<AppRanking[]>;
+
+    let apps: AppRanking[];
+    let appsHistoryDays: number | undefined;
     if (period === 'day') {
-      appsTask = readLatestApps(env);
-    } else if (period === 'week') {
-      appsTask = aggregateApps(env, 7);
+      apps = await readLatestApps(env);
     } else {
-      appsTask = aggregateApps(env, 30);
+      // Gate the aggregation behind real days-of-history. Without this check,
+      // 1 day of snapshots SUMs to ~the same total as 24H but gets labelled
+      // "7D"/"30D" — misleading.
+      appsHistoryDays = await countAppDaysInRange(env, requiredDays);
+      apps = appsHistoryDays >= requiredDays
+        ? await aggregateApps(env, requiredDays)
+        : [];
     }
-    const [models, apps] = await Promise.all([modelsTask, appsTask]);
-    if (models.length > 0 || apps.length > 0) {
+
+    const models = await modelsTask;
+    if (models.length > 0 || apps.length > 0 || appsHistoryDays !== undefined) {
       // Return apps under the requested period key so the client doesn't
       // have to know about empty-array vs missing-key fallback semantics.
       const topApps: Record<RankingPeriod, AppRanking[]> = { day: [], week: [], month: [] };
@@ -664,6 +686,8 @@ export async function getRankings(
         topModels: models,
         topApps,
         fetchedAt: (await latestSnapshotAt(env, 'model', 'week')) ?? new Date().toISOString(),
+        appsHistoryDays,
+        appsHistoryRequired: requiredDays > 0 ? requiredDays : undefined,
       };
     }
   } catch (err) {

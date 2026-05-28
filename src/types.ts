@@ -120,6 +120,12 @@ export interface RankingsData {
   topModels: ModelRanking[];
   topApps: Record<RankingPeriod, AppRanking[]>;
   fetchedAt: string;
+  // Distinct calendar days of app snapshots in the requested window. Only
+  // set for week/month responses — day reads the latest snapshot directly.
+  // When this is < appsHistoryRequired, topApps[period] is empty and the
+  // client renders an "accumulating history" state rather than a fake total.
+  appsHistoryDays?: number;
+  appsHistoryRequired?: number;
 }
 
 // ── Usage dashboard (Phase 1 — BYO-export, client-side only) ─────────────────

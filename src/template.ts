@@ -2265,13 +2265,21 @@ function renderRankings() {
   var appsData = state.rankings.topApps || {};
   // Support both old format (array) and new format (record by period). Note:
   // [] is truthy in JS, so appsData[period] || appsData.day would stick on
-  // an empty array — pick via length instead.
+  // an empty array — pick via length instead. For non-day periods we
+  // intentionally do NOT fall back to .day data: showing daily totals under
+  // a "7D"/"30D" label is the bug we're fixing.
   var apps;
   if (Array.isArray(appsData)) {
     apps = appsData;
   } else {
     var byPeriod = appsData[state.rankingsPeriod];
-    apps = (byPeriod && byPeriod.length > 0) ? byPeriod : (appsData.day || []);
+    if (byPeriod && byPeriod.length > 0) {
+      apps = byPeriod;
+    } else if (state.rankingsPeriod === 'day') {
+      apps = appsData.day || [];
+    } else {
+      apps = [];
+    }
   }
 
   if (models.length > 0) {
@@ -2318,8 +2326,34 @@ function renderRankings() {
       '</li>';
     }).join('');
   } else {
-    appList.innerHTML = '<li style="padding:40px;text-align:center;color:var(--text3)">No app rankings available yet.</li>';
+    appList.innerHTML = '<li style="padding:40px;text-align:center;color:var(--text3)">' + emptyAppsMessage() + '</li>';
   }
+}
+
+// Honest empty-state copy for the apps leaderboard. For week/month with
+// insufficient history (the server gates the aggregation behind real days of
+// data), we tell the user exactly how many days are collected and how many
+// more are needed instead of fabricating a "7D" total from 1 day of data.
+function emptyAppsMessage() {
+  var period = state.rankingsPeriod;
+  if (period === 'day') return 'No app rankings available yet.';
+  var r = state.rankings || {};
+  var collected = typeof r.appsHistoryDays === 'number' ? r.appsHistoryDays : null;
+  var required = typeof r.appsHistoryRequired === 'number'
+    ? r.appsHistoryRequired
+    : (period === 'week' ? 7 : 30);
+  var label = period === 'week' ? '7-day' : '30-day';
+  if (collected === null) {
+    return label.charAt(0).toUpperCase() + label.slice(1) + ' history is still building.';
+  }
+  var remaining = Math.max(0, required - collected);
+  if (remaining === 0) {
+    return 'No ' + label + ' app data yet.';
+  }
+  return collected + '/' + required + ' days of history collected. ' +
+    label.charAt(0).toUpperCase() + label.slice(1) +
+    ' rankings unlock once ' + remaining + ' more daily snapshot' +
+    (remaining === 1 ? '' : 's') + ' accumulate (hourly cron, ~1/day).';
 }
 
 // ── Stats ──────────────────────────────────────────────────────────────────────
@@ -2592,15 +2626,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (data && !data.error) {
         state.rankingsByPeriod[period] = data;
         state.rankings = data;
+        // renderRankings handles both populated and empty states (including
+        // the "X/Y days of history collected" message when the server gates
+        // the aggregation behind real days of data).
         renderRankings();
-        // If apps came back empty for week/month, hint that history is building.
-        // ([] is truthy in JS — pick via length, not || fallback.)
-        var apTop = data.topApps || {};
-        var byP = apTop[period];
-        var appsForPeriod = (byP && byP.length > 0) ? byP : (apTop.day || []);
-        if (appsForPeriod.length === 0 && period !== 'day' && appList) {
-          appList.innerHTML = '<li style="padding:40px;text-align:center;color:var(--text3)">No ' + labels[period] + ' app data yet — history accumulates from hourly snapshots.</li>';
-        }
       } else if (appList) {
         appList.innerHTML = '<li style="padding:40px;text-align:center;color:var(--text3)">No ' + labels[period] + ' rankings yet.</li>';
       }
