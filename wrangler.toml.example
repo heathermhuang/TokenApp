@@ -13,5 +13,8 @@ binding = "TOKEN_APP_KV"
 id = "your-kv-namespace-id"
 preview_id = "your-preview-kv-namespace-id"
 
+[browser]
+binding = "BROWSER"
+
 [vars]
 ENVIRONMENT = "production"

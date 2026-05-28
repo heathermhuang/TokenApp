@@ -2,6 +2,7 @@ export interface Env {
   TOKEN_APP_KV: KVNamespace;
   ENVIRONMENT?: string;
   REFRESH_SECRET?: string;
+  BROWSER: Fetcher;  // Cloudflare Browser Rendering binding (used by @cloudflare/puppeteer)
 }
 
 // ── Normalized model (stored in KV) ──────────────────────────────────────────

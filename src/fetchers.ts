@@ -1,3 +1,4 @@
+import puppeteer from '@cloudflare/puppeteer';
 import type { Env, NormalizedModel, OpenRouterModel, OpenRouterResponse, RankingsData, ModelRanking, AppRanking, RankingPeriod } from './types';
 import { KV_KEYS } from './types';
 import { getProvider } from './providers';
@@ -177,138 +178,206 @@ export async function fetchModelsFromOpenRouter(): Promise<NormalizedModel[]> {
 }
 
 // ── Fetch rankings from OpenRouter ───────────────────────────────────────────
+//
+// As of ~2026-05, openrouter.ai/rankings is fully client-rendered (turbopack
+// Next.js app). The data is no longer present in the SSR HTML — it arrives
+// after JS hydration via POST Server Action calls. Worker `fetch()` can't run
+// JS, so we use Cloudflare's Browser Rendering binding (puppeteer) to load the
+// page, wait for content to hydrate, then extract from the rendered DOM.
+//
+// Sentinels:
+//   - Models: each row tagged with data-testid="model-rankings-leaderboard-row"
+//     and contains an <a href="/{provider}/{slug}"> to the model page.
+//   - Apps:   no stable testid — rendered as a numbered list inside the
+//     "Top Apps" section. Extract via the section's innerText.
 
-export async function fetchRankingsFromOpenRouter(): Promise<RankingsData> {
-  const resp = await fetch('https://openrouter.ai/rankings', {
-    headers: {
-      'User-Agent': 'token.app/1.0 (https://token.app)',
-    },
-    signal: AbortSignal.timeout(30_000),
-  });
+const RANKINGS_PAGE_URL = 'https://openrouter.ai/rankings';
+const RANKINGS_RENDER_TIMEOUT_MS = 45_000;
 
-  if (!resp.ok) {
-    throw new Error(`OpenRouter rankings fetch error: ${resp.status}`);
+// Extractor runs inside the rendered openrouter.ai/rankings page. Passed as a
+// string so TS won't try to type-check DOM references in a non-DOM context.
+const RANKINGS_EXTRACTOR_SOURCE = `(function () {
+  function parseTokens(raw) {
+    if (!raw) return 0;
+    var m = String(raw).replace(/,/g, '').match(/([\\d.]+)\\s*([KMBT])?/i);
+    if (!m) return 0;
+    var num = parseFloat(m[1]);
+    var unit = (m[2] || '').toUpperCase();
+    var mults = { K: 1e3, M: 1e6, B: 1e9, T: 1e12 };
+    var mult = mults[unit] || 1;
+    return Math.round(num * mult);
   }
 
-  const html = await resp.text();
-
-  // Parse model rankings from RSC payload
-  const topModels: ModelRanking[] = [];
-  const modelMatch = html.match(/rankingData[\\"]* *: *\[(\{.*?\})\]/s);
-  if (modelMatch) {
-    try {
-      const raw = '[' + modelMatch[1] + ']';
-      const cleaned = raw.replace(/\\"/g, '"');
-      const items = JSON.parse(cleaned) as Array<{
-        model_permaslug?: string;
-        variant_permaslug?: string;
-        total_prompt_tokens?: number;
-        total_completion_tokens?: number;
-        count?: number;
-        date?: string;
-      }>;
-
-      for (const item of items) {
-        topModels.push({
-          modelSlug: item.model_permaslug ?? item.variant_permaslug ?? '',
-          totalTokens: (item.total_prompt_tokens ?? 0) + (item.total_completion_tokens ?? 0),
-          totalRequests: item.count ?? 0,
-          date: item.date ?? '',
-        });
-      }
-    } catch {
-      // Fallback: extract items individually
-      const itemPattern = /\{"date":"([^"]*)"[^}]*"model_permaslug":"([^"]*)"[^}]*"total_completion_tokens":(\d+)[^}]*"total_prompt_tokens":(\d+)[^}]*"count":(\d+)/g;
-      let m;
-      while ((m = itemPattern.exec(html)) !== null) {
-        topModels.push({
-          modelSlug: m[2],
-          totalTokens: parseInt(m[4]) + parseInt(m[3]),
-          totalRequests: parseInt(m[5]),
-          date: m[1],
-        });
-      }
+  // ── Models — stable data-testid per row ─────────────────────────────────
+  var modelRows = Array.prototype.slice.call(
+    document.querySelectorAll('[data-testid="model-rankings-leaderboard-row"]')
+  );
+  var models = [];
+  for (var mi = 0; mi < modelRows.length; mi++) {
+    var row = modelRows[mi];
+    var link = row.querySelector('a[href^="/"]');
+    var slug = link ? link.getAttribute('href').replace(/^\\//, '') : '';
+    var name = link ? (link.textContent || '').trim() : '';
+    var rowText = row.innerText || '';
+    var tm = rowText.match(/([\\d.]+\\s*[KMBT]?)\\s*tokens/i);
+    var totalTokens = tm ? parseTokens(tm[1]) : 0;
+    if (slug && totalTokens > 0) {
+      models.push({ modelSlug: slug, modelName: name, totalTokens: totalTokens });
     }
   }
 
-  topModels.sort((a, b) => b.totalTokens - a.totalTokens);
+  // ── Apps — no testid; walk from "Top Apps" heading ──────────────────────
+  var headings = Array.prototype.slice.call(document.querySelectorAll('h1,h2,h3'));
+  var appsHeading = null;
+  for (var hi = 0; hi < headings.length; hi++) {
+    var ht = (headings[hi].textContent || '').trim();
+    if (/^Top Apps$/i.test(ht)) { appsHeading = headings[hi]; break; }
+  }
+  var apps = [];
+  if (appsHeading) {
+    var section = appsHeading.parentElement;
+    for (var d = 0; d < 8 && section; d++, section = section.parentElement) {
+      var text = section.innerText || '';
+      var ranks = text.match(/(^|\\n)\\d+\\.(\\s|$)/g);
+      if (!ranks || ranks.length < 3) continue;
 
-  // Parse app rankings from RSC payload
-  // The RSC payload uses double-escaped quotes (\\" instead of ") when fetched server-side.
-  // Normalize first, then extract day/week/month arrays from the rankMap object.
-  const normalizedHtml = html.replace(/\\"/g, '"');
-  const periods: RankingPeriod[] = ['day', 'week', 'month'];
-  const topApps: Record<RankingPeriod, AppRanking[]> = { day: [], week: [], month: [] };
+      var lines = text.split('\\n');
+      for (var li = 0; li < lines.length; li++) lines[li] = lines[li].trim();
 
-  for (const period of periods) {
-    const needle = `"${period}":[`;
-    // Find this period key inside the rankMap object
-    const rankMapIdx = normalizedHtml.indexOf('"rankMap":{');
-    if (rankMapIdx < 0) continue;
+      for (var i = 0; i < lines.length && apps.length < 30; i++) {
+        var rm = lines[i].match(/^(\\d+)\\.$/);
+        if (!rm) continue;
+        var rank = parseInt(rm[1], 10);
+        var title = (lines[i + 1] || '').trim();
+        if (!title || /^Show more$/i.test(title)) continue;
 
-    const periodIdx = normalizedHtml.indexOf(needle, rankMapIdx);
-    if (periodIdx < 0) continue;
+        var descLines = [];
+        var tokensRaw = '';
+        for (var j = i + 2; j < Math.min(i + 15, lines.length); j++) {
+          var candidate = lines[j];
+          if (/tokens$/i.test(candidate)) {
+            tokensRaw = candidate.replace(/tokens$/i, '');
+            break;
+          }
+          if (candidate) descLines.push(candidate);
+        }
+        if (!tokensRaw) continue;
 
-    const arrayStart = normalizedHtml.indexOf('[', periodIdx);
-    if (arrayStart < 0) continue;
+        var description = descLines.filter(function (l) { return l.length > 6; }).join(' ').slice(0, 240);
 
-    let depth = 0;
-    let arrayEnd = -1;
-    for (let i = arrayStart; i < Math.min(arrayStart + 100_000, normalizedHtml.length); i++) {
-      if (normalizedHtml[i] === '[') depth++;
-      else if (normalizedHtml[i] === ']') {
-        depth--;
-        if (depth === 0) { arrayEnd = i + 1; break; }
+        var candidates = Array.prototype.slice.call(section.querySelectorAll('a, h2, h3, div, span'));
+        var headEl = null;
+        for (var ci = 0; ci < candidates.length; ci++) {
+          var ct = (candidates[ci].textContent || '').trim();
+          if (ct === title || ct.indexOf(title + ' ') === 0 || ct.indexOf(title + '\\n') === 0) {
+            headEl = candidates[ci];
+            break;
+          }
+        }
+        var originUrl = '';
+        var faviconUrl = null;
+        if (headEl) {
+          var linkEl = headEl.closest('a[href^="http"]');
+          if (linkEl) originUrl = linkEl.href;
+          var walk = headEl;
+          for (var k = 0; k < 5 && walk; k++, walk = walk.parentElement) {
+            var img = walk.querySelector('img');
+            if (img && img.src) { faviconUrl = img.src; break; }
+          }
+        }
+
+        apps.push({
+          rank: rank,
+          title: title,
+          description: description,
+          totalTokens: parseTokens(tokensRaw),
+          originUrl: originUrl,
+          faviconUrl: faviconUrl
+        });
       }
+      if (apps.length > 0) break;
     }
+  }
 
-    if (arrayEnd <= 0) continue;
+  return { models: models, apps: apps };
+})()`;
 
-    try {
-      const items = JSON.parse(normalizedHtml.slice(arrayStart, arrayEnd)) as Array<{
+export async function fetchRankingsFromOpenRouter(env: Env): Promise<RankingsData> {
+  if (!env.BROWSER) {
+    throw new Error('BROWSER binding not configured (requires Cloudflare Browser Rendering)');
+  }
+
+  const browser = await puppeteer.launch(env.BROWSER);
+  try {
+    const page = await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (compatible; token.app/1.0; +https://token.app)');
+    await page.setViewport({ width: 1280, height: 1600 });
+
+    await page.goto(RANKINGS_PAGE_URL, {
+      waitUntil: 'networkidle0',
+      timeout: RANKINGS_RENDER_TIMEOUT_MS,
+    });
+
+    // Wait until model rows are hydrated (skeleton state replaced).
+    await page.waitForSelector('[data-testid="model-rankings-leaderboard-row"]', {
+      timeout: RANKINGS_RENDER_TIMEOUT_MS,
+    });
+
+    // Scroll to the bottom to trigger lazy rendering of the Top Apps section.
+    // The extractor body is passed as a JS string because this file's tsconfig
+    // does not include the DOM lib (worker code shouldn't reference DOM).
+    await page.evaluate('window.scrollTo(0, document.body.scrollHeight);');
+    // Small settle delay for any lazy-loaded apps content.
+    await new Promise((r) => setTimeout(r, 1500));
+
+    const extracted = (await page.evaluate(RANKINGS_EXTRACTOR_SOURCE)) as {
+      models: Array<{ modelSlug: string; modelName: string; totalTokens: number }>;
+      apps: Array<{
         rank: number;
-        total_tokens: string;
-        total_requests: number;
-        app: {
-          title: string;
-          description: string;
-          origin_url: string;
-          favicon_url: string | null;
-          categories: string[];
-        };
+        title: string;
+        description: string;
+        totalTokens: number;
+        originUrl: string;
+        faviconUrl: string | null;
       }>;
+    };
 
-      const seenApps = new Set<string>();
-      for (const item of items) {
-        const title = item.app?.title;
-        if (!title || seenApps.has(title)) continue;
-        seenApps.add(title);
+    const today = new Date().toISOString().slice(0, 10);
+    const topModels: ModelRanking[] = extracted.models.slice(0, 20).map((m) => ({
+      modelSlug: m.modelSlug,
+      totalTokens: m.totalTokens,
+      totalRequests: 0, // No longer rendered on the new page.
+      date: today,
+    }));
 
-        topApps[period].push({
-          rank: item.rank,
-          title,
-          description: (item.app.description ?? '').slice(0, 120),
-          categories: item.app.categories ?? [],
-          originUrl: item.app.origin_url ?? '',
-          faviconUrl: item.app.favicon_url ?? null,
-          totalTokens: parseInt(item.total_tokens) || 0,
-          totalRequests: item.total_requests ?? 0,
-        });
-
-        if (topApps[period].length >= 20) break;
-      }
-    } catch {
-      // JSON parse failed for this period — leave it empty
+    const seen = new Set<string>();
+    const dayApps: AppRanking[] = [];
+    for (const a of extracted.apps) {
+      if (seen.has(a.title)) continue;
+      seen.add(a.title);
+      dayApps.push({
+        rank: a.rank,
+        title: a.title,
+        description: a.description,
+        categories: [], // Not surfaced in the new UI.
+        originUrl: a.originUrl,
+        faviconUrl: a.faviconUrl,
+        totalTokens: a.totalTokens,
+        totalRequests: 0, // Not surfaced in the new UI.
+      });
+      if (dayApps.length >= 20) break;
     }
 
-    topApps[period].sort((a, b) => b.totalTokens - a.totalTokens);
+    // The new OpenRouter UI no longer exposes week/month app periods. Leave
+    // those empty — the client falls back to `day` when a period is missing.
+    return {
+      topModels,
+      topApps: { day: dayApps, week: [], month: [] },
+      fetchedAt: new Date().toISOString(),
+    };
+  } finally {
+    await browser.close();
   }
-
-  return {
-    topModels: topModels.slice(0, 20),
-    topApps,
-    fetchedAt: new Date().toISOString(),
-  };
 }
 
 // ── KV refresh (called by cron) ───────────────────────────────────────────────
@@ -328,14 +397,24 @@ export async function refreshAllData(env: Env): Promise<{ models: number; rankin
   let rankingsStatus: string | undefined;
   let rankingsError: string | undefined;
   try {
-    const rankings = await fetchRankingsFromOpenRouter();
-    await env.TOKEN_APP_KV.put(KV_KEYS.RANKINGS, JSON.stringify(rankings), {
-      expirationTtl: 7200,
-    });
+    const rankings = await fetchRankingsFromOpenRouter(env);
+    const modelCount = rankings.topModels.length;
     const dayCount = rankings.topApps.day?.length ?? 0;
     const weekCount = rankings.topApps.week?.length ?? 0;
     const monthCount = rankings.topApps.month?.length ?? 0;
-    rankingsStatus = `${rankings.topModels.length} models, apps: ${dayCount}d/${weekCount}w/${monthCount}m`;
+
+    // Guard: refuse to overwrite KV with an empty result. The old scraper
+    // failed silently for days because no anchors matched; that filled KV
+    // with empty arrays every hour. If the fetcher returns nothing useful,
+    // leave the previous KV value in place and surface an error instead.
+    if (modelCount === 0 && dayCount === 0) {
+      throw new Error('Rankings fetcher returned empty result — KV not overwritten');
+    }
+
+    await env.TOKEN_APP_KV.put(KV_KEYS.RANKINGS, JSON.stringify(rankings), {
+      expirationTtl: 7200,
+    });
+    rankingsStatus = `${modelCount} models, apps: ${dayCount}d/${weekCount}w/${monthCount}m`;
   } catch (err) {
     console.error('Rankings fetch failed (non-fatal):', err);
     rankingsError = String(err);
