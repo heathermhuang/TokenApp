@@ -2249,10 +2249,15 @@ function fmtTokens(n) {
 }
 
 function fmtReqs(n) {
-  if (!n || n === 0) return '0 reqs';
+  if (!n || n === 0) return '';
   if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M reqs';
   if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K reqs';
   return n.toLocaleString() + ' reqs';
+}
+
+function reqsHtml(n) {
+  var s = fmtReqs(n);
+  return s ? '<div class="lb-reqs">' + s + '</div>' : '';
 }
 
 function renderRankings() {
@@ -2297,7 +2302,7 @@ function renderRankings() {
         '</div>' +
         '<div class="lb-stats">' +
           '<div class="lb-tokens">' + fmtTokens(m.totalTokens) + '</div>' +
-          '<div class="lb-reqs">' + fmtReqs(m.totalRequests) + '</div>' +
+          reqsHtml(m.totalRequests) +
         '</div>' +
       '</li>';
     }).join('');
@@ -2321,7 +2326,7 @@ function renderRankings() {
         '</div>' +
         '<div class="lb-stats">' +
           '<div class="lb-tokens">' + fmtTokens(a.totalTokens) + '</div>' +
-          '<div class="lb-reqs">' + fmtReqs(a.totalRequests) + '</div>' +
+          reqsHtml(a.totalRequests) +
         '</div>' +
       '</li>';
     }).join('');
