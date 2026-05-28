@@ -48,7 +48,6 @@ AI model pricing tracker and comparison tool built on Cloudflare Workers with Ho
   - **Models leaderboard is fixed at OpenRouter's 7-day rolling window** regardless of UI period toggle. UI's small "Top models by weekly token volume" subtitle is the only signal. If we ever want true daily model data, we'd need a different source (OpenRouter's `/api/v1/...` doesn't expose it publicly).
   - `totalRequests` is always `0` (new UI doesn't render request counts). UI shows "0 reqs" — consider hiding that column in `src/template.ts`.
   - App `originUrl` is best-effort empty currently; favicon URL works via Google's faviconV2 proxy.
-  - 10 orphan rows in D1 with `kind='model' period='day'` from the initial broken click logic. Harmless (no query reads them). Can be deleted via `wrangler d1 execute token-app-rankings --remote --command "DELETE FROM rankings_snapshots WHERE kind='model' AND period='day'"` if desired.
 - **Op note — REFRESH_SECRET was rotated this session** to `2021@RewardMe` (user-typed during verification). Looks like a real password; rotate to a strong random value at your convenience.
 - **Local state**: on `main` at `cb42e7b`, clean apart from `.DS_Store` + `.claude/` (both untracked, expected).
 - **Next steps (prioritized, carried forward)**:
