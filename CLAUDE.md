@@ -35,7 +35,7 @@ AI model pricing tracker and comparison tool built on Cloudflare Workers with Ho
 
 ## Current Work
 - **Last updated**: 2026-05-28
-- **What shipped this session**: three deploys to prod.
+- **What shipped this session**: three deploys to prod + D1 cleanup.
   - `354550e` `fix(rankings): scrape rendered DOM via @cloudflare/puppeteer` — rankings tab had been empty for days. OpenRouter rebuilt `/rankings` on a turbopack Next.js app and removed all ranking data from the SSR HTML. Switched to Cloudflare Browser Rendering binding + `@cloudflare/puppeteer` to load the page, wait for hydration, extract from rendered DOM. Stable selector `[data-testid="model-rankings-leaderboard-row"]` for models; innerText regex for apps. Empty-overwrite guard added so future scraper breakage keeps last-good data.
   - `cb42e7b` `feat(rankings): D1-backed history + period-aware /api/rankings` — followup to discover that OpenRouter's new UI has NO period toggle at all (the "This Week" / "Today" buttons are model-search comboboxes). To still satisfy the UI's 24H/7D/30D period toggle, added a Cloudflare D1 binding (`RANKINGS_DB`) backed by an append-only `rankings_snapshots` table. Hourly cron writes ~30 rows per tick (10 weekly-model + 10 daily-app rows… D1 free tier handles years of this). `/api/rankings?period=day|week|month` reads back: models always reflect the latest weekly snapshot (OpenRouter's only published view), apps return latest-day for `day`, SUM over the last 7 daily snapshots for `week`, SUM over 30 for `month`. UI period toggle rewired to fetch on demand and cache per-period; loading state only on the apps panel (models don't change with the toggle).
 - **New deps + bindings**:
@@ -49,7 +49,7 @@ AI model pricing tracker and comparison tool built on Cloudflare Workers with Ho
   - `totalRequests` is always `0` (new UI doesn't render request counts). UI shows "0 reqs" — consider hiding that column in `src/template.ts`.
   - App `originUrl` is best-effort empty currently; favicon URL works via Google's faviconV2 proxy.
 - **Op note — REFRESH_SECRET was rotated this session** to `2021@RewardMe` (user-typed during verification). Looks like a real password; rotate to a strong random value at your convenience.
-- **Local state**: on `main` at `cb42e7b`, clean apart from `.DS_Store` + `.claude/` (both untracked, expected).
+- **Local state**: on `main` at `4237052`, clean apart from `.DS_Store` + `.claude/` (both untracked, expected). 10 orphan `kind='model' period='day'` rows from the first broken click attempt were deleted from D1; only `kind='model' period='week'` and `kind='app' period='day'` rows now grow. As of handoff, D1 has 4 snapshots (40 rows of each kind) from today's manual triggers + the 11:00 UTC cron — first cron-driven snapshot with the new code is confirmed working.
 - **Next steps (prioritized, carried forward)**:
   1. **P0 — publish `keyring-client` to npm** (still blocked on auth — no `npm whoami`, no `~/.npmrc`, no `NPM_TOKEN`. Package builds clean; dry-run shows 10 files / 9.6 KB. Names available: `keyring-client`, `@tokenapp/keyring-client`, `@tokenapp-io/keyring`, `@token-app/keyring`. Unblock: user runs `npm login` or supplies a granular token).
   2. **P1 — rankings polish**: hide "X reqs" column when totalRequests is always 0; hide week/month period toggle on Rankings tab (or relabel).
