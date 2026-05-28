@@ -16,5 +16,11 @@ preview_id = "your-preview-kv-namespace-id"
 [browser]
 binding = "BROWSER"
 
+[[d1_databases]]
+binding = "RANKINGS_DB"
+database_name = "token-app-rankings"
+database_id = "your-d1-database-id"
+migrations_dir = "migrations"
+
 [vars]
 ENVIRONMENT = "production"

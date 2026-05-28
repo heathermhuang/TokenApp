@@ -100,11 +100,14 @@ app.get(
   cache({ cacheName: 'token-app-rankings', cacheControl: 'max-age=3600, stale-while-revalidate=86400' }),
   async (c) => {
     try {
-      const rankings = await getRankings(c.env);
+      const periodRaw = c.req.query('period');
+      const period: 'day' | 'week' | 'month' =
+        periodRaw === 'week' || periodRaw === 'month' ? periodRaw : 'day';
+      const rankings = await getRankings(c.env, period);
       if (!rankings) {
         return c.json({ error: 'Rankings data not yet available' }, 404);
       }
-      return c.json(rankings);
+      return c.json({ ...rankings, period });
     } catch (err) {
       console.error('Failed to get rankings:', err);
       return c.json({ error: 'Failed to load rankings' }, 500);

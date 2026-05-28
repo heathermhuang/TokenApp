@@ -1650,6 +1650,8 @@ const state = {
   models: [],
   subscriptions: [],
   rankings: null,
+  rankingsByPeriod: { day: null, week: null, month: null },  // cache per period
+  rankingsLoading: false,
   rankingsPeriod: 'day',  // 'day' | 'week' | 'month'
   view: 'api',       // 'api' | 'subscriptions' | 'rankings'
   cat: 'all',
@@ -2261,8 +2263,16 @@ function renderRankings() {
 
   var models = state.rankings.topModels || [];
   var appsData = state.rankings.topApps || {};
-  // Support both old format (array) and new format (record by period)
-  var apps = Array.isArray(appsData) ? appsData : (appsData[state.rankingsPeriod] || appsData.day || []);
+  // Support both old format (array) and new format (record by period). Note:
+  // [] is truthy in JS, so appsData[period] || appsData.day would stick on
+  // an empty array — pick via length instead.
+  var apps;
+  if (Array.isArray(appsData)) {
+    apps = appsData;
+  } else {
+    var byPeriod = appsData[state.rankingsPeriod];
+    apps = (byPeriod && byPeriod.length > 0) ? byPeriod : (appsData.day || []);
+  }
 
   if (models.length > 0) {
     modelList.innerHTML = models.slice(0, 15).map(function(m, i) {
@@ -2462,6 +2472,7 @@ async function init() {
     state.models = initialModels;
     state.subscriptions = initialSubs;
     state.rankings = initialRankings;
+    if (initialRankings) state.rankingsByPeriod.day = initialRankings;
     updateStats();
     renderProviderFilters();
     renderTable();
@@ -2484,7 +2495,10 @@ async function init() {
       state.subscriptions = subs;
       try {
         var rankingsData = await rankingsRes.json();
-        if (!rankingsData.error) state.rankings = rankingsData;
+        if (!rankingsData.error) {
+          state.rankings = rankingsData;
+          state.rankingsByPeriod.day = rankingsData;
+        }
       } catch(e) {}
       updateStats();
       renderProviderFilters();
@@ -2544,17 +2558,57 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Rankings period toggle
-  document.getElementById('period-toggle').addEventListener('click', function(e) {
+  // Rankings period toggle — fetches per-period data from the API on demand
+  // and caches the result on state.rankingsByPeriod so toggling back is instant.
+  document.getElementById('period-toggle').addEventListener('click', async function(e) {
     var btn = e.target.closest('[data-period]');
     if (!btn) return;
-    state.rankingsPeriod = btn.dataset.period;
+    var period = btn.dataset.period;
+    state.rankingsPeriod = period;
     document.querySelectorAll('#period-toggle .period-btn').forEach(function(b) { b.classList.remove('active'); });
     btn.classList.add('active');
     var labels = { day: 'daily', week: 'weekly', month: 'monthly' };
     document.getElementById('app-leaderboard-subtitle').textContent =
-      'Top apps and agents by ' + labels[state.rankingsPeriod] + ' token volume on OpenRouter';
-    renderRankings();
+      'Top apps and agents by ' + labels[period] + ' token volume on OpenRouter';
+
+    var cached = state.rankingsByPeriod[period];
+    if (cached) {
+      state.rankings = cached;
+      renderRankings();
+      return;
+    }
+
+    // The model leaderboard is weekly-only (OpenRouter doesn't publish other
+    // periods), so the toggle only affects the apps list. Show a loading
+    // state for apps; leave models as-is.
+    var appList = document.getElementById('app-leaderboard');
+    if (appList) {
+      appList.innerHTML = '<li style="padding:40px;text-align:center;color:var(--text3)">Loading ' + labels[period] + ' apps…</li>';
+    }
+
+    try {
+      var res = await fetch('/api/rankings?period=' + encodeURIComponent(period));
+      var data = await res.json();
+      if (data && !data.error) {
+        state.rankingsByPeriod[period] = data;
+        state.rankings = data;
+        renderRankings();
+        // If apps came back empty for week/month, hint that history is building.
+        // ([] is truthy in JS — pick via length, not || fallback.)
+        var apTop = data.topApps || {};
+        var byP = apTop[period];
+        var appsForPeriod = (byP && byP.length > 0) ? byP : (apTop.day || []);
+        if (appsForPeriod.length === 0 && period !== 'day' && appList) {
+          appList.innerHTML = '<li style="padding:40px;text-align:center;color:var(--text3)">No ' + labels[period] + ' app data yet — history accumulates from hourly snapshots.</li>';
+        }
+      } else if (appList) {
+        appList.innerHTML = '<li style="padding:40px;text-align:center;color:var(--text3)">No ' + labels[period] + ' rankings yet.</li>';
+      }
+    } catch (err) {
+      if (appList) {
+        appList.innerHTML = '<li style="padding:40px;text-align:center;color:var(--text3)">Failed to load ' + labels[period] + ' rankings.</li>';
+      }
+    }
   });
 
   // Search

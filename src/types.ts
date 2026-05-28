@@ -2,7 +2,8 @@ export interface Env {
   TOKEN_APP_KV: KVNamespace;
   ENVIRONMENT?: string;
   REFRESH_SECRET?: string;
-  BROWSER: Fetcher;  // Cloudflare Browser Rendering binding (used by @cloudflare/puppeteer)
+  BROWSER: Fetcher;       // Cloudflare Browser Rendering binding (used by @cloudflare/puppeteer)
+  RANKINGS_DB: D1Database; // Cloudflare D1 — append-only history of ranking snapshots
 }
 
 // ── Normalized model (stored in KV) ──────────────────────────────────────────

@@ -302,7 +302,28 @@ const RANKINGS_EXTRACTOR_SOURCE = `(function () {
   return { models: models, apps: apps };
 })()`;
 
-export async function fetchRankingsFromOpenRouter(env: Env): Promise<RankingsData> {
+// Internal shape produced by a single browser-rendered scrape.
+//
+// OpenRouter's new rankings UI exposes ONE view: weekly model totals and
+// daily app totals. There is no period toggle (the "Today"/"This Week"
+// buttons on the page open model-search comboboxes, not period selectors).
+// So we capture both lists per scrape and store them at their native
+// periods. UI-level period toggles for apps are computed from accumulated
+// daily snapshots in D1; the model leaderboard is fixed at weekly.
+interface RankingsScrape {
+  fetchedAt: string;
+  modelsWeek: Array<{ rank: number; slug: string; name: string; totalTokens: number }>;
+  apps: Array<{
+    rank: number;
+    title: string;
+    description: string;
+    totalTokens: number;
+    originUrl: string;
+    faviconUrl: string | null;
+  }>;
+}
+
+export async function fetchRankingsFromOpenRouter(env: Env): Promise<RankingsScrape> {
   if (!env.BROWSER) {
     throw new Error('BROWSER binding not configured (requires Cloudflare Browser Rendering)');
   }
@@ -324,10 +345,8 @@ export async function fetchRankingsFromOpenRouter(env: Env): Promise<RankingsDat
     });
 
     // Scroll to the bottom to trigger lazy rendering of the Top Apps section.
-    // The extractor body is passed as a JS string because this file's tsconfig
-    // does not include the DOM lib (worker code shouldn't reference DOM).
+    // Extractor passed as a JS string because tsconfig excludes the DOM lib.
     await page.evaluate('window.scrollTo(0, document.body.scrollHeight);');
-    // Small settle delay for any lazy-loaded apps content.
     await new Promise((r) => setTimeout(r, 1500));
 
     const extracted = (await page.evaluate(RANKINGS_EXTRACTOR_SOURCE)) as {
@@ -342,42 +361,164 @@ export async function fetchRankingsFromOpenRouter(env: Env): Promise<RankingsDat
       }>;
     };
 
-    const today = new Date().toISOString().slice(0, 10);
-    const topModels: ModelRanking[] = extracted.models.slice(0, 20).map((m) => ({
-      modelSlug: m.modelSlug,
+    const modelsWeek = extracted.models.slice(0, 20).map((m, i) => ({
+      rank: i + 1,
+      slug: m.modelSlug,
+      name: m.modelName,
       totalTokens: m.totalTokens,
-      totalRequests: 0, // No longer rendered on the new page.
-      date: today,
     }));
 
     const seen = new Set<string>();
-    const dayApps: AppRanking[] = [];
+    const apps: RankingsScrape['apps'] = [];
     for (const a of extracted.apps) {
-      if (seen.has(a.title)) continue;
+      if (!a.title || seen.has(a.title)) continue;
       seen.add(a.title);
-      dayApps.push({
-        rank: a.rank,
-        title: a.title,
-        description: a.description,
-        categories: [], // Not surfaced in the new UI.
-        originUrl: a.originUrl,
-        faviconUrl: a.faviconUrl,
-        totalTokens: a.totalTokens,
-        totalRequests: 0, // Not surfaced in the new UI.
-      });
-      if (dayApps.length >= 20) break;
+      apps.push(a);
+      if (apps.length >= 20) break;
     }
 
-    // The new OpenRouter UI no longer exposes week/month app periods. Leave
-    // those empty — the client falls back to `day` when a period is missing.
     return {
-      topModels,
-      topApps: { day: dayApps, week: [], month: [] },
       fetchedAt: new Date().toISOString(),
+      modelsWeek,
+      apps,
     };
   } finally {
     await browser.close();
   }
+}
+
+// ── D1 history storage ────────────────────────────────────────────────────────
+//
+// Each cron tick appends ~60 rows: 20 day-models + 20 week-models + 20 apps.
+// Indefinite retention. Queries are bounded by snapshot_at >= cutoff so growth
+// doesn't slow lookups.
+
+async function writeRankingsSnapshot(env: Env, scrape: RankingsScrape): Promise<void> {
+  const snapshotAt = scrape.fetchedAt;
+  const snapshotDay = snapshotAt.slice(0, 10);
+
+  const stmt = env.RANKINGS_DB.prepare(`
+    INSERT INTO rankings_snapshots
+      (snapshot_at, snapshot_day, kind, period, rank, identifier, name, description, total_tokens, origin_url, favicon_url)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const batch: D1PreparedStatement[] = [];
+  for (const m of scrape.modelsWeek) {
+    batch.push(stmt.bind(snapshotAt, snapshotDay, 'model', 'week', m.rank, m.slug, m.name, null, m.totalTokens, null, null));
+  }
+  for (const a of scrape.apps) {
+    batch.push(stmt.bind(
+      snapshotAt, snapshotDay, 'app', 'day', a.rank, a.title,
+      null, a.description, a.totalTokens, a.originUrl || null, a.faviconUrl,
+    ));
+  }
+
+  if (batch.length > 0) {
+    await env.RANKINGS_DB.batch(batch);
+  }
+}
+
+// ── Period-aware reads ────────────────────────────────────────────────────────
+
+// Returns the snapshot_at of the most recent batch for (kind, period). Use it
+// to scope the query so we only return rows from that snapshot — D1 will
+// otherwise return rows from every prior snapshot too.
+async function latestSnapshotAt(env: Env, kind: 'model' | 'app', period: 'day' | 'week'): Promise<string | null> {
+  const row = await env.RANKINGS_DB
+    .prepare('SELECT MAX(snapshot_at) AS s FROM rankings_snapshots WHERE kind = ? AND period = ?')
+    .bind(kind, period)
+    .first<{ s: string | null }>();
+  return row?.s ?? null;
+}
+
+async function readLatestModels(env: Env, period: 'day' | 'week'): Promise<ModelRanking[]> {
+  const latest = await latestSnapshotAt(env, 'model', period);
+  if (!latest) return [];
+  const result = await env.RANKINGS_DB
+    .prepare('SELECT identifier, name, total_tokens, rank, snapshot_day FROM rankings_snapshots WHERE kind = ? AND period = ? AND snapshot_at = ? ORDER BY rank ASC LIMIT 20')
+    .bind('model', period, latest)
+    .all<{ identifier: string; name: string | null; total_tokens: number; rank: number; snapshot_day: string }>();
+  return (result.results ?? []).map((r) => ({
+    modelSlug: r.identifier,
+    totalTokens: Number(r.total_tokens) || 0,
+    totalRequests: 0,
+    date: r.snapshot_day,
+  }));
+}
+
+async function readLatestApps(env: Env): Promise<AppRanking[]> {
+  const latest = await latestSnapshotAt(env, 'app', 'day');
+  if (!latest) return [];
+  const result = await env.RANKINGS_DB
+    .prepare('SELECT identifier, description, total_tokens, rank, origin_url, favicon_url FROM rankings_snapshots WHERE kind = ? AND period = ? AND snapshot_at = ? ORDER BY rank ASC LIMIT 20')
+    .bind('app', 'day', latest)
+    .all<{ identifier: string; description: string | null; total_tokens: number; rank: number; origin_url: string | null; favicon_url: string | null }>();
+  return (result.results ?? []).map((r) => ({
+    rank: r.rank,
+    title: r.identifier,
+    description: r.description ?? '',
+    categories: [],
+    originUrl: r.origin_url ?? '',
+    faviconUrl: r.favicon_url ?? null,
+    totalTokens: Number(r.total_tokens) || 0,
+    totalRequests: 0,
+  }));
+}
+
+// Aggregate over the last `days` daily snapshots. For each identifier, take
+// the LAST snapshot of each calendar day (end-of-day total) and SUM across
+// days. This gives a meaningful total token volume over the window.
+async function aggregateRange(env: Env, kind: 'model' | 'app', days: number): Promise<
+  Array<{ identifier: string; name: string | null; description: string | null; origin_url: string | null; favicon_url: string | null; total: number }>
+> {
+  const cutoff = new Date(Date.now() - days * 86400_000).toISOString();
+  const sql = `
+    WITH daily_last AS (
+      SELECT
+        identifier,
+        name,
+        description,
+        origin_url,
+        favicon_url,
+        total_tokens,
+        snapshot_day,
+        ROW_NUMBER() OVER (PARTITION BY identifier, snapshot_day ORDER BY snapshot_at DESC) AS rn
+      FROM rankings_snapshots
+      WHERE kind = ? AND period = 'day' AND snapshot_at >= ?
+    )
+    SELECT
+      identifier,
+      MAX(name) AS name,
+      MAX(description) AS description,
+      MAX(origin_url) AS origin_url,
+      MAX(favicon_url) AS favicon_url,
+      SUM(total_tokens) AS total
+    FROM daily_last
+    WHERE rn = 1
+    GROUP BY identifier
+    ORDER BY total DESC
+    LIMIT 20
+  `;
+  const result = await env.RANKINGS_DB
+    .prepare(sql)
+    .bind(kind, cutoff)
+    .all<{ identifier: string; name: string | null; description: string | null; origin_url: string | null; favicon_url: string | null; total: number }>();
+  return result.results ?? [];
+}
+
+async function aggregateApps(env: Env, days: number): Promise<AppRanking[]> {
+  const rows = await aggregateRange(env, 'app', days);
+  return rows.map((r, i) => ({
+    rank: i + 1,
+    title: r.identifier,
+    description: r.description ?? '',
+    categories: [],
+    originUrl: r.origin_url ?? '',
+    faviconUrl: r.favicon_url ?? null,
+    totalTokens: Number(r.total) || 0,
+    totalRequests: 0,
+  }));
 }
 
 // ── KV refresh (called by cron) ───────────────────────────────────────────────
@@ -397,24 +538,50 @@ export async function refreshAllData(env: Env): Promise<{ models: number; rankin
   let rankingsStatus: string | undefined;
   let rankingsError: string | undefined;
   try {
-    const rankings = await fetchRankingsFromOpenRouter(env);
-    const modelCount = rankings.topModels.length;
-    const dayCount = rankings.topApps.day?.length ?? 0;
-    const weekCount = rankings.topApps.week?.length ?? 0;
-    const monthCount = rankings.topApps.month?.length ?? 0;
+    const scrape = await fetchRankingsFromOpenRouter(env);
+    const weekModelCount = scrape.modelsWeek.length;
+    const appCount = scrape.apps.length;
 
-    // Guard: refuse to overwrite KV with an empty result. The old scraper
-    // failed silently for days because no anchors matched; that filled KV
-    // with empty arrays every hour. If the fetcher returns nothing useful,
-    // leave the previous KV value in place and surface an error instead.
-    if (modelCount === 0 && dayCount === 0) {
-      throw new Error('Rankings fetcher returned empty result — KV not overwritten');
+    // Guard: refuse to record an empty snapshot. Old scraper failed silently
+    // for days because no anchors matched; KV (now D1) cache stayed empty.
+    if (weekModelCount === 0 && appCount === 0) {
+      throw new Error('Rankings fetcher returned empty result — snapshot not recorded');
     }
 
-    await env.TOKEN_APP_KV.put(KV_KEYS.RANKINGS, JSON.stringify(rankings), {
+    // 1) Append a new history snapshot to D1.
+    await writeRankingsSnapshot(env, scrape);
+
+    // 2) Mirror the latest snapshot into KV for SSR initial state. The
+    //    legacy RankingsData shape stays compatible with the client.
+    //    topModels reflects the weekly leaderboard — OpenRouter's only view.
+    const ssrPayload: RankingsData = {
+      topModels: scrape.modelsWeek.map((m) => ({
+        modelSlug: m.slug,
+        totalTokens: m.totalTokens,
+        totalRequests: 0,
+        date: scrape.fetchedAt.slice(0, 10),
+      })),
+      topApps: {
+        day: scrape.apps.map((a) => ({
+          rank: a.rank,
+          title: a.title,
+          description: a.description,
+          categories: [],
+          originUrl: a.originUrl,
+          faviconUrl: a.faviconUrl,
+          totalTokens: a.totalTokens,
+          totalRequests: 0,
+        })),
+        week: [],
+        month: [],
+      },
+      fetchedAt: scrape.fetchedAt,
+    };
+    await env.TOKEN_APP_KV.put(KV_KEYS.RANKINGS, JSON.stringify(ssrPayload), {
       expirationTtl: 7200,
     });
-    rankingsStatus = `${modelCount} models, apps: ${dayCount}d/${weekCount}w/${monthCount}m`;
+
+    rankingsStatus = `models: ${weekModelCount}w, apps: ${appCount}d`;
   } catch (err) {
     console.error('Rankings fetch failed (non-fatal):', err);
     rankingsError = String(err);
@@ -461,7 +628,49 @@ export async function getSubscriptions(env: Env) {
   return JSON.parse(raw);
 }
 
-export async function getRankings(env: Env): Promise<RankingsData | null> {
+// Period-aware reader.
+//
+// Models: OpenRouter's UI only publishes a weekly rolling leaderboard, so the
+// model leaderboard returned here is ALWAYS the latest weekly snapshot
+// regardless of the requested period. The UI shows a small note explaining
+// this — the period toggle effectively only affects the apps panel.
+//
+// Apps: 'day' = latest day snapshot; 'week' = SUM over the last 7 daily
+// snapshots; 'month' = SUM over the last 30 daily snapshots. The week/month
+// aggregations populate over time as history accumulates.
+//
+// Falls back to KV (legacy single-period blob) when D1 reads fail.
+export async function getRankings(
+  env: Env,
+  period: RankingPeriod = 'day',
+): Promise<RankingsData | null> {
+  try {
+    const modelsTask = readLatestModels(env, 'week');
+    let appsTask: Promise<AppRanking[]>;
+    if (period === 'day') {
+      appsTask = readLatestApps(env);
+    } else if (period === 'week') {
+      appsTask = aggregateApps(env, 7);
+    } else {
+      appsTask = aggregateApps(env, 30);
+    }
+    const [models, apps] = await Promise.all([modelsTask, appsTask]);
+    if (models.length > 0 || apps.length > 0) {
+      // Return apps under the requested period key so the client doesn't
+      // have to know about empty-array vs missing-key fallback semantics.
+      const topApps: Record<RankingPeriod, AppRanking[]> = { day: [], week: [], month: [] };
+      topApps[period] = apps;
+      return {
+        topModels: models,
+        topApps,
+        fetchedAt: (await latestSnapshotAt(env, 'model', 'week')) ?? new Date().toISOString(),
+      };
+    }
+  } catch (err) {
+    console.error('D1 rankings read failed, falling back to KV:', err);
+  }
+
+  // Fallback to KV (legacy single-period blob)
   const raw = await env.TOKEN_APP_KV.get(KV_KEYS.RANKINGS);
   if (!raw) return null;
   return JSON.parse(raw) as RankingsData;
