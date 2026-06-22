@@ -35,25 +35,19 @@ AI model pricing tracker and comparison tool built on Cloudflare Workers with Ho
 - **`\'` is invalid in JS template literals**: backslash is silently ignored for single quotes. Use `this.hidden=true` instead of `this.style.display='none'` in inline handlers.
 
 ## Current Work
-- **Last updated**: 2026-05-28 (evening — rankings honesty pass).
-- **What shipped this session** (2 deploys to prod):
-  - `f6d99a1` `fix(rankings): stop serving fake 7D/30D apps before history accumulates` — `aggregateApps()` was SUMming 1 day of snapshots into a "7D" total that looked identical to 24H. `getRankings('week'|'month')` now calls new `countAppDaysInRange()` first; when fewer than 7/30 distinct calendar days exist, returns `topApps[period]=[]` plus `appsHistoryDays`+`appsHistoryRequired`. Client `emptyAppsMessage()` renders "1/7 days of history collected. 7-day rankings unlock once 6 more daily snapshots accumulate." Also stopped non-day periods falling back to `.day` data (that fallback was the bug enabler).
-  - `af6d653` `fix(rankings): hide reqs column when count is zero` — new OpenRouter UI never renders request counts so every row was printing "0 reqs". `reqsHtml()` returns empty string for zero/missing; column disappears until a future source surfaces real counts.
-- **Verified on prod (cache-busted)**: `/api/rankings?period=week` → `{appsHistoryDays:1, appsHistoryRequired:7, topApps.week:[], topModels:10}`. `?period=month` → same with `Required:30`. `?period=day` unchanged. Deployed HTML contains `emptyAppsMessage`/`reqsHtml` and no `'0 reqs'` literal.
-- **History bootstrap status** — D1 has 1 calendar day of app snapshots (2026-05-28, 4 hourly snapshots). With the new gate, 7D/30D tabs now show the honest progress message instead of fake numbers. Hourly cron keeps accumulating. Real 7D data unlocks ~2026-06-04; real 30D ~2026-06-27.
-- **Known caveats (unchanged)**:
-  - Models leaderboard is fixed at OpenRouter's 7-day rolling window regardless of UI period toggle. The "Top models by weekly token volume" subtitle is the only signal — toggle visually scoped to apps panel only.
-  - App `originUrl` is best-effort empty; favicon URL works via Google's faviconV2 proxy.
-- **Op note — REFRESH_SECRET** was rotated earlier to `2021@RewardMe` (user-typed). Looks like a real password; rotate to a strong random via `wrangler secret put REFRESH_SECRET` at your convenience.
-- **Local state**: on `main` at `af6d653`, clean apart from `.DS_Store` + `.claude/` (both untracked, expected).
-- **Next steps (prioritized, carried forward)**:
-  1. **P0 — publish `keyring-client` to npm** (blocked on auth — no `npm whoami`, no `~/.npmrc`, no `NPM_TOKEN`. Package builds clean; dry-run shows 10 files / 9.6 KB. Names available: `keyring-client`, `@tokenapp/keyring-client`, `@tokenapp-io/keyring`, `@token-app/keyring`. Unblock: user runs `npm login` or supplies a granular token).
-  2. **P1 — resume `/usage` roadmap**: cross-link byModel rows → `/models/{provider}/{slug}`; "Load my usage" button on `/models` reading localStorage; month-end forecast + "switch model X → Y" slider; landing "Best coding agent by cost" comparison.
-  3. **P2 — keyring v0.2**: expand native seeds (Mistral, DeepSeek direct, xAI); broaden `validateKey` coverage; CI schema check on `/registry.json`.
-  4. **P2 — `/usage` polish**: calendar heatmap, per-provider export guides with screenshots.
-  5. **P3 — agent-readiness Level 5**: A2A Agent Card (low value until token.app needs peer-agent handshakes).
-  6. **P3 — keyring protocol phase**: wallet-style scoped-key approval flow. Only worth starting once registry + SDK have real adoption.
-- **Skip**: benchmark overlays (needs server submission — breaks no-accounts posture); image/receipt import for `/usage` (prompt flow covers it).
+- **Last updated**: 2026-06-22 — Phase A of the time-aware rankings overhaul shipped to prod.
+- **Branch**: `feature/rankings-time-series` (NOT yet merged to main). Spec + plan live there: `docs/superpowers/specs/2026-06-22-rankings-time-series-and-categories-design.md`, `docs/superpowers/plans/2026-06-22-rankings-time-series.md`.
+- **What shipped this session** (deployed, version `840da0a5`):
+  - `9938971` `feat(rankings): server-side sparklines, deltas, asOf` — `readSeries()` (one batched daily-series query/board; open upper bound on the live view so the series ends at the board's current value, bounded by asOf for history), `deltaFromSeries()` (rank move + token % vs prior period, **null when history too short** — no fake deltas), `getRankings()` attaches sparkline+delta (models week-over-week; apps delta only on the 24H board) + accepts `?asOf=`. `/api/rankings` parses `?asOf=` (invalid dates ignored, not 500).
+  - `8f7684f` `feat(rankings): sparklines + trend badges + as-of picker` — vanilla `sparklineSvg()`/`deltaBadge()` (reuse `--green`/`--red`), rendered in both boards; "view as of" date input re-anchors all boards via shared `loadRankingsPeriod()`, clearing the per-period cache on asOf change (it keys on period only).
+- **Verified on prod (cache-busted)**: `?period=day` → model0 `deepseek-v4-flash` 4.94T, 15-pt sparkline, delta `+12%`; app0 `Hermes Agent` 911B, 15-pt, `+5.3%`. `?asOf=2026-06-10…` → re-anchors (`fetchedAt` 06-10, model 4.23T vs 4.94T now, 14-pt). Honest `null` gating confirmed locally at short horizons.
+- **Next steps — finish the spec (Phases B–D, on the branch)**:
+  1. **Phase B spike** → write `docs/superpowers/specs/2026-06-22-rankings-spike-findings.md`: enumerate category URLs (`/apps/category/{group}/{slug}`, confirmed addressable); locate the market-share-by-author source (probe `openrouter.ai/data` for structured data, else the chart/RSC payload); measure per-run browser-render cost.
+  2. **Phase C** — migration `0002` (`category` col + `market_share_snapshots` table); daily scrape via a once-per-day guard INSIDE the existing `scheduled` handler (NOT a new cron — `wrangler.toml` is gitignored); per-section empty-overwrite guards.
+  3. **Phase D** — hand-rolled stacked-area market-share chart + category tabs; same history-gating discipline. Then merge → main.
+- **Carried-forward backlog (unchanged)**: P0 publish `keyring-client` to npm (blocked on npm auth — needs `npm login`/token; builds clean, dry-run 10 files/9.6 KB); P1 `/usage` roadmap (byModel cross-links, "Load my usage", forecast slider); P2 keyring v0.2 + `/usage` polish. Skip: benchmark overlays, receipt import.
+- **Op note — REFRESH_SECRET** was rotated to `2021@RewardMe` (user-typed, looks like a real password); rotate to a strong random via `wrangler secret put REFRESH_SECRET` when convenient.
+- **Local state**: on `feature/rankings-time-series`, clean apart from `.DS_Store` + `.claude/` (untracked, expected).
 
 
 codex will review your output once you are done
