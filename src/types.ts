@@ -96,11 +96,21 @@ export interface OpenRouterResponse {
 
 // ── Rankings data (scraped from OpenRouter) ──────────────────────────────────
 
+// Rank/volume movement vs the prior comparable period. null fields mean there
+// is not enough history to compute the delta honestly — render NOTHING rather
+// than a fabricated number (the 2026-05-28 "fake 7D" lesson).
+export interface RankDelta {
+  rankChange: number | null;  // prior_rank - current_rank; + = moved up, - = moved down
+  pctChange: number | null;   // (now - prior) / prior, as a fraction; null when prior is 0/absent
+}
+
 export interface ModelRanking {
   modelSlug: string;       // e.g. "qwen/qwen3.6-plus-04-02"
   totalTokens: number;     // prompt + completion
   totalRequests: number;
   date: string;
+  sparkline?: number[];    // token totals, one point/day ascending; omitted when < 2 points
+  delta?: RankDelta | null;// null when insufficient history
 }
 
 export interface AppRanking {
@@ -112,6 +122,8 @@ export interface AppRanking {
   faviconUrl: string | null;
   totalTokens: number;
   totalRequests: number;
+  sparkline?: number[];    // daily token totals, ascending; omitted when < 2 points
+  delta?: RankDelta | null;// null when insufficient history (apps: only on the 24H board)
 }
 
 export type RankingPeriod = 'day' | 'week' | 'month';
@@ -126,6 +138,9 @@ export interface RankingsData {
   // client renders an "accumulating history" state rather than a fake total.
   appsHistoryDays?: number;
   appsHistoryRequired?: number;
+  // When set, the board reflects the snapshot at/just-before this ISO time
+  // (the "view as of" picker) rather than the latest.
+  asOf?: string;
 }
 
 // ── Usage dashboard (Phase 1 — BYO-export, client-side only) ─────────────────

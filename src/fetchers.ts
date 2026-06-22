@@ -1,5 +1,5 @@
 import puppeteer from '@cloudflare/puppeteer';
-import type { Env, NormalizedModel, OpenRouterModel, OpenRouterResponse, RankingsData, ModelRanking, AppRanking, RankingPeriod } from './types';
+import type { Env, NormalizedModel, OpenRouterModel, OpenRouterResponse, RankingsData, ModelRanking, AppRanking, RankingPeriod, RankDelta } from './types';
 import { KV_KEYS } from './types';
 import { getProvider } from './providers';
 import { SUBSCRIPTIONS } from './subscriptions';
@@ -432,8 +432,21 @@ async function latestSnapshotAt(env: Env, kind: 'model' | 'app', period: 'day' |
   return row?.s ?? null;
 }
 
-async function readLatestModels(env: Env, period: 'day' | 'week'): Promise<ModelRanking[]> {
-  const latest = await latestSnapshotAt(env, 'model', period);
+// Most-recent snapshot_at for (kind, period) at or before `asOf` (overall when
+// omitted). Powers the "view as of" picker — re-anchors which snapshot is "current".
+async function snapshotAtBefore(
+  env: Env, kind: 'model' | 'app', period: 'day' | 'week', asOf?: string,
+): Promise<string | null> {
+  if (!asOf) return latestSnapshotAt(env, kind, period);
+  const row = await env.RANKINGS_DB
+    .prepare('SELECT MAX(snapshot_at) AS s FROM rankings_snapshots WHERE kind = ? AND period = ? AND snapshot_at <= ?')
+    .bind(kind, period, asOf)
+    .first<{ s: string | null }>();
+  return row?.s ?? null;
+}
+
+async function readLatestModels(env: Env, period: 'day' | 'week', asOf?: string): Promise<ModelRanking[]> {
+  const latest = await snapshotAtBefore(env, 'model', period, asOf);
   if (!latest) return [];
   const result = await env.RANKINGS_DB
     .prepare('SELECT identifier, name, total_tokens, rank, snapshot_day FROM rankings_snapshots WHERE kind = ? AND period = ? AND snapshot_at = ? ORDER BY rank ASC LIMIT 20')
@@ -447,8 +460,8 @@ async function readLatestModels(env: Env, period: 'day' | 'week'): Promise<Model
   }));
 }
 
-async function readLatestApps(env: Env): Promise<AppRanking[]> {
-  const latest = await latestSnapshotAt(env, 'app', 'day');
+async function readLatestApps(env: Env, asOf?: string): Promise<AppRanking[]> {
+  const latest = await snapshotAtBefore(env, 'app', 'day', asOf);
   if (!latest) return [];
   const result = await env.RANKINGS_DB
     .prepare('SELECT identifier, description, total_tokens, rank, origin_url, favicon_url FROM rankings_snapshots WHERE kind = ? AND period = ? AND snapshot_at = ? ORDER BY rank ASC LIMIT 20')
@@ -531,6 +544,104 @@ async function aggregateApps(env: Env, days: number): Promise<AppRanking[]> {
     totalTokens: Number(r.total) || 0,
     totalRequests: 0,
   }));
+}
+
+// ── Trend computation (sparklines + deltas from D1 history) ───────────────────
+//
+// All visible board rows share ONE batched query per kind. Models read
+// period='week' rows (the weekly-rolling total sampled over time); apps read
+// period='day'. Honesty rule: a sparkline needs >= 2 daily points and a delta
+// needs a prior point ~periodDays back — otherwise emit nothing, never a guess.
+
+interface SeriesPoint { day: string; tokens: number; rank: number; }
+
+async function readSeries(
+  env: Env,
+  kind: 'model' | 'app',
+  period: 'day' | 'week',
+  identifiers: string[],
+  days: number,
+  upperIso?: string,
+): Promise<Map<string, SeriesPoint[]>> {
+  const out = new Map<string, SeriesPoint[]>();
+  if (identifiers.length === 0) return out;
+  const anchor = upperIso ?? new Date().toISOString();
+  const cutoff = new Date(new Date(anchor).getTime() - days * 86400_000).toISOString();
+  const placeholders = identifiers.map(() => '?').join(',');
+  // Bound above ONLY when viewing "as of" a past time. For the live view we
+  // leave it open so the series includes the newest snapshot and the sparkline
+  // ends at the board's current value (snapshots are always past-dated in prod,
+  // so an open bound == MAX anyway, but this avoids any wall-clock skew gap).
+  const upperClause = upperIso ? ' AND snapshot_at <= ?' : '';
+  const sql = `
+    WITH daily AS (
+      SELECT identifier, snapshot_day AS day, total_tokens AS tokens, rank,
+        ROW_NUMBER() OVER (PARTITION BY identifier, snapshot_day ORDER BY snapshot_at DESC) AS rn
+      FROM rankings_snapshots
+      WHERE kind = ? AND period = ? AND snapshot_at >= ?${upperClause}
+        AND identifier IN (${placeholders})
+    )
+    SELECT identifier, day, tokens, rank FROM daily WHERE rn = 1 ORDER BY identifier, day ASC
+  `;
+  const binds = upperIso
+    ? [kind, period, cutoff, upperIso, ...identifiers]
+    : [kind, period, cutoff, ...identifiers];
+  const res = await env.RANKINGS_DB
+    .prepare(sql)
+    .bind(...binds)
+    .all<{ identifier: string; day: string; tokens: number; rank: number }>();
+  for (const r of res.results ?? []) {
+    const arr = out.get(r.identifier) ?? [];
+    arr.push({ day: r.day, tokens: Number(r.tokens) || 0, rank: r.rank });
+    out.set(r.identifier, arr);
+  }
+  return out;
+}
+
+function isoDayMinus(day: string, n: number): string {
+  return new Date(new Date(day + 'T00:00:00Z').getTime() - n * 86400_000)
+    .toISOString()
+    .slice(0, 10);
+}
+
+// Compare the latest point to the last point on/before (latest_day - periodDays).
+// Returns null when there is no prior point — caller omits the badge.
+function deltaFromSeries(series: SeriesPoint[], periodDays: number): RankDelta | null {
+  if (!series || series.length < 2) return null;
+  const latest = series[series.length - 1];
+  const target = isoDayMinus(latest.day, periodDays);
+  let prior: SeriesPoint | null = null;
+  for (const p of series) {
+    if (p.day <= target) prior = p;
+  }
+  if (!prior || prior.day === latest.day) return null;
+  const pctChange = prior.tokens > 0 ? (latest.tokens - prior.tokens) / prior.tokens : null;
+  return { rankChange: prior.rank - latest.rank, pctChange };
+}
+
+interface TrendRow {
+  identifier: string;
+  set: (sparkline: number[] | undefined, delta: RankDelta | null) => void;
+}
+
+// Batched: one readSeries call covers every row, then attach sparkline + delta.
+async function attachTrends(
+  env: Env,
+  kind: 'model' | 'app',
+  seriesPeriod: 'day' | 'week',
+  rows: TrendRow[],
+  periodDays: number,
+  upperIso?: string,
+): Promise<void> {
+  if (rows.length === 0) return;
+  const series = await readSeries(
+    env, kind, seriesPeriod, rows.map((r) => r.identifier),
+    Math.max(14, periodDays + 1), upperIso,
+  );
+  for (const row of rows) {
+    const s = series.get(row.identifier) ?? [];
+    row.set(s.length >= 2 ? s.map((p) => p.tokens) : undefined, deltaFromSeries(s, periodDays));
+  }
 }
 
 // ── KV refresh (called by cron) ───────────────────────────────────────────────
@@ -657,19 +768,21 @@ export async function getSubscriptions(env: Env) {
 export async function getRankings(
   env: Env,
   period: RankingPeriod = 'day',
+  asOf?: string,
 ): Promise<RankingsData | null> {
   const requiredDays = period === 'week' ? 7 : period === 'month' ? 30 : 0;
   try {
-    const modelsTask = readLatestModels(env, 'week');
+    const modelsTask = readLatestModels(env, 'week', asOf);
 
     let apps: AppRanking[];
     let appsHistoryDays: number | undefined;
     if (period === 'day') {
-      apps = await readLatestApps(env);
+      apps = await readLatestApps(env, asOf);
     } else {
       // Gate the aggregation behind real days-of-history. Without this check,
       // 1 day of snapshots SUMs to ~the same total as 24H but gets labelled
-      // "7D"/"30D" — misleading.
+      // "7D"/"30D" — misleading. (Aggregations stay trailing-from-now in v1;
+      // asOf re-anchors only the day + models boards.)
       appsHistoryDays = await countAppDaysInRange(env, requiredDays);
       apps = appsHistoryDays >= requiredDays
         ? await aggregateApps(env, requiredDays)
@@ -678,6 +791,24 @@ export async function getRankings(
 
     const models = await modelsTask;
     if (models.length > 0 || apps.length > 0 || appsHistoryDays !== undefined) {
+      // Attach sparklines + deltas from history. Models: always week-over-week
+      // (the board is weekly-rolling). Apps: sparkline on every period, but a
+      // delta only on the 24H board — a window-vs-window delta for the 7D/30D
+      // SUM aggregates is out of v1 scope (would mislead next to a sum).
+      const periodDays = period === 'month' ? 30 : period === 'week' ? 7 : 1;
+      await Promise.all([
+        attachTrends(env, 'model', 'week',
+          models.map((m): TrendRow => ({
+            identifier: m.modelSlug,
+            set: (sp, d) => { m.sparkline = sp; m.delta = d; },
+          })), 7, asOf),
+        attachTrends(env, 'app', 'day',
+          apps.map((a): TrendRow => ({
+            identifier: a.title,
+            set: (sp, d) => { a.sparkline = sp; a.delta = period === 'day' ? d : null; },
+          })), periodDays, asOf),
+      ]);
+
       // Return apps under the requested period key so the client doesn't
       // have to know about empty-array vs missing-key fallback semantics.
       const topApps: Record<RankingPeriod, AppRanking[]> = { day: [], week: [], month: [] };
@@ -685,9 +816,10 @@ export async function getRankings(
       return {
         topModels: models,
         topApps,
-        fetchedAt: (await latestSnapshotAt(env, 'model', 'week')) ?? new Date().toISOString(),
+        fetchedAt: (await snapshotAtBefore(env, 'model', 'week', asOf)) ?? new Date().toISOString(),
         appsHistoryDays,
         appsHistoryRequired: requiredDays > 0 ? requiredDays : undefined,
+        asOf: asOf || undefined,
       };
     }
   } catch (err) {

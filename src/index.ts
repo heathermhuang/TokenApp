@@ -103,7 +103,10 @@ app.get(
       const periodRaw = c.req.query('period');
       const period: 'day' | 'week' | 'month' =
         periodRaw === 'week' || periodRaw === 'month' ? periodRaw : 'day';
-      const rankings = await getRankings(c.env, period);
+      // "View as of" — only accept a parseable date; ignore garbage rather than 500.
+      const asOfRaw = c.req.query('asOf');
+      const asOf = asOfRaw && !isNaN(Date.parse(asOfRaw)) ? new Date(asOfRaw).toISOString() : undefined;
+      const rankings = await getRankings(c.env, period, asOf);
       if (!rankings) {
         return c.json({ error: 'Rankings data not yet available' }, 404);
       }
