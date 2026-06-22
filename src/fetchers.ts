@@ -1,4 +1,5 @@
 import puppeteer from '@cloudflare/puppeteer';
+import { APP_CATEGORIES, CATEGORY_SCRAPE_CAP, categoryUrl } from './categories';
 import type { Env, NormalizedModel, OpenRouterModel, OpenRouterResponse, RankingsData, ModelRanking, AppRanking, RankingPeriod, RankDelta } from './types';
 import { KV_KEYS } from './types';
 import { getProvider } from './providers';
@@ -421,6 +422,134 @@ export async function fetchRankingsFromOpenRouter(env: Env): Promise<RankingsScr
   }
 }
 
+// Extractor for a category leaderboard page (/apps/category/{group}/{slug}).
+// Reads the live label from <h1> ("<Label> Rankings") and the ranked app list.
+// The app rows are the same shape as the global Top Apps board, so we reuse the
+// proven innerText line-walk (duplicated, not shared, to avoid touching the
+// working hourly extractor).
+const CATEGORY_EXTRACTOR_SOURCE = `(function () {
+  function parseTokens(raw) {
+    if (!raw) return 0;
+    var m = String(raw).replace(/,/g, '').match(/([\\d.]+)\\s*([KMBT])?/i);
+    if (!m) return 0;
+    var num = parseFloat(m[1]);
+    var mults = { K: 1e3, M: 1e6, B: 1e9, T: 1e12 };
+    return Math.round(num * (mults[(m[2] || '').toUpperCase()] || 1));
+  }
+
+  var h1 = document.querySelector('h1');
+  var label = h1 ? (h1.textContent || '').trim().replace(/\\s*Rankings\\s*$/i, '') : '';
+
+  // Find the container with the most "N." rank markers (the app list), then
+  // line-parse it the same way the global Top Apps extractor does.
+  var containers = Array.prototype.slice.call(document.querySelectorAll('main *'));
+  var best = null, bestCount = 0;
+  for (var ci = 0; ci < containers.length; ci++) {
+    var t = containers[ci].innerText || '';
+    var ranks = t.match(/(^|\\n)\\d+\\.(\\s|$)/g);
+    var c = ranks ? ranks.length : 0;
+    if (c >= 3 && c > bestCount) { best = containers[ci]; bestCount = c; }
+  }
+
+  var apps = [];
+  if (best) {
+    var lines = (best.innerText || '').split('\\n').map(function (l) { return l.trim(); });
+    for (var i = 0; i < lines.length && apps.length < 20; i++) {
+      var rm = lines[i].match(/^(\\d+)\\.$/);
+      if (!rm) continue;
+      var rank = parseInt(rm[1], 10);
+      var title = (lines[i + 1] || '').trim();
+      if (!title || /^Show more$/i.test(title)) continue;
+      var descLines = [], tokensRaw = '';
+      for (var j = i + 2; j < Math.min(i + 15, lines.length); j++) {
+        if (/tokens$/i.test(lines[j])) { tokensRaw = lines[j].replace(/tokens$/i, ''); break; }
+        if (lines[j]) descLines.push(lines[j]);
+      }
+      if (!tokensRaw) continue;
+      apps.push({
+        rank: rank,
+        title: title,
+        description: descLines.filter(function (l) { return l.length > 6; }).join(' ').slice(0, 240),
+        totalTokens: parseTokens(tokensRaw),
+        originUrl: '',
+        faviconUrl: null
+      });
+    }
+  }
+  return { label: label, apps: apps };
+})()`;
+
+interface CategoryScrape {
+  fetchedAt: string;
+  categories: Array<{
+    slug: string;
+    group: string;
+    label: string;
+    apps: Array<{ rank: number; title: string; description: string; totalTokens: number; originUrl: string; faviconUrl: string | null }>;
+  }>;
+}
+
+const CATEGORY_RENDER_TIMEOUT_MS = 30_000;
+
+// Scrape every category leaderboard in ONE reused browser session. A page that
+// fails or yields 0 apps is skipped (per-section empty guard) — never recorded
+// empty, never aborts the rest. ~15 pages, ~2-3 min (see spike findings).
+export async function fetchCategoryRankings(env: Env): Promise<CategoryScrape> {
+  if (!env.BROWSER) {
+    throw new Error('BROWSER binding not configured (requires Cloudflare Browser Rendering)');
+  }
+  const browser = await puppeteer.launch(env.BROWSER);
+  const out: CategoryScrape = { fetchedAt: new Date().toISOString(), categories: [] };
+  try {
+    const page = await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (compatible; token.app/1.0; +https://token.app)');
+    await page.setViewport({ width: 1280, height: 1600 });
+
+    for (const cat of APP_CATEGORIES.slice(0, CATEGORY_SCRAPE_CAP)) {
+      try {
+        await page.goto(categoryUrl(cat), { waitUntil: 'networkidle0', timeout: CATEGORY_RENDER_TIMEOUT_MS });
+        await new Promise((r) => setTimeout(r, 1200));
+        const res = (await page.evaluate(CATEGORY_EXTRACTOR_SOURCE)) as {
+          label: string;
+          apps: Array<{ rank: number; title: string; description: string; totalTokens: number; originUrl: string; faviconUrl: string | null }>;
+        };
+        const apps = (res.apps ?? []).filter((a) => a.title && a.totalTokens > 0).slice(0, 20);
+        if (apps.length > 0) {
+          out.categories.push({ slug: cat.slug, group: cat.group, label: res.label || cat.label, apps });
+        }
+      } catch (err) {
+        console.error('Category scrape failed for', cat.slug, err);
+      }
+    }
+  } finally {
+    await browser.close();
+  }
+  return out;
+}
+
+// Append category app rows (kind='app', period='day', category=slug). Skips a
+// category that scraped 0 apps; append-only, so a skip keeps the last good day.
+async function writeCategorySnapshot(env: Env, scrape: CategoryScrape): Promise<void> {
+  const snapshotAt = scrape.fetchedAt;
+  const snapshotDay = snapshotAt.slice(0, 10);
+  const stmt = env.RANKINGS_DB.prepare(`
+    INSERT INTO rankings_snapshots
+      (snapshot_at, snapshot_day, kind, period, rank, identifier, name, description, total_tokens, origin_url, favicon_url, category)
+    VALUES (?, ?, 'app', 'day', ?, ?, NULL, ?, ?, ?, ?, ?)
+  `);
+  const batch: D1PreparedStatement[] = [];
+  for (const cat of scrape.categories) {
+    if (cat.apps.length === 0) continue;
+    for (const a of cat.apps) {
+      batch.push(stmt.bind(
+        snapshotAt, snapshotDay, a.rank, a.title, a.description,
+        a.totalTokens, a.originUrl || null, a.faviconUrl, cat.slug,
+      ));
+    }
+  }
+  if (batch.length > 0) await env.RANKINGS_DB.batch(batch);
+}
+
 // ── D1 history storage ────────────────────────────────────────────────────────
 //
 // Each cron tick appends ~60 rows: 20 day-models + 20 week-models + 20 apps.
@@ -696,7 +825,7 @@ async function attachTrends(
 
 // ── KV refresh (called by cron) ───────────────────────────────────────────────
 
-export async function refreshAllData(env: Env): Promise<{ models: number; rankings?: string; rankingsError?: string }> {
+export async function refreshAllData(env: Env): Promise<{ models: number; rankings?: string; rankingsError?: string; categories?: string; categoriesError?: string }> {
   const models = await fetchModelsFromOpenRouter();
 
   await env.TOKEN_APP_KV.put(KV_KEYS.MODELS, JSON.stringify(models), {
@@ -764,7 +893,30 @@ export async function refreshAllData(env: Env): Promise<{ models: number; rankin
     rankingsError = String(err);
   }
 
-  return { models: models.length, rankings: rankingsStatus, rankingsError };
+  // ── Categories: scrape AT MOST once per calendar day. The guard lives INSIDE
+  //    the hourly scheduled handler (NOT a new cron trigger — wrangler.toml is
+  //    gitignored, so a new [[triggers]] entry wouldn't survive a clean deploy).
+  let categoriesStatus: string | undefined;
+  let categoriesError: string | undefined;
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const already = await env.RANKINGS_DB
+      .prepare(`SELECT 1 FROM rankings_snapshots WHERE kind = 'app' AND category IS NOT NULL AND snapshot_day = ? LIMIT 1`)
+      .bind(today)
+      .first();
+    if (already) {
+      categoriesStatus = 'skipped (already scraped today)';
+    } else {
+      const catScrape = await fetchCategoryRankings(env);
+      await writeCategorySnapshot(env, catScrape);
+      categoriesStatus = `${catScrape.categories.length} categories`;
+    }
+  } catch (err) {
+    console.error('Category scrape failed (non-fatal):', err);
+    categoriesError = String(err);
+  }
+
+  return { models: models.length, rankings: rankingsStatus, rankingsError, categories: categoriesStatus, categoriesError };
 }
 
 // ── Read from KV (with stale-while-revalidate fallback) ──────────────────────
