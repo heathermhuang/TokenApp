@@ -1,6 +1,6 @@
 import puppeteer from '@cloudflare/puppeteer';
 import { APP_CATEGORIES, CATEGORY_SCRAPE_CAP, categoryUrl } from './categories';
-import type { Env, NormalizedModel, OpenRouterModel, OpenRouterResponse, RankingsData, ModelRanking, AppRanking, RankingPeriod, RankDelta } from './types';
+import type { Env, NormalizedModel, OpenRouterModel, OpenRouterResponse, RankingsData, ModelRanking, AppRanking, RankingPeriod, RankDelta, MarketShareData, MarketSharePoint } from './types';
 import { KV_KEYS } from './types';
 import { getProvider } from './providers';
 import { SUBSCRIPTIONS } from './subscriptions';
@@ -1049,4 +1049,50 @@ export async function getRankings(
   const raw = await env.TOKEN_APP_KV.get(KV_KEYS.RANKINGS);
   if (!raw) return null;
   return JSON.parse(raw) as RankingsData;
+}
+
+// ── Market share read ─────────────────────────────────────────────────────────
+
+// Distinct calendar days of market-share snapshots in the window (honesty gate:
+// the area chart needs >= 2 days to be meaningful, else show an empty state).
+async function countMarketShareDays(env: Env, days: number): Promise<number> {
+  const cutoff = new Date(Date.now() - days * 86400_000).toISOString();
+  const row = await env.RANKINGS_DB
+    .prepare('SELECT COUNT(DISTINCT snapshot_day) AS n FROM market_share_snapshots WHERE snapshot_at >= ?')
+    .bind(cutoff)
+    .first<{ n: number }>();
+  return Number(row?.n) || 0;
+}
+
+// Author-share time series over the trailing window. One point per author per
+// calendar day (the LAST snapshot that day). Authors sorted by latest share.
+export async function readMarketShare(env: Env, windowDays: number, asOf?: string): Promise<MarketShareData> {
+  const anchor = asOf ?? new Date().toISOString();
+  const cutoff = new Date(new Date(anchor).getTime() - windowDays * 86400_000).toISOString();
+  const upperClause = asOf ? ' AND snapshot_at <= ?' : '';
+  const binds: unknown[] = [cutoff];
+  if (asOf) binds.push(asOf);
+  const sql = `
+    WITH daily AS (
+      SELECT author, snapshot_day AS day, share_pct, token_total,
+        ROW_NUMBER() OVER (PARTITION BY author, snapshot_day ORDER BY snapshot_at DESC) AS rn
+      FROM market_share_snapshots
+      WHERE snapshot_at >= ?${upperClause}
+    )
+    SELECT author, day, share_pct, token_total FROM daily WHERE rn = 1 ORDER BY day ASC
+  `;
+  const res = await env.RANKINGS_DB.prepare(sql).bind(...binds)
+    .all<{ author: string; day: string; share_pct: number; token_total: number }>();
+
+  const byAuthor = new Map<string, MarketSharePoint[]>();
+  for (const r of res.results ?? []) {
+    const arr = byAuthor.get(r.author) ?? [];
+    arr.push({ day: r.day, sharePct: Number(r.share_pct) || 0, tokens: Number(r.token_total) || 0 });
+    byAuthor.set(r.author, arr);
+  }
+  const historyDays = await countMarketShareDays(env, windowDays);
+  const authors = Array.from(byAuthor.entries())
+    .map(([author, points]) => ({ author, points }))
+    .sort((a, b) => (b.points[b.points.length - 1]?.sharePct || 0) - (a.points[a.points.length - 1]?.sharePct || 0));
+  return { authors, window: windowDays, historyDays, fetchedAt: anchor };
 }
