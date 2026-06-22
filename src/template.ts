@@ -1021,6 +1021,36 @@ export function getHtml(params: {
       font-variant-numeric: tabular-nums;
     }
 
+    .lb-spark { vertical-align: middle; display: inline-block; }
+    .lb-delta {
+      font-size: 11px;
+      font-weight: 600;
+      margin-left: 6px;
+      font-variant-numeric: tabular-nums;
+    }
+    .lb-delta.up { color: var(--green); }
+    .lb-delta.down { color: var(--red); }
+
+    .rankings-asof {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+      font-size: 12px;
+      color: var(--text3);
+    }
+    .asof-input {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 3px 6px;
+      font-size: 12px;
+      font-family: inherit;
+    }
+    #asof-note { font-size: 12px; color: var(--text3); }
+
     .rankings-source {
       text-align: center;
       font-size: 11px;
@@ -1510,6 +1540,11 @@ export function getHtml(params: {
 <!-- ── Rankings ──────────────────────────────────────────────────────────────── -->
 <h2 class="sr-only">Usage Rankings</h2>
 <div id="rankings-section" style="display:none;">
+  <div class="rankings-asof">
+    <label class="asof-label">View as of <input type="date" id="asof-input" class="asof-input"></label>
+    <button id="asof-reset" class="period-btn" hidden>Latest</button>
+    <span id="asof-note"></span>
+  </div>
   <div class="rankings-grid">
     <div class="leaderboard">
       <div class="leaderboard-header">
@@ -1653,6 +1688,7 @@ const state = {
   rankingsByPeriod: { day: null, week: null, month: null },  // cache per period
   rankingsLoading: false,
   rankingsPeriod: 'day',  // 'day' | 'week' | 'month'
+  asOf: null,        // ISO8601 when viewing a historical snapshot, else null (latest)
   view: 'api',       // 'api' | 'subscriptions' | 'rankings'
   cat: 'all',
   subCat: 'all',
@@ -2260,6 +2296,43 @@ function reqsHtml(n) {
   return s ? '<div class="lb-reqs">' + s + '</div>' : '';
 }
 
+// Inline trend sparkline: normalize the series into a 64x18 box. Short series
+// (< 2 points) render nothing — never a flat fake line.
+function sparklineSvg(points) {
+  if (!points || points.length < 2) return '';
+  var w = 64, h = 18, n = points.length;
+  var min = Math.min.apply(null, points), max = Math.max.apply(null, points);
+  var span = (max - min) || 1;
+  var pts = points.map(function(v, i) {
+    var x = (i / (n - 1)) * (w - 2) + 1;
+    var y = h - 1 - ((v - min) / span) * (h - 2);
+    return x.toFixed(1) + ',' + y.toFixed(1);
+  }).join(' ');
+  var up = points[n - 1] >= points[0];
+  return '<svg class="lb-spark" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h +
+    '" aria-hidden="true"><polyline points="' + pts + '" fill="none" stroke="' +
+    (up ? 'var(--green)' : 'var(--red)') +
+    '" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/></svg>';
+}
+
+// Trend badge: rank move (up arrow 3 / down arrow 2) + token % change. Empty
+// when delta is null (insufficient history) — honesty over a fabricated number.
+function deltaBadge(d) {
+  if (!d) return '';
+  var parts = [];
+  if (typeof d.rankChange === 'number' && d.rankChange !== 0) {
+    var upR = d.rankChange > 0;
+    parts.push('<span class="lb-delta ' + (upR ? 'up' : 'down') + '">' +
+      (upR ? '▲' : '▼') + Math.abs(d.rankChange) + '</span>');
+  }
+  if (typeof d.pctChange === 'number') {
+    var upP = d.pctChange >= 0;
+    parts.push('<span class="lb-delta ' + (upP ? 'up' : 'down') + '">' +
+      (upP ? '+' : '') + Math.round(d.pctChange * 100) + '%</span>');
+  }
+  return parts.join('');
+}
+
 function renderRankings() {
   if (!state.rankings) return;
 
@@ -2301,7 +2374,8 @@ function renderRankings() {
           '<div class="lb-category">' + logoImg + ' ' + escape(provider) + '</div>' +
         '</div>' +
         '<div class="lb-stats">' +
-          '<div class="lb-tokens">' + fmtTokens(m.totalTokens) + '</div>' +
+          sparklineSvg(m.sparkline) +
+          '<div class="lb-tokens">' + fmtTokens(m.totalTokens) + deltaBadge(m.delta) + '</div>' +
           reqsHtml(m.totalRequests) +
         '</div>' +
       '</li>';
@@ -2325,7 +2399,8 @@ function renderRankings() {
           '<div class="lb-category">' + escape(cats) + '</div>' +
         '</div>' +
         '<div class="lb-stats">' +
-          '<div class="lb-tokens">' + fmtTokens(a.totalTokens) + '</div>' +
+          sparklineSvg(a.sparkline) +
+          '<div class="lb-tokens">' + fmtTokens(a.totalTokens) + deltaBadge(a.delta) + '</div>' +
           reqsHtml(a.totalRequests) +
         '</div>' +
       '</li>';
@@ -2597,36 +2672,53 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Rankings period toggle — fetches per-period data from the API on demand
-  // and caches the result on state.rankingsByPeriod so toggling back is instant.
-  document.getElementById('period-toggle').addEventListener('click', async function(e) {
-    var btn = e.target.closest('[data-period]');
-    if (!btn) return;
-    var period = btn.dataset.period;
-    state.rankingsPeriod = period;
-    document.querySelectorAll('#period-toggle .period-btn').forEach(function(b) { b.classList.remove('active'); });
-    btn.classList.add('active');
-    var labels = { day: 'daily', week: 'weekly', month: 'monthly' };
+  var PERIOD_LABELS = { day: 'daily', week: 'weekly', month: 'monthly' };
+
+  // Build the rankings API URL for a period, carrying the "as of" snapshot
+  // when the user is viewing history.
+  function buildRankingsUrl(period) {
+    var u = '/api/rankings?period=' + encodeURIComponent(period);
+    if (state.asOf) u += '&asOf=' + encodeURIComponent(state.asOf);
+    return u;
+  }
+
+  // Reflect the active snapshot time under the boards (cleared for "latest").
+  function updateAsOfNote() {
+    var note = document.getElementById('asof-note');
+    if (!note) return;
+    if (state.asOf && state.rankings && state.rankings.fetchedAt) {
+      var d = new Date(state.rankings.fetchedAt);
+      note.textContent = 'Showing snapshot from ' + d.toLocaleDateString() + ' ' +
+        d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } else {
+      note.textContent = '';
+    }
+  }
+
+  // Load (or serve cached) rankings for a period, then render. Shared by the
+  // period toggle and the as-of picker. The per-period cache is invalidated
+  // whenever asOf changes, so a cache hit here is always asOf-consistent. The
+  // model leaderboard is weekly-only, so the period toggle effectively scopes
+  // the apps list; models re-render unchanged.
+  async function loadRankingsPeriod(period) {
     document.getElementById('app-leaderboard-subtitle').textContent =
-      'Top apps and agents by ' + labels[period] + ' token volume on OpenRouter';
+      'Top apps and agents by ' + PERIOD_LABELS[period] + ' token volume on OpenRouter';
 
     var cached = state.rankingsByPeriod[period];
     if (cached) {
       state.rankings = cached;
       renderRankings();
+      updateAsOfNote();
       return;
     }
 
-    // The model leaderboard is weekly-only (OpenRouter doesn't publish other
-    // periods), so the toggle only affects the apps list. Show a loading
-    // state for apps; leave models as-is.
     var appList = document.getElementById('app-leaderboard');
     if (appList) {
-      appList.innerHTML = '<li style="padding:40px;text-align:center;color:var(--text3)">Loading ' + labels[period] + ' apps…</li>';
+      appList.innerHTML = '<li style="padding:40px;text-align:center;color:var(--text3)">Loading ' + PERIOD_LABELS[period] + ' apps…</li>';
     }
 
     try {
-      var res = await fetch('/api/rankings?period=' + encodeURIComponent(period));
+      var res = await fetch(buildRankingsUrl(period));
       var data = await res.json();
       if (data && !data.error) {
         state.rankingsByPeriod[period] = data;
@@ -2635,15 +2727,54 @@ document.addEventListener('DOMContentLoaded', () => {
         // the "X/Y days of history collected" message when the server gates
         // the aggregation behind real days of data).
         renderRankings();
+        updateAsOfNote();
       } else if (appList) {
-        appList.innerHTML = '<li style="padding:40px;text-align:center;color:var(--text3)">No ' + labels[period] + ' rankings yet.</li>';
+        appList.innerHTML = '<li style="padding:40px;text-align:center;color:var(--text3)">No ' + PERIOD_LABELS[period] + ' rankings yet.</li>';
       }
     } catch (err) {
       if (appList) {
-        appList.innerHTML = '<li style="padding:40px;text-align:center;color:var(--text3)">Failed to load ' + labels[period] + ' rankings.</li>';
+        appList.innerHTML = '<li style="padding:40px;text-align:center;color:var(--text3)">Failed to load ' + PERIOD_LABELS[period] + ' rankings.</li>';
       }
     }
+  }
+
+  // Rankings period toggle — fetches per-period data on demand (cached).
+  document.getElementById('period-toggle').addEventListener('click', function(e) {
+    var btn = e.target.closest('[data-period]');
+    if (!btn) return;
+    var period = btn.dataset.period;
+    state.rankingsPeriod = period;
+    document.querySelectorAll('#period-toggle .period-btn').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    loadRankingsPeriod(period);
   });
+
+  // "View as of" — re-anchor every board to a past snapshot. Clearing the
+  // per-period cache is REQUIRED: it keys on period only, so without this a
+  // historical view would be served stale "latest" data (or vice versa).
+  (function () {
+    var input = document.getElementById('asof-input');
+    var reset = document.getElementById('asof-reset');
+    if (!input) return;
+    input.max = new Date().toISOString().slice(0, 10);
+
+    input.addEventListener('change', function () {
+      state.asOf = input.value ? input.value + 'T23:59:59Z' : null;
+      state.rankingsByPeriod = { day: null, week: null, month: null };
+      if (reset) reset.hidden = !state.asOf;
+      loadRankingsPeriod(state.rankingsPeriod);
+    });
+
+    if (reset) {
+      reset.addEventListener('click', function () {
+        state.asOf = null;
+        input.value = '';
+        reset.hidden = true;
+        state.rankingsByPeriod = { day: null, week: null, month: null };
+        loadRankingsPeriod(state.rankingsPeriod);
+      });
+    }
+  })();
 
   // Search
   let searchTimer;
