@@ -2,7 +2,8 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { cache } from 'hono/cache';
 import type { Env } from './types';
-import { getModels, getSubscriptions, getRankings, refreshAllData } from './fetchers';
+import { getModels, getSubscriptions, getRankings, refreshAllData, readMarketShare } from './fetchers';
+import { APP_CATEGORIES, CATEGORY_SLUGS, CATEGORY_LABELS } from './categories';
 import { getHtml, getProviderHtml, getAboutHtml } from './template';
 import { getUsageHtml } from './usage-template';
 import { getKeyringHtml } from './keyring-template';
@@ -106,14 +107,55 @@ app.get(
       // "View as of" — only accept a parseable date; ignore garbage rather than 500.
       const asOfRaw = c.req.query('asOf');
       const asOf = asOfRaw && !isNaN(Date.parse(asOfRaw)) ? new Date(asOfRaw).toISOString() : undefined;
-      const rankings = await getRankings(c.env, period, asOf);
+      const categoryRaw = c.req.query('category');
+      const category = categoryRaw && CATEGORY_SLUGS.has(categoryRaw) ? categoryRaw : undefined;
+      const rankings = await getRankings(c.env, period, asOf, category);
       if (!rankings) {
         return c.json({ error: 'Rankings data not yet available' }, 404);
       }
-      return c.json({ ...rankings, period });
+      return c.json({ ...rankings, period, category });
     } catch (err) {
       console.error('Failed to get rankings:', err);
       return c.json({ error: 'Failed to load rankings' }, 500);
+    }
+  }
+);
+
+app.get(
+  '/api/market-share',
+  cache({ cacheName: 'token-app-market-share', cacheControl: 'max-age=3600, stale-while-revalidate=86400' }),
+  async (c) => {
+    try {
+      const windowRaw = parseInt(c.req.query('window') || '30', 10);
+      const window = [7, 30, 90].includes(windowRaw) ? windowRaw : 30;
+      const data = await readMarketShare(c.env, window);
+      return c.json(data);
+    } catch (err) {
+      console.error('Failed to get market share:', err);
+      return c.json({ error: 'Failed to load market share' }, 500);
+    }
+  }
+);
+
+app.get(
+  '/api/rankings/categories',
+  cache({ cacheName: 'token-app-categories', cacheControl: 'max-age=3600, stale-while-revalidate=86400' }),
+  async (c) => {
+    try {
+      // Only surface categories that actually have scraped data, so tabs light
+      // up as the daily scrape fills them. Labels come from the seed (stable
+      // display names) — fall back to the seed label per slug.
+      const res = await c.env.RANKINGS_DB
+        .prepare("SELECT DISTINCT category FROM rankings_snapshots WHERE kind = 'app' AND category IS NOT NULL")
+        .all<{ category: string }>();
+      const present = new Set((res.results ?? []).map((r) => r.category));
+      const categories = APP_CATEGORIES
+        .filter((cat) => present.has(cat.slug))
+        .map((cat) => ({ slug: cat.slug, group: cat.group, label: CATEGORY_LABELS.get(cat.slug) || cat.label }));
+      return c.json({ categories });
+    } catch (err) {
+      console.error('Failed to get categories:', err);
+      return c.json({ categories: [] });
     }
   }
 );
