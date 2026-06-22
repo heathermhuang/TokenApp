@@ -141,7 +141,22 @@ export interface RankingsData {
   // When set, the board reflects the snapshot at/just-before this ISO time
   // (the "view as of" picker) rather than the latest.
   asOf?: string;
+  // When set, the apps board is scoped to this category slug (models stay global).
+  category?: string;
 }
+
+// ── Market share by model author (scraped from OpenRouter /rankings) ─────────
+export interface MarketSharePoint { day: string; sharePct: number; tokens: number; }
+export interface MarketShareAuthor { author: string; points: MarketSharePoint[]; }
+export interface MarketShareData {
+  authors: MarketShareAuthor[];
+  window: number;       // trailing days requested
+  historyDays: number;  // distinct calendar days collected (honesty gating)
+  fetchedAt: string;
+}
+
+// One OpenRouter app category. Path-addressable: /apps/category/{group}/{slug}.
+export interface AppCategory { group: string; slug: string; label: string; }
 
 // ── Usage dashboard (Phase 1 — BYO-export, client-side only) ─────────────────
 //
