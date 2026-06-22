@@ -299,7 +299,34 @@ const RANKINGS_EXTRACTOR_SOURCE = `(function () {
     }
   }
 
-  return { models: models, apps: apps };
+  // ── Market share — legend rows under #market-share ──────────────────────
+  // Each named author is a <button> containing <a href="/{author}">, a token
+  // total ("148B"), and a share percent ("18.0%"). The aggregate "Others" row
+  // has no author link and is intentionally skipped (named authors only).
+  var marketShare = [];
+  var msSeen = {};
+  var msSection = document.getElementById('market-share');
+  if (msSection) {
+    var msLinks = Array.prototype.slice.call(msSection.querySelectorAll('a[href^="/"]'));
+    for (var ms = 0; ms < msLinks.length; ms++) {
+      var aEl = msLinks[ms];
+      var author = aEl.getAttribute('href').replace(/^\\//, '');
+      if (!author || author.indexOf('/') !== -1 || msSeen[author]) continue;
+      var rowEl = aEl.closest('button') || aEl.parentElement;
+      var rowText = rowEl ? (rowEl.innerText || '') : '';
+      var pctM = rowText.match(/([\\d.]+)\\s*%/);
+      if (!pctM) continue;
+      var tokM = rowText.match(/([\\d.]+\\s*[KMBT])\\b/i);
+      msSeen[author] = true;
+      marketShare.push({
+        author: author,
+        sharePct: parseFloat(pctM[1]),
+        tokenTotal: tokM ? parseTokens(tokM[1]) : 0
+      });
+    }
+  }
+
+  return { models: models, apps: apps, marketShare: marketShare };
 })()`;
 
 // Internal shape produced by a single browser-rendered scrape.
@@ -321,6 +348,7 @@ interface RankingsScrape {
     originUrl: string;
     faviconUrl: string | null;
   }>;
+  marketShare: Array<{ author: string; tokenTotal: number; sharePct: number }>;
 }
 
 export async function fetchRankingsFromOpenRouter(env: Env): Promise<RankingsScrape> {
@@ -359,6 +387,7 @@ export async function fetchRankingsFromOpenRouter(env: Env): Promise<RankingsScr
         originUrl: string;
         faviconUrl: string | null;
       }>;
+      marketShare: Array<{ author: string; tokenTotal: number; sharePct: number }>;
     };
 
     const modelsWeek = extracted.models.slice(0, 20).map((m, i) => ({
@@ -377,10 +406,15 @@ export async function fetchRankingsFromOpenRouter(env: Env): Promise<RankingsScr
       if (apps.length >= 20) break;
     }
 
+    const marketShare = (extracted.marketShare ?? [])
+      .filter((m) => m.author && m.sharePct > 0)
+      .slice(0, 12);
+
     return {
       fetchedAt: new Date().toISOString(),
       modelsWeek,
       apps,
+      marketShare,
     };
   } finally {
     await browser.close();
@@ -417,6 +451,22 @@ async function writeRankingsSnapshot(env: Env, scrape: RankingsScrape): Promise<
   if (batch.length > 0) {
     await env.RANKINGS_DB.batch(batch);
   }
+}
+
+// Append a market-share snapshot. Empty result = skip the insert (the table is
+// append-only, so the read path just keeps the last good day — no overwrite).
+async function writeMarketShareSnapshot(env: Env, scrape: RankingsScrape): Promise<void> {
+  if (!scrape.marketShare || scrape.marketShare.length === 0) return;
+  const snapshotAt = scrape.fetchedAt;
+  const snapshotDay = snapshotAt.slice(0, 10);
+  const stmt = env.RANKINGS_DB.prepare(`
+    INSERT INTO market_share_snapshots
+      (snapshot_at, snapshot_day, author, token_total, share_pct, period)
+    VALUES (?, ?, ?, ?, ?, 'day')
+  `);
+  const batch = scrape.marketShare.map((m) =>
+    stmt.bind(snapshotAt, snapshotDay, m.author, m.tokenTotal, m.sharePct));
+  await env.RANKINGS_DB.batch(batch);
 }
 
 // ── Period-aware reads ────────────────────────────────────────────────────────
@@ -673,6 +723,10 @@ export async function refreshAllData(env: Env): Promise<{ models: number; rankin
 
     // 1) Append a new history snapshot to D1.
     await writeRankingsSnapshot(env, scrape);
+
+    // 1b) Append market share (extracted from the same render — zero extra
+    //     page loads). Best-effort: it's inside the rankings try/catch already.
+    await writeMarketShareSnapshot(env, scrape);
 
     // 2) Mirror the latest snapshot into KV for SSR initial state. The
     //    legacy RankingsData shape stays compatible with the client.
