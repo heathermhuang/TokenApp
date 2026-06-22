@@ -624,6 +624,21 @@ async function snapshotAtBefore(
   return row?.s ?? null;
 }
 
+// Latest app snapshot_at for a category bucket: NULL = global board, a slug =
+// that category. asOf re-anchors to the snapshot at/just-before that time.
+async function appSnapshotAtBefore(env: Env, asOf: string | undefined, category: string | null): Promise<string | null> {
+  const catClause = category == null ? 'category IS NULL' : 'category = ?';
+  const upperClause = asOf ? ' AND snapshot_at <= ?' : '';
+  const binds: unknown[] = [];
+  if (category != null) binds.push(category);
+  if (asOf) binds.push(asOf);
+  const row = await env.RANKINGS_DB
+    .prepare(`SELECT MAX(snapshot_at) AS s FROM rankings_snapshots WHERE kind = 'app' AND period = 'day' AND ${catClause}${upperClause}`)
+    .bind(...binds)
+    .first<{ s: string | null }>();
+  return row?.s ?? null;
+}
+
 async function readLatestModels(env: Env, period: 'day' | 'week', asOf?: string): Promise<ModelRanking[]> {
   const latest = await snapshotAtBefore(env, 'model', period, asOf);
   if (!latest) return [];
@@ -639,18 +654,21 @@ async function readLatestModels(env: Env, period: 'day' | 'week', asOf?: string)
   }));
 }
 
-async function readLatestApps(env: Env, asOf?: string): Promise<AppRanking[]> {
-  const latest = await snapshotAtBefore(env, 'app', 'day', asOf);
+async function readLatestApps(env: Env, asOf?: string, category: string | null = null): Promise<AppRanking[]> {
+  const latest = await appSnapshotAtBefore(env, asOf, category);
   if (!latest) return [];
+  const catClause = category == null ? 'category IS NULL' : 'category = ?';
+  const binds: unknown[] = ['app', 'day', latest];
+  if (category != null) binds.push(category);
   const result = await env.RANKINGS_DB
-    .prepare('SELECT identifier, description, total_tokens, rank, origin_url, favicon_url FROM rankings_snapshots WHERE kind = ? AND period = ? AND snapshot_at = ? ORDER BY rank ASC LIMIT 20')
-    .bind('app', 'day', latest)
+    .prepare(`SELECT identifier, description, total_tokens, rank, origin_url, favicon_url FROM rankings_snapshots WHERE kind = ? AND period = ? AND snapshot_at = ? AND ${catClause} ORDER BY rank ASC LIMIT 20`)
+    .bind(...binds)
     .all<{ identifier: string; description: string | null; total_tokens: number; rank: number; origin_url: string | null; favicon_url: string | null }>();
   return (result.results ?? []).map((r) => ({
     rank: r.rank,
     title: r.identifier,
     description: r.description ?? '',
-    categories: [],
+    categories: category ? [category] : [],
     originUrl: r.origin_url ?? '',
     faviconUrl: r.favicon_url ?? null,
     totalTokens: Number(r.total_tokens) || 0,
@@ -661,40 +679,25 @@ async function readLatestApps(env: Env, asOf?: string): Promise<AppRanking[]> {
 // Aggregate over the last `days` daily snapshots. For each identifier, take
 // the LAST snapshot of each calendar day (end-of-day total) and SUM across
 // days. This gives a meaningful total token volume over the window.
-async function aggregateRange(env: Env, kind: 'model' | 'app', days: number): Promise<
+async function aggregateRange(env: Env, kind: 'model' | 'app', days: number, category: string | null = null): Promise<
   Array<{ identifier: string; name: string | null; description: string | null; origin_url: string | null; favicon_url: string | null; total: number }>
 > {
   const cutoff = new Date(Date.now() - days * 86400_000).toISOString();
+  const catClause = kind === 'app' ? (category == null ? ' AND category IS NULL' : ' AND category = ?') : '';
   const sql = `
     WITH daily_last AS (
-      SELECT
-        identifier,
-        name,
-        description,
-        origin_url,
-        favicon_url,
-        total_tokens,
-        snapshot_day,
+      SELECT identifier, name, description, origin_url, favicon_url, total_tokens, snapshot_day,
         ROW_NUMBER() OVER (PARTITION BY identifier, snapshot_day ORDER BY snapshot_at DESC) AS rn
       FROM rankings_snapshots
-      WHERE kind = ? AND period = 'day' AND snapshot_at >= ?
+      WHERE kind = ? AND period = 'day' AND snapshot_at >= ?${catClause}
     )
-    SELECT
-      identifier,
-      MAX(name) AS name,
-      MAX(description) AS description,
-      MAX(origin_url) AS origin_url,
-      MAX(favicon_url) AS favicon_url,
-      SUM(total_tokens) AS total
-    FROM daily_last
-    WHERE rn = 1
-    GROUP BY identifier
-    ORDER BY total DESC
-    LIMIT 20
+    SELECT identifier, MAX(name) AS name, MAX(description) AS description,
+      MAX(origin_url) AS origin_url, MAX(favicon_url) AS favicon_url, SUM(total_tokens) AS total
+    FROM daily_last WHERE rn = 1 GROUP BY identifier ORDER BY total DESC LIMIT 20
   `;
-  const result = await env.RANKINGS_DB
-    .prepare(sql)
-    .bind(kind, cutoff)
+  const binds: unknown[] = [kind, cutoff];
+  if (kind === 'app' && category != null) binds.push(category);
+  const result = await env.RANKINGS_DB.prepare(sql).bind(...binds)
     .all<{ identifier: string; name: string | null; description: string | null; origin_url: string | null; favicon_url: string | null; total: number }>();
   return result.results ?? [];
 }
@@ -702,22 +705,25 @@ async function aggregateRange(env: Env, kind: 'model' | 'app', days: number): Pr
 // Count distinct calendar days of app snapshots in the trailing `days` window.
 // Gates week/month aggregations: with < N days of history, SUMming daily
 // snapshots would label a 1- or 2-day total as a "7D"/"30D" total — fake.
-async function countAppDaysInRange(env: Env, days: number): Promise<number> {
+async function countAppDaysInRange(env: Env, days: number, category: string | null = null): Promise<number> {
   const cutoff = new Date(Date.now() - days * 86400_000).toISOString();
+  const catClause = category == null ? 'category IS NULL' : 'category = ?';
+  const binds: unknown[] = [cutoff];
+  if (category != null) binds.push(category);
   const row = await env.RANKINGS_DB
-    .prepare(`SELECT COUNT(DISTINCT snapshot_day) AS n FROM rankings_snapshots WHERE kind = 'app' AND period = 'day' AND snapshot_at >= ?`)
-    .bind(cutoff)
+    .prepare(`SELECT COUNT(DISTINCT snapshot_day) AS n FROM rankings_snapshots WHERE kind = 'app' AND period = 'day' AND ${catClause} AND snapshot_at >= ?`)
+    .bind(...binds)
     .first<{ n: number }>();
   return Number(row?.n) || 0;
 }
 
-async function aggregateApps(env: Env, days: number): Promise<AppRanking[]> {
-  const rows = await aggregateRange(env, 'app', days);
+async function aggregateApps(env: Env, days: number, category: string | null = null): Promise<AppRanking[]> {
+  const rows = await aggregateRange(env, 'app', days, category);
   return rows.map((r, i) => ({
     rank: i + 1,
     title: r.identifier,
     description: r.description ?? '',
-    categories: [],
+    categories: category ? [category] : [],
     originUrl: r.origin_url ?? '',
     faviconUrl: r.favicon_url ?? null,
     totalTokens: Number(r.total) || 0,
@@ -757,7 +763,7 @@ async function readSeries(
       SELECT identifier, snapshot_day AS day, total_tokens AS tokens, rank,
         ROW_NUMBER() OVER (PARTITION BY identifier, snapshot_day ORDER BY snapshot_at DESC) AS rn
       FROM rankings_snapshots
-      WHERE kind = ? AND period = ? AND snapshot_at >= ?${upperClause}
+      WHERE kind = ? AND period = ? AND category IS NULL AND snapshot_at >= ?${upperClause}
         AND identifier IN (${placeholders})
     )
     SELECT identifier, day, tokens, rank FROM daily WHERE rn = 1 ORDER BY identifier, day ASC
@@ -975,23 +981,25 @@ export async function getRankings(
   env: Env,
   period: RankingPeriod = 'day',
   asOf?: string,
+  category?: string | null,
 ): Promise<RankingsData | null> {
+  const cat = category ?? null;
   const requiredDays = period === 'week' ? 7 : period === 'month' ? 30 : 0;
   try {
-    const modelsTask = readLatestModels(env, 'week', asOf);
+    const modelsTask = readLatestModels(env, 'week', asOf); // models are always the global weekly board
 
     let apps: AppRanking[];
     let appsHistoryDays: number | undefined;
     if (period === 'day') {
-      apps = await readLatestApps(env, asOf);
+      apps = await readLatestApps(env, asOf, cat);
     } else {
       // Gate the aggregation behind real days-of-history. Without this check,
       // 1 day of snapshots SUMs to ~the same total as 24H but gets labelled
       // "7D"/"30D" — misleading. (Aggregations stay trailing-from-now in v1;
       // asOf re-anchors only the day + models boards.)
-      appsHistoryDays = await countAppDaysInRange(env, requiredDays);
+      appsHistoryDays = await countAppDaysInRange(env, requiredDays, cat);
       apps = appsHistoryDays >= requiredDays
-        ? await aggregateApps(env, requiredDays)
+        ? await aggregateApps(env, requiredDays, cat)
         : [];
     }
 
@@ -1008,11 +1016,15 @@ export async function getRankings(
             identifier: m.modelSlug,
             set: (sp, d) => { m.sparkline = sp; m.delta = d; },
           })), 7, asOf),
-        attachTrends(env, 'app', 'day',
-          apps.map((a): TrendRow => ({
-            identifier: a.title,
-            set: (sp, d) => { a.sparkline = sp; a.delta = period === 'day' ? d : null; },
-          })), periodDays, asOf),
+        // Category boards skip trends in v1 — daily category history is too
+        // sparse to compute an honest sparkline/delta until snapshots accumulate.
+        cat == null
+          ? attachTrends(env, 'app', 'day',
+              apps.map((a): TrendRow => ({
+                identifier: a.title,
+                set: (sp, d) => { a.sparkline = sp; a.delta = period === 'day' ? d : null; },
+              })), periodDays, asOf)
+          : Promise.resolve(),
       ]);
 
       // Return apps under the requested period key so the client doesn't
@@ -1026,6 +1038,7 @@ export async function getRankings(
         appsHistoryDays,
         appsHistoryRequired: requiredDays > 0 ? requiredDays : undefined,
         asOf: asOf || undefined,
+        category: cat || undefined,
       };
     }
   } catch (err) {
