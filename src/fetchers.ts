@@ -862,7 +862,15 @@ async function attachTrends(
 
 // ── KV refresh (called by cron) ───────────────────────────────────────────────
 
-export async function refreshAllData(env: Env): Promise<{ models: number; rankings?: string; rankingsError?: string; categories?: string; categoriesError?: string }> {
+// `includeCategories` gates the once-per-day, ~2-3 min category scrape (up to 15
+// Browser Rendering pages). Only the scheduled (cron) handler passes true — it has
+// a 15-min wall-clock budget. The HTTP /api/refresh path leaves it false: Cloudflare
+// cancels HTTP ctx.waitUntil() work 30s after the response is sent, far short of
+// this scrape, so there is nowhere in a request to run it. Categories stay cron-owned.
+export async function refreshAllData(
+  env: Env,
+  opts: { includeCategories?: boolean } = {},
+): Promise<{ models: number; rankings?: string; rankingsError?: string; categories?: string; categoriesError?: string }> {
   const models = await fetchModelsFromOpenRouter();
 
   await env.TOKEN_APP_KV.put(KV_KEYS.MODELS, JSON.stringify(models), {
@@ -930,27 +938,36 @@ export async function refreshAllData(env: Env): Promise<{ models: number; rankin
     rankingsError = String(err);
   }
 
-  // ── Categories: scrape AT MOST once per calendar day. The guard lives INSIDE
-  //    the hourly scheduled handler (NOT a new cron trigger — wrangler.toml is
-  //    gitignored, so a new [[triggers]] entry wouldn't survive a clean deploy).
+  // ── Categories: scrape AT MOST once per calendar day. Long-running (~2-3 min,
+  //    up to 15 Browser Rendering pages), so it ONLY runs when the caller has the
+  //    wall-clock budget — the hourly scheduled handler (15-min cron limit) passes
+  //    includeCategories. The HTTP /api/refresh path skips it (CF cancels HTTP
+  //    ctx.waitUntil() 30s after the response, so a 2-3 min job can't run in a
+  //    request). The daily guard below still dedupes across the cron's hourly runs.
+  //    (No new cron trigger — wrangler.toml is gitignored, so a new [[triggers]]
+  //    entry wouldn't survive a clean deploy.)
   let categoriesStatus: string | undefined;
   let categoriesError: string | undefined;
-  try {
-    const today = new Date().toISOString().slice(0, 10);
-    const already = await env.RANKINGS_DB
-      .prepare(`SELECT 1 FROM rankings_snapshots WHERE kind = 'app' AND category IS NOT NULL AND snapshot_day = ? LIMIT 1`)
-      .bind(today)
-      .first();
-    if (already) {
-      categoriesStatus = 'skipped (already scraped today)';
-    } else {
-      const catScrape = await fetchCategoryRankings(env);
-      await writeCategorySnapshot(env, catScrape);
-      categoriesStatus = `${catScrape.categories.length} categories`;
+  if (opts.includeCategories) {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const already = await env.RANKINGS_DB
+        .prepare(`SELECT 1 FROM rankings_snapshots WHERE kind = 'app' AND category IS NOT NULL AND snapshot_day = ? LIMIT 1`)
+        .bind(today)
+        .first();
+      if (already) {
+        categoriesStatus = 'skipped (already scraped today)';
+      } else {
+        const catScrape = await fetchCategoryRankings(env);
+        await writeCategorySnapshot(env, catScrape);
+        categoriesStatus = `${catScrape.categories.length} categories`;
+      }
+    } catch (err) {
+      console.error('Category scrape failed (non-fatal):', err);
+      categoriesError = String(err);
     }
-  } catch (err) {
-    console.error('Category scrape failed (non-fatal):', err);
-    categoriesError = String(err);
+  } else {
+    categoriesStatus = 'skipped (cron-only)';
   }
 
   return { models: models.length, rankings: rankingsStatus, rankingsError, categories: categoriesStatus, categoriesError };

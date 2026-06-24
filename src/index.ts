@@ -195,19 +195,18 @@ app.post('/api/refresh', async (c) => {
       'WWW-Authenticate': `Bearer realm="token.app", scope="admin:refresh", resource_metadata="${origin}/.well-known/oauth-protected-resource"`,
     });
   }
-  // Background the refresh and return promptly. The once-per-day category scrape
-  // inside refreshAllData can run ~2-3 min (up to 15 OpenRouter pages via Browser
-  // Rendering), which blows past the ~100s HTTP edge timeout (524) if we await it.
-  // Mirror the cron's fire-and-forget pattern; failures surface in logs, not the
-  // response. The empty-overwrite guard in refreshAllData still protects D1.
-  c.executionCtx.waitUntil(
-    refreshAllData(c.env).then((result) => {
-      console.log(`[refresh] Refreshed: ${result.models} models`);
-    }).catch((err) => {
-      console.error('[refresh] Refresh failed:', err);
-    })
-  );
-  return c.json({ ok: true, status: 'refresh started' }, 202);
+  // Refresh models + rankings + market-share and await the result (~45-60s, under
+  // the ~100s HTTP edge timeout). Categories are intentionally NOT scraped here:
+  // that once-per-day job runs ~2-3 min and only fits the cron's 15-min budget.
+  // Backgrounding it with HTTP ctx.waitUntil() does NOT work — Cloudflare cancels
+  // waitUntil 30s after the response, silently truncating the scrape. The hourly
+  // cron owns categories; this endpoint forces a fast models/rankings refresh.
+  try {
+    const result = await refreshAllData(c.env);
+    return c.json({ ok: true, ...result });
+  } catch (err) {
+    return c.json({ error: String(err) }, 500);
+  }
 });
 
 // ── Agent Discovery ──────────────────────────────────────────────────────────
@@ -885,8 +884,8 @@ export default {
     ctx: ExecutionContext
   ): Promise<void> {
     ctx.waitUntil(
-      refreshAllData(env).then((result) => {
-        console.log(`[cron] Refreshed: ${result.models} models`);
+      refreshAllData(env, { includeCategories: true }).then((result) => {
+        console.log(`[cron] Refreshed: ${result.models} models, categories: ${result.categories ?? 'n/a'}`);
       }).catch((err) => {
         console.error('[cron] Refresh failed:', err);
       })
