@@ -417,7 +417,21 @@ export async function fetchRankingsFromOpenRouter(env: Env): Promise<RankingsScr
         const ready = await page.evaluate(`(function () {
           var s = document.getElementById('market-share');
           if (!s || s.querySelector('[data-testid="rankings-skeleton-chart"]')) return false;
-          return s.querySelectorAll('a[href^="/"]').length > 0;
+          // Mirror the extractor's success condition, not just "any link": a CTA
+          // like /models?fmt=cards can render before the author legend, and a bare
+          // a[href^="/"] check would exit the poll too early. Require a clean
+          // author slug whose nearest ancestor carries a "%".
+          var links = s.querySelectorAll('a[href^="/"]');
+          for (var i = 0; i < links.length; i++) {
+            var slug = (links[i].getAttribute('href') || '').replace(/^\\//, '');
+            if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) continue;
+            var node = links[i];
+            for (var up = 0; up < 5 && node && node !== s; up++) {
+              if (/[\\d.]+\\s*%/.test(node.innerText || node.textContent || '')) return true;
+              node = node.parentElement;
+            }
+          }
+          return false;
         })()`);
         if (ready) break;
         await new Promise((r) => setTimeout(r, 1000));
@@ -1118,17 +1132,6 @@ export async function getRankings(
 
 // ── Market share read ─────────────────────────────────────────────────────────
 
-// Distinct calendar days of market-share snapshots in the window (honesty gate:
-// the area chart needs >= 2 days to be meaningful, else show an empty state).
-async function countMarketShareDays(env: Env, days: number): Promise<number> {
-  const cutoff = new Date(Date.now() - days * 86400_000).toISOString();
-  const row = await env.RANKINGS_DB
-    .prepare('SELECT COUNT(DISTINCT snapshot_day) AS n FROM market_share_snapshots WHERE snapshot_at >= ?')
-    .bind(cutoff)
-    .first<{ n: number }>();
-  return Number(row?.n) || 0;
-}
-
 // Author slugs are clean single-segment tokens (lowercase alnum + hyphens). The
 // market-share section also holds CTA/nav links (e.g. "models?fmt=cards"); the
 // write-side extractor filters them, but sanitize on read too so any junk that
@@ -1168,7 +1171,12 @@ export async function readMarketShare(env: Env, windowDays: number, asOf?: strin
     arr.push({ day: r.day, sharePct: Number(r.share_pct) || 0, tokens: Number(r.token_total) || 0 });
     byAuthor.set(r.author, arr);
   }
-  const historyDays = await countMarketShareDays(env, windowDays);
+  // Honesty gate counts only days that have >= 1 VALID author, derived from the
+  // filtered set so it can't disagree with the authors we return — a junk-only
+  // day must not satisfy the chart's >= 2-day requirement.
+  const validDays = new Set<string>();
+  for (const points of byAuthor.values()) for (const p of points) validDays.add(p.day);
+  const historyDays = validDays.size;
   const authors = Array.from(byAuthor.entries())
     .map(([author, points]) => ({ author, points }))
     .sort((a, b) => (b.points[b.points.length - 1]?.sharePct || 0) - (a.points[a.points.length - 1]?.sharePct || 0));
