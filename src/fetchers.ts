@@ -305,10 +305,14 @@ const RANKINGS_EXTRACTOR_SOURCE = `(function () {
     }
   }
 
-  // ── Market share — legend rows under #market-share ──────────────────────
-  // Each named author is a <button> containing <a href="/{author}">, a token
-  // total ("148B"), and a share percent ("18.0%"). The aggregate "Others" row
-  // has no author link and is intentionally skipped (named authors only).
+  // ── Market share — ranked legend under #market-share ────────────────────
+  // Each named author has an <a href="/{author}"> plus a token total ("148B")
+  // and a share percent ("18.0%"). The row is NOT reliably a <button> wrapping
+  // all three (OpenRouter changed the DOM), so find the row by CONTENT: walk up
+  // from the author link to the nearest ancestor whose text carries a "%". If
+  // that ancestor spans several rows (flat layout), anchor on the link's own
+  // label so we read THIS author's token/percent, not a neighbor's. The
+  // aggregate "Others" row has no author link and is skipped (named only).
   var marketShare = [];
   var msSeen = {};
   var msSection = document.getElementById('market-share');
@@ -316,10 +320,27 @@ const RANKINGS_EXTRACTOR_SOURCE = `(function () {
     var msLinks = Array.prototype.slice.call(msSection.querySelectorAll('a[href^="/"]'));
     for (var ms = 0; ms < msLinks.length; ms++) {
       var aEl = msLinks[ms];
-      var author = aEl.getAttribute('href').replace(/^\\//, '');
-      if (!author || author.indexOf('/') !== -1 || msSeen[author]) continue;
-      var rowEl = aEl.closest('button') || aEl.parentElement;
-      var rowText = rowEl ? (rowEl.innerText || '') : '';
+      var author = (aEl.getAttribute('href') || '').replace(/^\\//, '');
+      if (!author || msSeen[author]) continue;
+      // Author hrefs are clean single-segment slugs (lowercase alnum + hyphens).
+      // Reject CTA / nav links that also live in this section — e.g. the
+      // "/models?fmt=cards" compare link — so their neighboring percentages
+      // (often the unnamed "Others" aggregate) aren't mistaken for an author.
+      if (!/^[a-z0-9][a-z0-9-]*$/.test(author)) continue;
+      if (/^(models|rankings|apps|data|pricing|docs|chat|settings|login|enterprise|about|careers|blog|terms|privacy)$/.test(author)) continue;
+      var label = (aEl.innerText || aEl.textContent || '').trim();
+      var rowText = '';
+      var node = aEl;
+      for (var up = 0; up < 5 && node && node !== msSection; up++) {
+        var t = node.innerText || node.textContent || '';
+        if (/[\\d.]+\\s*%/.test(t)) { rowText = t; break; }
+        node = node.parentElement;
+      }
+      // Over-broad ancestor (more than one "%"): narrow to this author's slice.
+      if (label && (rowText.match(/%/g) || []).length > 1) {
+        var li = rowText.indexOf(label);
+        if (li !== -1) rowText = rowText.slice(li);
+      }
       var pctM = rowText.match(/([\\d.]+)\\s*%/);
       if (!pctM) continue;
       var tokM = rowText.match(/([\\d.]+\\s*[KMBT])\\b/i);
@@ -384,29 +405,25 @@ export async function fetchRankingsFromOpenRouter(env: Env): Promise<RankingsScr
     await new Promise((r) => setTimeout(r, 1500));
 
     // Market share hydrates separately from the model leaderboard (its own
-    // Suspense boundary, filled by a post-load Server Action). Bring the section
-    // into view in case its fetch is intersection-triggered, then wait until the
-    // skeleton is replaced by a real legend row — the same success condition the
-    // extractor uses (an author link whose row carries a "%" cell). Best-effort:
-    // a timeout degrades to "models/apps only" and never fails the scrape.
+    // Suspense boundary, filled by a post-load Server Action). Scroll it into
+    // view in case the fetch is intersection-triggered, then poll until the
+    // skeleton is gone and author links exist. We poll via page.evaluate (whose
+    // string form is reliable here) instead of page.waitForFunction (whose
+    // string-predicate form throws under @cloudflare/puppeteer). Best-effort: if
+    // it never hydrates we extract anyway and record models/apps only.
     try {
       await page.evaluate("document.getElementById('market-share')?.scrollIntoView();");
-      await page.waitForFunction(
-        `(function () {
+      for (let waited = 0; waited < MARKET_SHARE_RENDER_TIMEOUT_MS; waited += 1000) {
+        const ready = await page.evaluate(`(function () {
           var s = document.getElementById('market-share');
-          if (!s) return false;
-          if (s.querySelector('[data-testid="rankings-skeleton-chart"]')) return false;
-          var links = s.querySelectorAll('a[href^="/"]');
-          for (var i = 0; i < links.length; i++) {
-            var row = links[i].closest('button') || links[i].parentElement;
-            if (row && /[\\d.]+\\s*%/.test(row.innerText || '')) return true;
-          }
-          return false;
-        })()`,
-        { timeout: MARKET_SHARE_RENDER_TIMEOUT_MS }
-      );
-    } catch {
-      console.warn('[rankings] market-share legend did not hydrate within timeout; recording models/apps only');
+          if (!s || s.querySelector('[data-testid="rankings-skeleton-chart"]')) return false;
+          return s.querySelectorAll('a[href^="/"]').length > 0;
+        })()`);
+        if (ready) break;
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    } catch (e) {
+      console.warn('[rankings] market-share wait failed (non-fatal):', String(e));
     }
 
     const extracted = (await page.evaluate(RANKINGS_EXTRACTOR_SOURCE)) as {
