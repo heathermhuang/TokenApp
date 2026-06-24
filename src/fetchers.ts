@@ -194,6 +194,11 @@ export async function fetchModelsFromOpenRouter(): Promise<NormalizedModel[]> {
 
 const RANKINGS_PAGE_URL = 'https://openrouter.ai/rankings';
 const RANKINGS_RENDER_TIMEOUT_MS = 45_000;
+// The #market-share legend is a separate React Suspense boundary, hydrated
+// AFTER initial load via a Server Action (spike Q2) — it is not covered by the
+// model-leaderboard waitForSelector. Bounded, best-effort wait: a miss leaves
+// marketShare empty (the writer skips the insert) rather than failing the scrape.
+const MARKET_SHARE_RENDER_TIMEOUT_MS = 12_000;
 
 // Extractor runs inside the rendered openrouter.ai/rankings page. Passed as a
 // string so TS won't try to type-check DOM references in a non-DOM context.
@@ -377,6 +382,32 @@ export async function fetchRankingsFromOpenRouter(env: Env): Promise<RankingsScr
     // Extractor passed as a JS string because tsconfig excludes the DOM lib.
     await page.evaluate('window.scrollTo(0, document.body.scrollHeight);');
     await new Promise((r) => setTimeout(r, 1500));
+
+    // Market share hydrates separately from the model leaderboard (its own
+    // Suspense boundary, filled by a post-load Server Action). Bring the section
+    // into view in case its fetch is intersection-triggered, then wait until the
+    // skeleton is replaced by a real legend row — the same success condition the
+    // extractor uses (an author link whose row carries a "%" cell). Best-effort:
+    // a timeout degrades to "models/apps only" and never fails the scrape.
+    try {
+      await page.evaluate("document.getElementById('market-share')?.scrollIntoView();");
+      await page.waitForFunction(
+        `(function () {
+          var s = document.getElementById('market-share');
+          if (!s) return false;
+          if (s.querySelector('[data-testid="rankings-skeleton-chart"]')) return false;
+          var links = s.querySelectorAll('a[href^="/"]');
+          for (var i = 0; i < links.length; i++) {
+            var row = links[i].closest('button') || links[i].parentElement;
+            if (row && /[\\d.]+\\s*%/.test(row.innerText || '')) return true;
+          }
+          return false;
+        })()`,
+        { timeout: MARKET_SHARE_RENDER_TIMEOUT_MS }
+      );
+    } catch {
+      console.warn('[rankings] market-share legend did not hydrate within timeout; recording models/apps only');
+    }
 
     const extracted = (await page.evaluate(RANKINGS_EXTRACTOR_SOURCE)) as {
       models: Array<{ modelSlug: string; modelName: string; totalTokens: number }>;
