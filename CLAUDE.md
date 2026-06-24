@@ -47,7 +47,7 @@ AI model pricing tracker and comparison tool built on Cloudflare Workers with Ho
 - **Known residual**: one stale `models?fmt=cards` row in D1 for 2026-06-24 (debug-deploy artifact) — harmless, filtered by the read-side sanitizer; optionally `DELETE FROM market_share_snapshots WHERE author='models?fmt=cards'` later.
 - **Phase C v1 limitations**: category boards skip sparklines/deltas; models stay global on category views; market-share writes hourly (cron) + reads last-per-day.
 - **Backlog (unchanged)**: P0 publish `keyring-client` to npm (blocked on `npm login`); P1 `/usage` roadmap; P2 keyring v0.2 + `/usage` polish. Skip: benchmark overlays, receipt import.
-- **Op note — REFRESH_SECRET** = `2021@RewardMe`; rotate to a strong random via `wrangler secret put REFRESH_SECRET` when convenient.
+- **Op note — REFRESH_SECRET**: set as a Cloudflare Worker secret via `wrangler secret put REFRESH_SECRET`. NEVER commit the value here. ⚠️ A prior value was committed in plaintext to this PUBLIC repo and remains in git history — it is compromised and MUST be rotated; deleting this line does not undo the historical exposure.
 - **Local state**: on `feature/rankings-time-series`, clean apart from `.DS_Store` + `.claude/` (untracked, expected).
 
 
