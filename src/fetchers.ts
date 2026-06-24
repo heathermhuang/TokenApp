@@ -1129,6 +1129,18 @@ async function countMarketShareDays(env: Env, days: number): Promise<number> {
   return Number(row?.n) || 0;
 }
 
+// Author slugs are clean single-segment tokens (lowercase alnum + hyphens). The
+// market-share section also holds CTA/nav links (e.g. "models?fmt=cards"); the
+// write-side extractor filters them, but sanitize on read too so any junk that
+// ever leaked into D1 (e.g. from an older extractor) never reaches the chart.
+const MARKET_SHARE_NON_AUTHORS = new Set([
+  'models', 'rankings', 'apps', 'data', 'pricing', 'docs', 'chat', 'settings',
+  'login', 'enterprise', 'about', 'careers', 'blog', 'terms', 'privacy',
+]);
+function isAuthorSlug(author: string): boolean {
+  return /^[a-z0-9][a-z0-9-]*$/.test(author) && !MARKET_SHARE_NON_AUTHORS.has(author);
+}
+
 // Author-share time series over the trailing window. One point per author per
 // calendar day (the LAST snapshot that day). Authors sorted by latest share.
 export async function readMarketShare(env: Env, windowDays: number, asOf?: string): Promise<MarketShareData> {
@@ -1151,6 +1163,7 @@ export async function readMarketShare(env: Env, windowDays: number, asOf?: strin
 
   const byAuthor = new Map<string, MarketSharePoint[]>();
   for (const r of res.results ?? []) {
+    if (!isAuthorSlug(r.author)) continue; // drop CTA/nav links that ever leaked into D1
     const arr = byAuthor.get(r.author) ?? [];
     arr.push({ day: r.day, sharePct: Number(r.share_pct) || 0, tokens: Number(r.token_total) || 0 });
     byAuthor.set(r.author, arr);
