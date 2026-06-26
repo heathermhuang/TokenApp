@@ -1085,6 +1085,19 @@ export function getHtml(params: {
     .period-btn:hover { color: var(--text); }
     .period-btn.active { background: var(--accent-dim); color: var(--accent); }
 
+    /* ── Market share + category tabs ──────────────────────────────────────── */
+    .market-share { margin-bottom: 24px; }
+    .market-share-head { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+    .ms-chart { width:100%; height:240px; display:block; background:var(--card, transparent); border-radius:8px; }
+    .ms-legend { display:flex; flex-wrap:wrap; gap:12px; margin-top:10px; font-size:12px; color:var(--text2); }
+    .ms-legend-item { display:inline-flex; align-items:center; gap:5px; }
+    .ms-swatch { width:10px; height:10px; border-radius:2px; display:inline-block; }
+    .ms-empty { padding:32px; text-align:center; color:var(--text3); }
+    /* Rankings category tabs reuse the .cat-tab pill styling (see :540); only the
+       container needs its own rule. Buttons use [data-rankcat] to stay clear of
+       the global [data-cat] active-toggle on the API model tabs. */
+    .category-tabs { display:flex; flex-wrap:wrap; gap:6px; margin:4px 0 12px; }
+
     /* ── Loading ───────────────────────────────────────────────────────────── */
     .loading {
       display: flex;
@@ -1545,6 +1558,21 @@ export function getHtml(params: {
     <button id="asof-reset" class="period-btn" hidden>Latest</button>
     <span id="asof-note"></span>
   </div>
+  <div class="market-share" id="market-share-section">
+    <div class="market-share-head">
+      <div>
+        <div class="leaderboard-title">Token Share by Model Author</div>
+        <div class="leaderboard-subtitle">Share of OpenRouter tokens over time · source: OpenRouter</div>
+      </div>
+      <div class="period-toggle" id="ms-window-toggle">
+        <button class="period-btn active" data-window="30">30D</button>
+        <button class="period-btn" data-window="90">90D</button>
+      </div>
+    </div>
+    <div id="market-share-body">
+      <div class="ms-empty">Loading market share…</div>
+    </div>
+  </div>
   <div class="rankings-grid">
     <div class="leaderboard">
       <div class="leaderboard-header">
@@ -1566,6 +1594,7 @@ export function getHtml(params: {
           </div>
         </div>
         <div class="leaderboard-subtitle" id="app-leaderboard-subtitle">Top apps and agents by daily token volume on OpenRouter</div>
+        <div class="category-tabs" id="category-tabs"></div>
       </div>
       <ol class="leaderboard-list" id="app-leaderboard">
         <li style="padding:40px;text-align:center;color:var(--text3)">Loading rankings…</li>
@@ -1689,6 +1718,10 @@ const state = {
   rankingsLoading: false,
   rankingsPeriod: 'day',  // 'day' | 'week' | 'month'
   asOf: null,        // ISO8601 when viewing a historical snapshot, else null (latest)
+  msWindow: 30,      // market-share chart window in days (30 | 90)
+  marketShare: null, // cached MarketShareData { authors, window, historyDays, fetchedAt }
+  category: null,    // active rankings category slug, null = global "All"
+  categories: [],    // [{slug,label,group}] from /api/rankings/categories
   view: 'api',       // 'api' | 'subscriptions' | 'rankings'
   cat: 'all',
   subCat: 'all',
@@ -2333,6 +2366,62 @@ function deltaBadge(d) {
   return parts.join('');
 }
 
+// Author band color. Reuse the model-table provider styling; 'Others' + unknown
+// authors fall back to a neutral gray. getProviderStyle() already exists in this
+// template (returns { color }), keyed by provider slug.
+function authorColor(author) {
+  if (!author || author.toLowerCase() === 'others') return '#94a3b8';
+  try { var s = getProviderStyle(author); if (s && s.color) return s.color; } catch (e) {}
+  return '#94a3b8';
+}
+
+// Hand-rolled stacked-area chart of author token share over time. authors is
+// a list of { author, points: [{ day, sharePct }] }. Renders one band per author across
+// the union of days, normalized to the 0-100% axis. No charting library — same
+// inline-SVG approach as sparklineSvg above.
+function areaChartSvg(authors) {
+  if (!authors || authors.length === 0) return '';
+  var days = [];
+  var seen = {};
+  authors.forEach(function (a) {
+    (a.points || []).forEach(function (p) { if (!seen[p.day]) { seen[p.day] = true; days.push(p.day); } });
+  });
+  days.sort();
+  if (days.length < 2) return '';
+  var w = 720, h = 240, n = days.length;
+  var x = function (i) { return (i / (n - 1)) * w; };
+  var y = function (pct) { return h - (pct / 100) * h; };
+  // Per-day share lookup per author, stacked bottom-up in author order.
+  var shareAt = function (a, day) {
+    var pts = a.points || [];
+    for (var k = 0; k < pts.length; k++) if (pts[k].day === day) return pts[k].sharePct || 0;
+    return 0;
+  };
+  var baseline = days.map(function () { return 0; });
+  var bands = authors.map(function (a) {
+    var top = days.map(function (day, i) { return baseline[i] + shareAt(a, day); });
+    var upper = top.map(function (v, i) { return x(i) + ',' + y(v).toFixed(1); });
+    var lower = days.map(function (day, i) { return x(n - 1 - i) + ',' + y(baseline[n - 1 - i]).toFixed(1); });
+    var poly = '<polygon points="' + upper.join(' ') + ' ' + lower.join(' ') +
+      '" fill="' + authorColor(a.author) + '" fill-opacity="0.85" stroke="none"><title>' +
+      escape(a.author) + '</title></polygon>';
+    baseline = top;
+    return poly;
+  });
+  return '<svg class="ms-chart" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" ' +
+    'role="img" aria-label="Token share by model author over time">' + bands.join('') + '</svg>';
+}
+
+// Legend: author swatch + latest share %, sorted as provided (latest share desc).
+function marketShareLegend(authors) {
+  return authors.map(function (a) {
+    var pts = a.points || [];
+    var latest = pts.length ? pts[pts.length - 1].sharePct : 0;
+    return '<span class="ms-legend-item"><i class="ms-swatch" style="background:' + authorColor(a.author) + '"></i>' +
+      escape(a.author) + ' <b>' + (Math.round(latest * 10) / 10) + '%</b></span>';
+  }).join('');
+}
+
 function renderRankings() {
   if (!state.rankings) return;
 
@@ -2649,7 +2738,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Main view tabs
   document.querySelectorAll('.main-tab').forEach(tab => {
-    tab.addEventListener('click', () => switchView(tab.dataset.view));
+    tab.addEventListener('click', () => {
+      switchView(tab.dataset.view);
+      if (tab.dataset.view === 'rankings') ensureRankingsAux();
+    });
   });
 
   // Category tabs
@@ -2679,6 +2771,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function buildRankingsUrl(period) {
     var u = '/api/rankings?period=' + encodeURIComponent(period);
     if (state.asOf) u += '&asOf=' + encodeURIComponent(state.asOf);
+    if (state.category) u += '&category=' + encodeURIComponent(state.category);
     return u;
   }
 
@@ -2748,6 +2841,82 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.classList.add('active');
     loadRankingsPeriod(period);
   });
+
+  // ── Market share (Token Share by Model Author) ─────────────────────────────
+  // History-gated: needs >= 2 distinct days to draw a trend (mirrors the apps
+  // board honesty gate). areaChartSvg also self-guards on < 2 days.
+  function renderMarketShare() {
+    var body = document.getElementById('market-share-body');
+    if (!body) return;
+    var data = state.marketShare;
+    if (!data || !data.authors || data.authors.length === 0 || (data.historyDays || 0) < 2) {
+      var collected = data && typeof data.historyDays === 'number' ? data.historyDays : 0;
+      var remaining = Math.max(0, 2 - collected);
+      body.innerHTML = '<div class="ms-empty">' + collected + '/2 days of history collected. ' +
+        'The market-share chart unlocks once ' + remaining + ' more daily snapshot' +
+        (remaining === 1 ? ' accumulates' : 's accumulate') + ' (hourly cron, ~1/day).</div>';
+      return;
+    }
+    body.innerHTML = areaChartSvg(data.authors) +
+      '<div class="ms-legend">' + marketShareLegend(data.authors) + '</div>';
+  }
+
+  async function loadMarketShare() {
+    try {
+      var res = await fetch('/api/market-share?window=' + encodeURIComponent(state.msWindow));
+      var data = await res.json();
+      if (data && !data.error) { state.marketShare = data; renderMarketShare(); }
+    } catch (err) { /* leave the loading/empty state */ }
+  }
+
+  document.getElementById('ms-window-toggle').addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-window]');
+    if (!btn) return;
+    state.msWindow = parseInt(btn.dataset.window, 10);
+    document.querySelectorAll('#ms-window-toggle .period-btn').forEach(function (b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    loadMarketShare();
+  });
+
+  // ── Category tabs on the apps board ────────────────────────────────────────
+  function renderCategoryTabs() {
+    var host = document.getElementById('category-tabs');
+    if (!host) return;
+    var tabs = [{ slug: null, label: 'All' }].concat(state.categories);
+    host.innerHTML = tabs.map(function (t) {
+      var active = (state.category || null) === (t.slug || null) ? ' active' : '';
+      return '<button class="cat-tab' + active + '" data-rankcat="' + (t.slug || '') + '">' + escape(t.label) + '</button>';
+    }).join('');
+  }
+
+  async function loadCategories() {
+    try {
+      var res = await fetch('/api/rankings/categories');
+      var data = await res.json();
+      if (data && data.categories) { state.categories = data.categories; renderCategoryTabs(); }
+    } catch (err) { /* no tabs if the call fails */ }
+  }
+
+  document.getElementById('category-tabs').addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-rankcat]');
+    if (!btn) return;
+    state.category = btn.dataset.rankcat || null;
+    // The per-period cache keys on period only — invalidate on category change
+    // (same rule as asOf) or a category view would serve stale global data.
+    state.rankingsByPeriod = { day: null, week: null, month: null };
+    renderCategoryTabs();
+    loadRankingsPeriod(state.rankingsPeriod);
+  });
+
+  // Market share + category list are global (period/asOf-independent); load once,
+  // lazily, the first time the Rankings tab is opened.
+  var rankingsAuxLoaded = false;
+  function ensureRankingsAux() {
+    if (rankingsAuxLoaded) return;
+    rankingsAuxLoaded = true;
+    loadMarketShare();
+    loadCategories();
+  }
 
   // "View as of" — re-anchor every board to a past snapshot. Clearing the
   // per-period cache is REQUIRED: it keys on period only, so without this a
