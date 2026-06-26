@@ -14,7 +14,7 @@ token.app aggregates pricing data for AI language models and subscription produc
 
 **Filtering** -- by modality (text, vision, audio, reasoning), provider, free/paid, open source, and full-text search.
 
-**AI-friendly** -- serves `llms.txt` and `llms-full.txt` following the [llmstxt.org](https://llmstxt.org) standard so AI answer engines (ChatGPT, Claude, Perplexity) can cite current pricing data.
+**AI-friendly** -- explicit AI-crawler allowances in `robots.txt` and fully server-rendered pricing data so AI answer engines (ChatGPT, Claude, Perplexity) can read and cite current prices.
 
 ## Architecture
 
@@ -27,8 +27,6 @@ Cloudflare Worker (Hono)
     |-- POST /api/refresh   Admin: trigger data refresh (auth required)
     |-- GET /{provider}     Provider-specific pricing pages (10 providers)
     |-- GET /about          Methodology and data sources
-    |-- GET /llms.txt       AI crawler index
-    |-- GET /llms-full.txt  Full pricing data as plain text
     |-- GET /robots.txt     Search + AI crawler directives
     |-- GET /sitemap.xml    Sitemap with all pages
     |-- GET /og.png         Open Graph social preview image
@@ -192,14 +190,6 @@ Triggers an immediate data refresh from OpenRouter. Requires `REFRESH_SECRET` to
 ```bash
 curl -X POST https://token-app.measurable.workers.dev/api/refresh \
   -H "Authorization: Bearer your-secret-here"
-```
-
-### GET /llms-full.txt
-
-Full pricing dataset as human/AI-readable plain text. Updated hourly.
-
-```bash
-curl https://token-app.measurable.workers.dev/llms-full.txt
 ```
 
 ## Data sources
