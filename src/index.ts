@@ -2,7 +2,8 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { cache } from 'hono/cache';
 import type { Env } from './types';
-import { getModels, getSubscriptions, getRankings, refreshAllData, readMarketShare } from './fetchers';
+import { KV_KEYS } from './types';
+import { getModels, getSubscriptions, getRankings, refreshAllData } from './fetchers';
 import { APP_CATEGORIES, CATEGORY_SLUGS, CATEGORY_LABELS } from './categories';
 import { getHtml, getProviderHtml, getAboutHtml } from './template';
 
@@ -92,10 +93,11 @@ app.get(
   cache({ cacheName: 'token-app-market-share', cacheControl: 'max-age=3600, stale-while-revalidate=86400' }),
   async (c) => {
     try {
-      const windowRaw = parseInt(c.req.query('window') || '30', 10);
-      const window = [7, 30, 90].includes(windowRaw) ? windowRaw : 30;
-      const data = await readMarketShare(c.env, window);
-      return c.json(data);
+      // The full author+model weekly series (52 weeks) is written to KV by the
+      // cron. The client fetches once and slices/toggles entirely client-side.
+      const raw = await c.env.TOKEN_APP_KV.get(KV_KEYS.SHARE_SERIES);
+      if (!raw) return c.json({ error: 'Market share not yet available' }, 404);
+      return c.body(raw, 200, { 'Content-Type': 'application/json' });
     } catch (err) {
       console.error('Failed to get market share:', err);
       return c.json({ error: 'Failed to load market share' }, 500);

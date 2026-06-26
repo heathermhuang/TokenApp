@@ -145,15 +145,20 @@ export interface RankingsData {
   category?: string;
 }
 
-// ── Market share by model author (scraped from OpenRouter /rankings) ─────────
-export interface MarketSharePoint { day: string; sharePct: number; tokens: number; }
-export interface MarketShareAuthor { author: string; points: MarketSharePoint[]; }
-export interface MarketShareData {
-  authors: MarketShareAuthor[];
-  window: number;       // trailing days requested
-  historyDays: number;  // distinct calendar days collected (honesty gating)
-  fetchedAt: string;
+// ── Token share time-series (OpenRouter /rankings JSON) ──────────────────────
+// Weekly share-over-time, sourced from OpenRouter's frontend JSON endpoints
+// (market-share = by author, model-rankings-chart = by model). Both normalize to
+// the same shape: a fixed display set (latest week's top-N) + an "others" band,
+// pct summing to 100 per week.
+export interface SharePoint { date: string; pct: number; tokens: number }
+export interface ShareEntity {
+  key: string;        // author slug ("deepseek") or model permaslug ("xiaomi/mimo-v2.5-...")
+  label: string;      // display label
+  latestPct: number;  // share in the most recent week
+  points: SharePoint[]; // weekly, ascending
 }
+export interface ShareSeries { entities: ShareEntity[]; weeks: number; fetchedAt: string }
+export interface MarketShareResponse { author: ShareSeries; model: ShareSeries; fetchedAt: string }
 
 // One OpenRouter app category. Path-addressable: /apps/category/{group}/{slug}.
 export interface AppCategory { group: string; slug: string; label: string; }
@@ -163,4 +168,6 @@ export const KV_KEYS = {
   MODELS_UPDATED: 'models:last_updated',
   SUBSCRIPTIONS: 'subscriptions:all',
   RANKINGS: 'rankings:all',
+  SHARE_SERIES: 'share:series',   // MarketShareResponse (author + model weekly series)
+  APPS_BOARDS: 'rankings:apps',    // { day, week, month, fetchedAt } AppRanking arrays
 } as const;
