@@ -254,8 +254,14 @@ Expected: `weeks 52`, `sum% 100`, deepseek ≈ 16; model top shows mimo-v2.5/dee
 - [ ] **Step 1: Import the new module** (top of `src/fetchers.ts`)
 
 ```ts
-import { fetchShareSeries, fetchAppsBoards, modelBoardFromSeries } from './openrouter-json';
+import { fetchShareSeries, fetchAppsBoards, fetchModelBoard } from './openrouter-json';
 ```
+
+> **Correction (verified during impl):** the model leaderboard is sourced from
+> `/rankings/models` (latest-date rows, variants summed), NOT from the share series —
+> `model-rankings-chart`'s calendar-week buckets don't match the live trailing-7d
+> leaderboard (2.95T vs 4.9T). `/models` reproduces it exactly and keeps top-15, so the
+> "top-9" caveat is dropped. `model-rankings-chart` still powers the By-model *chart* view.
 
 - [ ] **Step 2: Replace the rankings try-block** (`src/fetchers.ts:915-970`) with JSON-sourced writes.
 
@@ -265,8 +271,9 @@ Replace the body of the `try { const scrape = await fetchRankingsFromOpenRouter(
   let rankingsStatus: string | undefined;
   let rankingsError: string | undefined;
   try {
-    const [{ author, model }, apps] = await Promise.all([fetchShareSeries(), fetchAppsBoards()]);
-    const topModels = modelBoardFromSeries(model);
+    const [{ author, model }, apps, topModels] = await Promise.all([
+      fetchShareSeries(), fetchAppsBoards(), fetchModelBoard(),
+    ]);
 
     // Empty-overwrite guard: keep last-good KV if OpenRouter returns nothing.
     if (topModels.length === 0 && apps.day.length === 0 && author.entities.length === 0) {
@@ -650,4 +657,7 @@ Expected: author/model weeks = 52; models = 9; apps.week = 20 (7D unlocked immed
 
 - **Spec coverage:** chart rewrite (Tasks 6–8), author/model toggle (Task 8), 30/90/365 + delta baseline (Task 8), crosshair (Task 7), JSON source for authors/models/apps (Tasks 2–3), puppeteer→categories-only (Task 4), KV-only share + dead market_share D1 (Tasks 3–5), model sparklines from series (Task 2 `modelBoardFromSeries`), 7D/30D agent unlock (Task 3 apps day/week/month + Task 4 global KV path, no gate), D1 continuity for "view as of"/app sparklines (Task 3 `writeJsonSnapshots`). Category boards unchanged (Task 4 `getCategoryRankings`).
 - **Type consistency:** `ShareSeries`/`ShareEntity`/`SharePoint` used identically across `openrouter-json.ts`, `fetchers.ts`, `template.ts`; `entityColor(e)` takes a `{key}`; `modelBoardFromSeries` returns `ModelRanking[]` matching `types.ts`.
-- **Known behavioral changes (approved):** model board top-9 (not 10); app sparklines build forward (no historical source); "view as of" for global board continues via D1 going forward.
+- **Known behavioral changes (approved):** model board stays top-15 (sourced from `/models`,
+  exact match to current values); app + model sparklines build forward from D1 (no instant
+  historical source — the 52-week chart provides the long history instead); "view as of" for
+  the global board continues via D1 going forward.
