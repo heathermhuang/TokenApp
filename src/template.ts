@@ -1043,11 +1043,17 @@ export function getHtml(params: {
     /* ── Market share + category tabs ──────────────────────────────────────── */
     .market-share { margin-bottom: 24px; }
     .market-share-head { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
-    .ms-chart { width:100%; height:240px; display:block; background:var(--card, transparent); border-radius:8px; }
+    #market-share-body { position:relative; }
+    .ms-chart { width:100%; height:auto; display:block; border-radius:8px; }
+    .ms-chart .ms-hit { cursor:crosshair; }
+    .ms-axis { fill:var(--text3); font-size:10px; }
     .ms-legend { display:flex; flex-wrap:wrap; gap:12px; margin-top:10px; font-size:12px; color:var(--text2); }
     .ms-legend-item { display:inline-flex; align-items:center; gap:5px; }
-    .ms-swatch { width:10px; height:10px; border-radius:2px; display:inline-block; }
+    .ms-swatch { width:10px; height:10px; border-radius:2px; display:inline-block; flex:none; }
     .ms-empty { padding:32px; text-align:center; color:var(--text3); }
+    .ms-tip { position:absolute; pointer-events:none; opacity:0; transition:opacity .1s; background:var(--surface2); border:1px solid var(--border2); border-radius:8px; padding:8px 10px; font-size:12px; color:var(--text); z-index:5; min-width:150px; box-shadow:0 4px 16px rgba(0,0,0,.3); }
+    .ms-tip-date { font-weight:600; margin-bottom:4px; }
+    .ms-tip-row { display:flex; align-items:center; gap:8px; justify-content:space-between; white-space:nowrap; }
     /* Rankings category tabs reuse the .cat-tab pill styling (see :540); only the
        container needs its own rule. Buttons use [data-rankcat] to stay clear of
        the global [data-cat] active-toggle on the API model tabs. */
@@ -1507,12 +1513,19 @@ export function getHtml(params: {
   <div class="market-share" id="market-share-section">
     <div class="market-share-head">
       <div>
-        <div class="leaderboard-title">Token Share by Model Author</div>
-        <div class="leaderboard-subtitle">Share of OpenRouter tokens over time · source: OpenRouter</div>
+        <div class="leaderboard-title">Token Share Over Time</div>
+        <div class="leaderboard-subtitle">Weekly share of OpenRouter tokens · source: OpenRouter</div>
       </div>
-      <div class="period-toggle" id="ms-window-toggle">
-        <button class="period-btn active" data-window="30">30D</button>
-        <button class="period-btn" data-window="90">90D</button>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <div class="period-toggle" id="ms-view-toggle">
+          <button class="period-btn active" data-view="author">By author</button>
+          <button class="period-btn" data-view="model">By model</button>
+        </div>
+        <div class="period-toggle" id="ms-window-toggle">
+          <button class="period-btn" data-window="30">30D</button>
+          <button class="period-btn active" data-window="90">90D</button>
+          <button class="period-btn" data-window="365">1Y</button>
+        </div>
       </div>
     </div>
     <div id="market-share-body">
@@ -1664,8 +1677,9 @@ const state = {
   rankingsLoading: false,
   rankingsPeriod: 'day',  // 'day' | 'week' | 'month'
   asOf: null,        // ISO8601 when viewing a historical snapshot, else null (latest)
-  msWindow: 30,      // market-share chart window in days (30 | 90)
-  marketShare: null, // cached MarketShareData { authors, window, historyDays, fetchedAt }
+  msWindow: 90,        // share-chart window in days (30 | 90 | 365)
+  msView: 'author',    // 'author' | 'model'
+  shareSeries: null,   // cached { author: ShareSeries, model: ShareSeries }
   category: null,    // active rankings category slug, null = global "All"
   categories: [],    // [{slug,label,group}] from /api/rankings/categories
   view: 'api',       // 'api' | 'subscriptions' | 'rankings'
@@ -2321,60 +2335,116 @@ function authorColor(author) {
   return '#94a3b8';
 }
 
-// Hand-rolled stacked-area chart of author token share over time. authors is
-// a list of { author, points: [{ day, sharePct }] }. Renders one band per author across
-// the union of days, normalized to the 0-100% axis. No charting library — same
-// inline-SVG approach as sparklineSvg above.
-function areaChartSvg(authors) {
-  if (!authors || authors.length === 0) return '';
-  var days = [];
-  var seen = {};
-  authors.forEach(function (a) {
-    (a.points || []).forEach(function (p) { if (!seen[p.day]) { seen[p.day] = true; days.push(p.day); } });
-  });
-  days.sort();
-  if (days.length < 2) return '';
-  var w = 720, h = 240, n = days.length;
-  var x = function (i) { return (i / (n - 1)) * w; };
-  var y = function (pct) { return h - (pct / 100) * h; };
-  // Per-day share lookup per author, stacked bottom-up in author order.
-  var shareAt = function (a, day) {
-    var pts = a.points || [];
-    for (var k = 0; k < pts.length; k++) if (pts[k].day === day) return pts[k].sharePct || 0;
-    return 0;
-  };
-  var baseline = days.map(function () { return 0; });
-  var bands = authors.map(function (a) {
-    var top = days.map(function (day, i) { return baseline[i] + shareAt(a, day); });
-    var upper = top.map(function (v, i) { return x(i) + ',' + y(v).toFixed(1); });
-    var lower = days.map(function (day, i) { return x(n - 1 - i) + ',' + y(baseline[n - 1 - i]).toFixed(1); });
-    var poly = '<polygon points="' + upper.join(' ') + ' ' + lower.join(' ') +
-      '" fill="' + authorColor(a.author) + '" fill-opacity="0.85" stroke="none"><title>' +
-      escape(a.author) + '</title></polygon>';
-    baseline = top;
-    return poly;
-  });
-  return '<svg class="ms-chart" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" ' +
-    'role="img" aria-label="Token share by model author over time">' + bands.join('') + '</svg>';
+// Color for a share entity. Author keys are plain slugs ("deepseek"); model keys
+// are "provider/name" — colour by the provider segment. "others" is neutral gray.
+function entityColor(e) {
+  var key = e && e.key ? e.key : '';
+  if (!key || key.toLowerCase() === 'others') return '#94a3b8';
+  return authorColor(key.indexOf('/') >= 0 ? key.split('/')[0] : key);
 }
 
-// Legend: author swatch + latest share %, sorted as provided (latest share desc).
-function marketShareLegend(authors) {
-  // Latest day across the union of authors, so each legend % matches that
-  // author's value in the chart's rightmost column. An author absent on the
-  // latest day reads 0 here too (same as areaChartSvg's shareAt), instead of
-  // reporting its stale last-available point.
-  var latestDay = '';
-  authors.forEach(function (a) {
-    (a.points || []).forEach(function (p) { if (p.day > latestDay) latestDay = p.day; });
-  });
-  return authors.map(function (a) {
-    var pts = a.points || [];
-    var latest = 0;
-    for (var k = 0; k < pts.length; k++) { if (pts[k].day === latestDay) { latest = pts[k].sharePct || 0; break; } }
-    return '<span class="ms-legend-item"><i class="ms-swatch" style="background:' + authorColor(a.author) + '"></i>' +
-      escape(a.author) + ' <b>' + (Math.round(latest * 10) / 10) + '%</b></span>';
+// Week date → "Jun 22" (UTC, so it matches the bucket date exactly).
+function shortDate(iso) {
+  var d = new Date(iso + 'T00:00:00Z');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
+function shareChartAria(series) {
+  var top = (series.entities || []).filter(function (e) { return e.key !== 'others'; }).slice(0, 4);
+  return 'Weekly token share over time. Latest: ' + top.map(function (e) {
+    return e.label + ' ' + Math.round(e.latestPct) + '%';
+  }).join(', ') + '.';
+}
+
+// Stacked-area time-series of token share. series = { entities: [{key,label,points:[{date,pct}]}] }.
+// Proper margins + axes (no preserveAspectRatio distortion); the hover overlay + crosshair
+// are wired by attachShareHover().
+function shareChartSvg(series) {
+  var ents = (series && series.entities) || [];
+  if (ents.length === 0) return '<div class="ms-empty">Market share data unavailable.</div>';
+  var pts0 = ents[0].points || [];
+  var n = pts0.length;
+  if (n < 2) return '<div class="ms-empty">Not enough history yet.</div>';
+  var W = 760, H = 260, mL = 34, mR = 8, mT = 8, mB = 22;
+  var pw = W - mL - mR, ph = H - mT - mB;
+  var x = function (i) { return mL + (i / (n - 1)) * pw; };
+  var y = function (pct) { return mT + (1 - pct / 100) * ph; };
+  var grid = [0, 25, 50, 75, 100].map(function (g) {
+    return '<line x1="' + mL + '" y1="' + y(g).toFixed(1) + '" x2="' + (W - mR) + '" y2="' + y(g).toFixed(1) +
+      '" stroke="var(--border)" stroke-width="1"/>' +
+      '<text x="' + (mL - 6) + '" y="' + (y(g) + 3).toFixed(1) + '" text-anchor="end" class="ms-axis">' + g + '%</text>';
   }).join('');
+  var nLab = Math.min(5, n), xlab = '';
+  for (var t = 0; t < nLab; t++) {
+    var li = nLab > 1 ? Math.round(t * (n - 1) / (nLab - 1)) : n - 1;
+    xlab += '<text x="' + x(li).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle" class="ms-axis">' +
+      shortDate(pts0[li].date) + '</text>';
+  }
+  var base = []; for (var k = 0; k < n; k++) base.push(0);
+  var bands = ents.map(function (e) {
+    var top = e.points.map(function (p, i) { return base[i] + (p.pct || 0); });
+    var up = top.map(function (v, i) { return x(i).toFixed(1) + ',' + y(v).toFixed(1); });
+    var lo = []; for (var i = n - 1; i >= 0; i--) lo.push(x(i).toFixed(1) + ',' + y(base[i]).toFixed(1));
+    base = top;
+    return '<polygon points="' + up.join(' ') + ' ' + lo.join(' ') + '" fill="' + entityColor(e) +
+      '" fill-opacity="0.85" stroke="var(--surface)" stroke-width="0.5"/>';
+  }).join('');
+  return '<svg class="ms-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + escape(shareChartAria(series)) + '">' +
+    grid + bands +
+    '<line class="ms-crosshair" x1="0" y1="' + mT + '" x2="0" y2="' + (mT + ph) + '" stroke="var(--text3)" stroke-width="1" style="display:none"/>' +
+    '<rect class="ms-hit" x="' + mL + '" y="' + mT + '" width="' + pw + '" height="' + ph + '" fill="transparent"/>' +
+    xlab + '</svg>';
+}
+
+// Legend: entity swatch + latest share % + change across the visible window
+// (Δ from the first to the last point in the slice). Sorted as provided.
+function marketShareLegend(series) {
+  return (series.entities || []).map(function (e) {
+    var pts = e.points || [];
+    var last = pts.length ? (pts[pts.length - 1].pct || 0) : 0;
+    var first = pts.length ? (pts[0].pct || 0) : last;
+    var d = Math.round((last - first) * 10) / 10;
+    var dh = d === 0 ? '' : ' <span class="lb-delta ' + (d > 0 ? 'up' : 'down') + '">' +
+      (d > 0 ? '▲' : '▼') + Math.abs(d) + 'pp</span>';
+    return '<span class="ms-legend-item"><i class="ms-swatch" style="background:' + entityColor(e) + '"></i>' +
+      escape(e.label) + ' <b>' + (Math.round(last * 10) / 10) + '%</b>' + dh + '</span>';
+  }).join('');
+}
+
+// Crosshair + tooltip: on hover, snap to the nearest week and list every entity's
+// share that week (sorted desc). Reads geometry from the SVG viewBox so it stays
+// correct at any rendered width. No position:fixed — the tooltip is absolute
+// inside #market-share-body (which is position:relative).
+function attachShareHover(series) {
+  var body = document.getElementById('market-share-body');
+  var svg = body && body.querySelector('.ms-chart');
+  var hit = svg && svg.querySelector('.ms-hit');
+  var cross = svg && svg.querySelector('.ms-crosshair');
+  var tip = document.getElementById('ms-tip');
+  if (!svg || !hit || !cross || !tip) return;
+  var ents = series.entities, n = ents[0].points.length;
+  var vb = svg.viewBox.baseVal, mL = 34, pw = vb.width - mL - 8;
+  hit.addEventListener('mousemove', function (ev) {
+    var r = svg.getBoundingClientRect();
+    var sx = (ev.clientX - r.left) / r.width * vb.width;
+    var i = Math.max(0, Math.min(n - 1, Math.round((sx - mL) / pw * (n - 1))));
+    var cx = mL + (i / (n - 1)) * pw;
+    cross.setAttribute('x1', cx); cross.setAttribute('x2', cx); cross.style.display = '';
+    var rows = ents.map(function (e) { return { label: e.label, pct: e.points[i].pct, key: e.key }; })
+      .filter(function (rr) { return rr.pct >= 0.05; })
+      .sort(function (a, b) { return b.pct - a.pct; });
+    tip.innerHTML = '<div class="ms-tip-date">' + shortDate(ents[0].points[i].date) + '</div>' +
+      rows.map(function (rr) {
+        return '<div class="ms-tip-row"><span><i class="ms-swatch" style="background:' + entityColor({ key: rr.key }) +
+          '"></i>' + escape(rr.label) + '</span><b>' + rr.pct.toFixed(1) + '%</b></div>';
+      }).join('');
+    tip.style.opacity = '1';
+    var left = (cx / vb.width) * r.width + 12;
+    if (left + 170 > r.width) left -= 194;
+    tip.style.left = Math.max(0, left) + 'px';
+    tip.style.top = '8px';
+  });
+  hit.addEventListener('mouseleave', function () { tip.style.opacity = '0'; cross.style.display = 'none'; });
 }
 
 function renderRankings() {
@@ -2797,36 +2867,41 @@ document.addEventListener('DOMContentLoaded', () => {
     loadRankingsPeriod(period);
   });
 
-  // ── Market share (Token Share by Model Author) ─────────────────────────────
-  // History-gated: needs >= 2 distinct days to draw a trend (mirrors the apps
-  // board honesty gate). areaChartSvg also self-guards on < 2 days.
+  // ── Token Share Over Time ──────────────────────────────────────────────────
+  // Full author+model weekly series (52w) fetched once; window + author/model
+  // toggles slice and re-render client-side (no refetch).
+  function windowSlice(series, days) {
+    var weeks = Math.max(2, Math.round(days / 7));
+    return {
+      weeks: series.weeks,
+      entities: (series.entities || []).map(function (e) {
+        return { key: e.key, label: e.label, latestPct: e.latestPct, points: (e.points || []).slice(-weeks) };
+      }),
+    };
+  }
   function renderMarketShare() {
     var body = document.getElementById('market-share-body');
     if (!body) return;
-    var data = state.marketShare;
-    if (!data || !data.authors || data.authors.length === 0 || (data.historyDays || 0) < 2) {
-      var collected = data && typeof data.historyDays === 'number' ? data.historyDays : 0;
-      var remaining = Math.max(0, 2 - collected);
-      body.innerHTML = '<div class="ms-empty">' + collected + '/2 days of history collected. ' +
-        'The market-share chart unlocks once ' + remaining + ' more daily snapshot' +
-        (remaining === 1 ? ' accumulates' : 's accumulate') + ' (hourly cron, ~1/day).</div>';
-      return;
+    if (!state.shareSeries) { body.innerHTML = '<div class="ms-empty">Market share data unavailable.</div>'; return; }
+    var full = state.shareSeries[state.msView];
+    if (!full || !full.entities || !full.entities.length) {
+      body.innerHTML = '<div class="ms-empty">Market share data unavailable.</div>'; return;
     }
-    body.innerHTML = areaChartSvg(data.authors) +
-      '<div class="ms-legend">' + marketShareLegend(data.authors) + '</div>';
+    var sliced = windowSlice(full, state.msWindow);
+    body.innerHTML = shareChartSvg(sliced) +
+      '<div class="ms-legend">' + marketShareLegend(sliced) + '</div>' +
+      '<div class="ms-tip" id="ms-tip"></div>';
+    attachShareHover(sliced);
   }
 
   async function loadMarketShare() {
     var body = document.getElementById('market-share-body');
     try {
-      var res = await fetch('/api/market-share?window=' + encodeURIComponent(state.msWindow));
+      var res = await fetch('/api/market-share');
       var data = await res.json();
-      if (data && !data.error) { state.marketShare = data; renderMarketShare(); return; }
+      if (data && !data.error && data.author) { state.shareSeries = data; renderMarketShare(); return; }
     } catch (err) { /* fall through to the failure state below */ }
-    // Endpoint error or network failure: don't leave the static "Loading…"
-    // placeholder stuck. Keep any data we already have; otherwise show a neutral
-    // retry message (snapshots refresh hourly via cron).
-    if (body && !state.marketShare) {
+    if (body && !state.shareSeries) {
       body.innerHTML = '<div class="ms-empty">Market share could not be loaded right now. It refreshes hourly, so check back shortly.</div>';
     }
   }
@@ -2837,7 +2912,16 @@ document.addEventListener('DOMContentLoaded', () => {
     state.msWindow = parseInt(btn.dataset.window, 10);
     document.querySelectorAll('#ms-window-toggle .period-btn').forEach(function (b) { b.classList.remove('active'); });
     btn.classList.add('active');
-    loadMarketShare();
+    renderMarketShare();
+  });
+
+  document.getElementById('ms-view-toggle').addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-view]');
+    if (!btn) return;
+    state.msView = btn.dataset.view;
+    document.querySelectorAll('#ms-view-toggle .period-btn').forEach(function (b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    renderMarketShare();
   });
 
   // ── Category tabs on the apps board ────────────────────────────────────────
