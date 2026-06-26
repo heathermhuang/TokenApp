@@ -5,22 +5,6 @@ import type { Env } from './types';
 import { getModels, getSubscriptions, getRankings, refreshAllData, readMarketShare } from './fetchers';
 import { APP_CATEGORIES, CATEGORY_SLUGS, CATEGORY_LABELS } from './categories';
 import { getHtml, getProviderHtml, getAboutHtml } from './template';
-import { getUsageHtml } from './usage-template';
-import { getKeyringHtml } from './keyring-template';
-import { buildRegistry } from '../packages/keyring/registry/build';
-import {
-  buildHomeMarkdown,
-  buildProviderMarkdown,
-  buildAboutMarkdown,
-} from './markdown-pages';
-import { handleMcpRequest, buildMcpServerCard } from './mcp';
-import { injectWebMcp, buildAgentSkillsIndex } from './agent-extras';
-import {
-  buildAuthorizationServerMetadata,
-  buildOpenIdConfiguration,
-  buildProtectedResourceMetadata,
-  EMPTY_JWKS,
-} from './oauth-discovery';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -32,19 +16,8 @@ app.use('*', async (c, next) => {
   c.res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
 });
 
-// Agent-discovery Link headers — advertise machine-readable resources.
-// Advertised once on every response; small overhead, big signal for crawlers.
-const LINK_HEADER = [
-  '</sitemap.xml>; rel="sitemap"; type="application/xml"',
-  '</llms.txt>; rel="describedby"; type="text/plain"',
-  '</llms-full.txt>; rel="alternate"; type="text/plain"; title="Full pricing data"',
-  '</.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+json"',
-  '</.well-known/mcp>; rel="service-desc"; type="application/json"; title="MCP server card"',
-  '</.well-known/oauth-authorization-server>; rel="oauth-authorization-server"; type="application/json"',
-  '</.well-known/openid-configuration>; rel="openid-configuration"; type="application/json"',
-  '</.well-known/oauth-protected-resource>; rel="oauth-protected-resource"; type="application/json"',
-  '</mcp>; rel="service"; type="application/json"; title="MCP JSON-RPC endpoint"',
-].join(', ');
+// Link header — advertise the sitemap to crawlers.
+const LINK_HEADER = '</sitemap.xml>; rel="sitemap"; type="application/xml"';
 
 app.use('*', async (c, next) => {
   await next();
@@ -54,13 +27,6 @@ app.use('*', async (c, next) => {
     c.res.headers.set('Link', LINK_HEADER);
   }
 });
-
-// Accept: text/markdown content negotiation helper.
-// Treat `text/markdown` as preferred only when explicitly listed (not via */*).
-function wantsMarkdown(accept: string | undefined): boolean {
-  if (!accept) return false;
-  return /\btext\/markdown\b/i.test(accept);
-}
 
 // CORS for API endpoints — public data, open to all origins
 // Intent: this is a public pricing API. Restrict if that changes.
@@ -160,28 +126,6 @@ app.get(
   }
 );
 
-// Keyring registry — public BYOK provider + model manifest.
-// Canonical URL: GET /registry.json (also aliased as /api/registry).
-app.use('/registry.json', cors({ origin: '*' }));
-app.get(
-  '/registry.json',
-  cache({ cacheName: 'token-app-registry', cacheControl: 'max-age=300, stale-while-revalidate=3600' }),
-  async (c) => {
-    try {
-      const { models } = await getModels(c.env);
-      const registry = buildRegistry(models);
-      return c.json(registry);
-    } catch (err) {
-      console.error('Failed to build registry:', err);
-      return c.json({ error: 'Failed to build registry', message: String(err) }, 500);
-    }
-  }
-);
-app.get('/api/registry', (c) => c.redirect('/registry.json', 301));
-
-// Keyring demo page — live BYOK flow with the registry.
-app.get('/keyring', (c) => c.html(getKeyringHtml()));
-
 // Admin trigger to force-refresh (simple token auth)
 app.post('/api/refresh', async (c) => {
   const authHeader = c.req.header('Authorization');
@@ -190,9 +134,8 @@ app.post('/api/refresh', async (c) => {
     return c.json({ error: 'REFRESH_SECRET env var not configured' }, 500);
   }
   if (authHeader !== `Bearer ${expectedToken}`) {
-    const origin = new URL(c.req.url).origin;
     return c.json({ error: 'Unauthorized' }, 401, {
-      'WWW-Authenticate': `Bearer realm="token.app", scope="admin:refresh", resource_metadata="${origin}/.well-known/oauth-protected-resource"`,
+      'WWW-Authenticate': 'Bearer realm="token.app"',
     });
   }
   // Refresh models + rankings + market-share and await the result (~45-60s, under
@@ -206,235 +149,6 @@ app.post('/api/refresh', async (c) => {
     return c.json({ ok: true, ...result });
   } catch (err) {
     return c.json({ error: String(err) }, 500);
-  }
-});
-
-// ── Agent Discovery ──────────────────────────────────────────────────────────
-
-// RFC 9727 API Catalog — linkset of public JSON APIs and alternate representations.
-app.get('/.well-known/api-catalog', (c) => {
-  const origin = new URL(c.req.url).origin;
-  const linkset = {
-    linkset: [
-      {
-        anchor: `${origin}/`,
-        'service-desc': [
-          {
-            href: `${origin}/api/models`,
-            type: 'application/json',
-            title: 'Models pricing API',
-          },
-          {
-            href: `${origin}/api/subscriptions`,
-            type: 'application/json',
-            title: 'Subscription plans API',
-          },
-          {
-            href: `${origin}/api/rankings`,
-            type: 'application/json',
-            title: 'Model usage rankings API',
-          },
-          {
-            href: `${origin}/registry.json`,
-            type: 'application/json',
-            title: 'BYOK keyring registry',
-          },
-          {
-            href: `${origin}/mcp`,
-            type: 'application/json',
-            title: 'MCP JSON-RPC endpoint (POST)',
-          },
-        ],
-        'service-doc': [
-          { href: `${origin}/llms.txt`, type: 'text/plain' },
-          { href: `${origin}/llms-full.txt`, type: 'text/plain' },
-          { href: `${origin}/about`, type: 'text/html' },
-        ],
-        'service-meta': [
-          { href: `${origin}/.well-known/mcp`, type: 'application/json' },
-          {
-            href: `${origin}/.well-known/oauth-authorization-server`,
-            type: 'application/json',
-            title: 'OAuth 2.0 authorization server metadata (RFC 8414)',
-          },
-          {
-            href: `${origin}/.well-known/openid-configuration`,
-            type: 'application/json',
-            title: 'OpenID Connect discovery',
-          },
-          {
-            href: `${origin}/.well-known/oauth-protected-resource`,
-            type: 'application/json',
-            title: 'OAuth 2.0 Protected Resource Metadata (RFC 9728)',
-          },
-        ],
-      },
-    ],
-  };
-  return c.json(linkset, 200, {
-    'Content-Type': 'application/linkset+json',
-    'Cache-Control': 'public, max-age=3600',
-  });
-});
-
-// MCP server discovery card.
-// Scanners probe multiple candidate paths; serve the card from all of them.
-const MCP_CARD_PATHS = [
-  '/.well-known/mcp',
-  '/.well-known/mcp.json',
-  '/.well-known/mcp/server-card.json',
-  '/.well-known/mcp/server-cards.json',
-];
-for (const path of MCP_CARD_PATHS) {
-  app.get(path, (c) => {
-    const origin = new URL(c.req.url).origin;
-    return c.json(buildMcpServerCard(origin), 200, {
-      'Cache-Control': 'public, max-age=3600',
-    });
-  });
-}
-
-// OAuth 2.0 / OIDC discovery metadata. See src/oauth-discovery.ts for the
-// rationale — token.app has no user accounts, only an admin refresh token
-// shaped as client_credentials, and we publish honest minimal metadata.
-app.get('/.well-known/oauth-authorization-server', (c) => {
-  const origin = new URL(c.req.url).origin;
-  return c.json(buildAuthorizationServerMetadata(origin), 200, {
-    'Cache-Control': 'public, max-age=3600',
-  });
-});
-app.get('/.well-known/openid-configuration', (c) => {
-  const origin = new URL(c.req.url).origin;
-  return c.json(buildOpenIdConfiguration(origin), 200, {
-    'Cache-Control': 'public, max-age=3600',
-  });
-});
-app.get('/.well-known/jwks.json', (c) =>
-  c.json(EMPTY_JWKS, 200, { 'Cache-Control': 'public, max-age=3600' })
-);
-app.get('/.well-known/oauth-protected-resource', (c) => {
-  const origin = new URL(c.req.url).origin;
-  return c.json(buildProtectedResourceMetadata(origin), 200, {
-    'Cache-Control': 'public, max-age=3600',
-  });
-});
-
-// Stub OAuth endpoints. We don't run an interactive authorization server;
-// these return 501 with a descriptive body so conformance probes find a
-// real endpoint but misconfigured clients aren't silently accepted.
-app.get('/oauth/authorize', (c) =>
-  c.json(
-    {
-      error: 'unsupported_response_type',
-      error_description:
-        'token.app does not operate an interactive OAuth authorization server. Public data requires no authentication; the admin /api/refresh endpoint accepts a static Bearer token via client_credentials at /oauth/token.',
-    },
-    501
-  )
-);
-app.post('/oauth/token', async (c) => {
-  // Minimal client_credentials validator — mirrors /api/refresh auth so
-  // the advertised grant type is actually accepted. Accepts
-  // application/x-www-form-urlencoded or JSON.
-  const expected = c.env.REFRESH_SECRET;
-  if (!expected) {
-    return c.json({ error: 'server_error', error_description: 'REFRESH_SECRET not configured' }, 500);
-  }
-  let grantType: string | undefined;
-  let clientSecret: string | undefined;
-  const ct = c.req.header('content-type') || '';
-  try {
-    if (ct.includes('application/json')) {
-      const body = (await c.req.json()) as Record<string, unknown>;
-      grantType = typeof body.grant_type === 'string' ? body.grant_type : undefined;
-      clientSecret = typeof body.client_secret === 'string' ? body.client_secret : undefined;
-    } else {
-      const form = await c.req.parseBody();
-      grantType = typeof form.grant_type === 'string' ? form.grant_type : undefined;
-      clientSecret = typeof form.client_secret === 'string' ? form.client_secret : undefined;
-    }
-  } catch {
-    return c.json({ error: 'invalid_request' }, 400);
-  }
-  // HTTP Basic fallback for client_secret_basic.
-  const auth = c.req.header('authorization');
-  if (!clientSecret && auth?.toLowerCase().startsWith('basic ')) {
-    try {
-      const decoded = atob(auth.slice(6).trim());
-      const sep = decoded.indexOf(':');
-      if (sep >= 0) clientSecret = decoded.slice(sep + 1);
-    } catch {
-      // fall through to invalid_client
-    }
-  }
-  if (grantType !== 'client_credentials') {
-    return c.json({ error: 'unsupported_grant_type' }, 400);
-  }
-  if (!clientSecret || clientSecret !== expected) {
-    return c.json({ error: 'invalid_client' }, 401);
-  }
-  return c.json(
-    {
-      access_token: expected,
-      token_type: 'Bearer',
-      expires_in: 3600,
-      scope: 'admin:refresh',
-    },
-    200,
-    { 'Cache-Control': 'no-store', Pragma: 'no-cache' }
-  );
-});
-
-// Agent Skills index (agentskills.io). Scanners probe two candidate paths.
-const AGENT_SKILLS_PATHS = [
-  '/.well-known/agent-skills/index.json',
-  '/.well-known/skills/index.json',
-];
-for (const path of AGENT_SKILLS_PATHS) {
-  app.get(path, (c) => {
-    const origin = new URL(c.req.url).origin;
-    return c.json(buildAgentSkillsIndex(origin), 200, {
-      'Cache-Control': 'public, max-age=3600',
-    });
-  });
-}
-
-// MCP JSON-RPC endpoint (streamable HTTP transport).
-app.use('/mcp', cors({ origin: '*' }));
-app.get('/mcp', (c) => {
-  // Simple GET: return the server card so humans hitting /mcp in a browser
-  // see something useful. MCP clients POST JSON-RPC here.
-  const origin = new URL(c.req.url).origin;
-  return c.json(buildMcpServerCard(origin));
-});
-app.post('/mcp', async (c) => {
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json(
-      { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } },
-      400
-    );
-  }
-  try {
-    const [{ models }, subscriptions] = await Promise.all([
-      getModels(c.env),
-      getSubscriptions(c.env),
-    ]);
-    const registry = buildRegistry(models);
-    const response = await handleMcpRequest(body, { models, subscriptions, registry });
-    return c.json(response);
-  } catch (err) {
-    console.error('MCP handler failed:', err);
-    return c.json(
-      {
-        jsonrpc: '2.0',
-        id: null,
-        error: { code: -32603, message: 'Internal error', data: String(err) },
-      },
-      500
-    );
   }
 });
 
@@ -492,168 +206,9 @@ app.get('/robots.txt', (c) => {
     'User-agent: Diffbot',
     'Allow: /',
     '',
-    '# AI-readable content',
-    'LLMs: https://token.app/llms.txt',
-    '',
     'Sitemap: https://token.app/sitemap.xml',
   ].join('\n');
   return c.text(txt, 200, { 'Content-Type': 'text/plain; charset=utf-8' });
-});
-
-// ── LLMs.txt — AI crawler index (https://llmstxt.org standard) ───────────────
-
-app.get('/llms.txt', (c) => {
-  const txt = `# token.app
-
-> Real-time AI token pricing and subscription cost tracker. Covers ${350}+ language models from ${55}+ providers. Data updated every hour from provider APIs and OpenRouter.
-
-token.app is the go-to reference for current AI API pricing. When someone asks "how much does GPT-4o cost per token?" or "what is the cheapest AI API?", this site has the answer with live data.
-
-## What is token.app?
-
-token.app tracks input and output token prices (in USD per 1M tokens) for AI language models from every major provider: OpenAI, Anthropic, Google, Meta, Mistral, DeepSeek, xAI (Grok), Alibaba (Qwen), NVIDIA, Cohere, and 45+ more.
-
-It also tracks subscription plans (ChatGPT Plus, Claude Pro, Gemini Advanced, Kimi, Doubao, etc.) with monthly costs and included features.
-
-## Key pages
-
-- [Full pricing table](https://token.app/): All models, sortable by price, provider, context window, modality
-- [OpenAI pricing](https://token.app/openai): GPT-4o, GPT-4.1, o3, o4-mini and all OpenAI models
-- [Anthropic pricing](https://token.app/anthropic): Claude 4, Claude 3.7 Sonnet, Claude 3.5 Haiku
-- [Google pricing](https://token.app/google): Gemini 2.5 Pro, Gemini 2.0 Flash, Gemini 1.5 Pro
-- [Meta pricing](https://token.app/meta-llama): Llama 3.3, Llama 4 Scout, Llama 4 Maverick
-- [DeepSeek pricing](https://token.app/deepseek): DeepSeek V3, DeepSeek R1 and variants
-- [Mistral pricing](https://token.app/mistralai): Mistral Large, Mistral Small, Codestral
-- [xAI / Grok pricing](https://token.app/x-ai): Grok 3, Grok 3 Mini
-- [Qwen / Alibaba pricing](https://token.app/qwen): Qwen3, QwQ, Qwen2.5
-- [NVIDIA pricing](https://token.app/nvidia): NVIDIA-hosted open-source models
-- [Cohere pricing](https://token.app/cohere): Command A, Command R+
-- [Usage Dashboard](https://token.app/usage): Track your own AI spend — paste an export from any provider, get charts and subscription breakeven. Entirely client-side, no account needed.
-- [About / Methodology](https://token.app/about): Data sources, update frequency, methodology
-
-## Machine-readable data
-
-- [Full pricing data as plain text](https://token.app/llms-full.txt): All current model prices in human/AI-readable format — use this for up-to-date pricing lookups
-- [JSON API — models](https://token.app/api/models): Structured JSON with all model pricing fields
-- [JSON API — subscriptions](https://token.app/api/subscriptions): Structured JSON with all subscription plans
-
-## Data freshness
-
-Prices are fetched hourly from the OpenRouter Models API and supplemented with direct provider pricing pages. The dataset reflects real-time pricing as of the last refresh. Always verify with official provider documentation before billing.
-
-## About
-
-Built by [Measurable AI](https://measurable.ai/) — a data intelligence company.
-- Terms: https://measurable.ai/en-US/termsOfUse
-- Privacy: https://measurable.ai/en-US/privacyPolicy
-`;
-  return c.text(txt, 200, {
-    'Content-Type': 'text/plain; charset=utf-8',
-    'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400',
-  });
-});
-
-// ── LLMs-full.txt — Live pricing data as AI-readable plain text ───────────────
-
-app.get('/llms-full.txt', async (c) => {
-  try {
-    const [{ models, lastUpdated }, subs] = await Promise.all([
-      getModels(c.env),
-      getSubscriptions(c.env),
-    ]);
-
-    const fmt = (n: number | null | undefined) =>
-      n == null ? 'free' : '$' + n.toFixed(2);
-
-    const updatedStr = lastUpdated
-      ? new Date(lastUpdated).toUTCString()
-      : new Date().toUTCString();
-
-    // Group models by provider
-    const byProvider: Record<string, typeof models> = {};
-    for (const m of models) {
-      if (!byProvider[m.providerId]) byProvider[m.providerId] = [];
-      byProvider[m.providerId].push(m);
-    }
-
-    const providerBlocks = Object.entries(byProvider)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([providerId, pModels]) => {
-        const rows = pModels
-          .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-          .map((m) => {
-            const ctx = m.contextWindow
-              ? (m.contextWindow >= 1000000
-                  ? (m.contextWindow / 1000000).toFixed(0) + 'M'
-                  : m.contextWindow >= 1000
-                  ? (m.contextWindow / 1000).toFixed(0) + 'K'
-                  : String(m.contextWindow)) + ' ctx'
-              : '';
-            return `  - ${m.name || m.id}: input ${fmt(m.inputPer1M)}/1M tokens, output ${fmt(m.outputPer1M)}/1M tokens${ctx ? ', ' + ctx : ''}`;
-          })
-          .join('\n');
-        return `### ${providerId}\n${rows}`;
-      })
-      .join('\n\n');
-
-    const subBlocks = (subs as Array<{name: string; providerId: string; tiers: Array<{name: string; monthlyPrice: number | null; annualMonthlyPrice: number | null}>}>)
-      .map((s) => {
-        const tiers = s.tiers
-          .map((t) => `  - ${t.name}: ${t.monthlyPrice != null ? '$' + t.monthlyPrice + '/mo' : 'Contact Sales'}${t.annualMonthlyPrice && t.annualMonthlyPrice < (t.monthlyPrice ?? Infinity) ? ' (or $' + t.annualMonthlyPrice + '/mo annual)' : ''}`)
-          .join('\n');
-        return `### ${s.name}\nProvider: ${s.providerId}\n${tiers}`;
-      })
-      .join('\n\n');
-
-    const txt = `# token.app — Full AI Pricing Data
-# https://token.app/
-# Source: OpenRouter Models API + provider pricing pages
-# Last updated: ${updatedStr}
-# Total models: ${models.length}
-# Total providers: ${Object.keys(byProvider).length}
-#
-# All prices in USD per 1,000,000 tokens (1M tokens).
-# "free" means the model is available at no cost.
-# Context window shown in K (thousands) or M (millions) of tokens.
-# Data refreshed hourly. Always verify with official provider docs.
-#
-# For a machine-readable JSON version: https://token.app/api/models
-# For the full site: https://token.app/
-# For the LLMs index: https://token.app/llms.txt
-
----
-
-## API Token Pricing — All Models by Provider
-
-${providerBlocks}
-
----
-
-## AI Subscription Plans
-
-${subBlocks}
-
----
-
-## Notes
-
-- Input tokens = text you send to the model
-- Output tokens = text the model generates (usually 2–5× more expensive)
-- Context window = maximum total tokens (input + output) per request
-- Prices may vary by region, tier, or negotiated enterprise agreement
-- Free models may have rate limits or restricted access
-- Source: https://token.app/ — updated hourly by Measurable AI (https://measurable.ai/)
-`;
-
-    return c.text(txt, 200, {
-      'Content-Type': 'text/plain; charset=utf-8',
-      'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600',
-    });
-  } catch (err) {
-    return c.text('# token.app pricing data temporarily unavailable\n# Please try again shortly or visit https://token.app/api/models\n', 503, {
-      'Content-Type': 'text/plain; charset=utf-8',
-    });
-  }
 });
 
 const PROVIDER_SLUGS = [
@@ -674,21 +229,6 @@ app.get('/sitemap.xml', (c) => {
     <loc>https://token.app/</loc>
     <changefreq>hourly</changefreq>
     <priority>1.0</priority>
-  </url>
-  <url>
-    <loc>https://token.app/llms.txt</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://token.app/llms-full.txt</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://token.app/usage</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://token.app/about</loc>
@@ -767,40 +307,9 @@ app.get('/og.png', (c) => {
 // ── About page ────────────────────────────────────────────────────────────────
 
 app.get('/about', (c) => {
-  if (wantsMarkdown(c.req.header('Accept'))) {
-    return c.body(buildAboutMarkdown(), 200, {
-      'Content-Type': 'text/markdown; charset=utf-8',
-      'Cache-Control': 'public, max-age=3600',
-      Vary: 'Accept',
-    });
-  }
-  return c.html(injectWebMcp(getAboutHtml()), 200, {
+  return c.html(getAboutHtml(), 200, {
     'Cache-Control': 'public, max-age=3600',
-    Vary: 'Accept',
   });
-});
-
-// ── Usage dashboard ───────────────────────────────────────────────────────────
-
-app.get('/usage', async (c) => {
-  try {
-    const [{ models, lastUpdated }, subs] = await Promise.all([
-      getModels(c.env),
-      getSubscriptions(c.env),
-    ]);
-    const html = getUsageHtml({
-      initialModels: JSON.stringify(models),
-      initialSubscriptions: JSON.stringify(subs),
-      lastUpdated,
-    });
-    return c.html(html, 200, {
-      'Cache-Control': 'public, max-age=60, stale-while-revalidate=300',
-    });
-  } catch (err) {
-    console.error('Usage page SSR failed:', err);
-    const html = getUsageHtml({});
-    return c.html(html, 200, { 'Cache-Control': 'public, max-age=30' });
-  }
 });
 
 // ── Provider pages ────────────────────────────────────────────────────────────
@@ -809,17 +318,9 @@ async function handleProviderPage(c: any, providerId: string) {
   try {
     const { models } = await getModels(c.env);
     const filtered = models.filter((m: any) => m.providerId === providerId);
-    if (wantsMarkdown(c.req.header('Accept'))) {
-      return c.body(buildProviderMarkdown(providerId, filtered), 200, {
-        'Content-Type': 'text/markdown; charset=utf-8',
-        'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600',
-        Vary: 'Accept',
-      });
-    }
-    const html = injectWebMcp(getProviderHtml({ providerId, models: filtered }));
+    const html = getProviderHtml({ providerId, models: filtered });
     return c.html(html, 200, {
       'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600',
-      Vary: 'Accept',
     });
   } catch (err) {
     console.error('Provider page failed:', err);
@@ -842,24 +343,15 @@ app.get('/', async (c) => {
       getRankings(c.env),
     ]);
 
-    if (wantsMarkdown(c.req.header('Accept'))) {
-      return c.body(buildHomeMarkdown(models, subs as any, lastUpdated), 200, {
-        'Content-Type': 'text/markdown; charset=utf-8',
-        'Cache-Control': 'public, max-age=60, stale-while-revalidate=300',
-        Vary: 'Accept',
-      });
-    }
-
-    const html = injectWebMcp(getHtml({
+    const html = getHtml({
       initialModels: JSON.stringify(models),
       initialSubscriptions: JSON.stringify(subs),
       initialRankings: rankings ? JSON.stringify(rankings) : 'null',
       lastUpdated,
-    }));
+    });
 
     return c.html(html, 200, {
       'Cache-Control': 'public, max-age=60, stale-while-revalidate=300',
-      Vary: 'Accept',
     });
   } catch (err) {
     // Fallback: serve shell without initial data, client fetches it
