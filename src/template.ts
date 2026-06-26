@@ -2414,9 +2414,18 @@ function areaChartSvg(authors) {
 
 // Legend: author swatch + latest share %, sorted as provided (latest share desc).
 function marketShareLegend(authors) {
+  // Latest day across the union of authors, so each legend % matches that
+  // author's value in the chart's rightmost column. An author absent on the
+  // latest day reads 0 here too (same as areaChartSvg's shareAt), instead of
+  // reporting its stale last-available point.
+  var latestDay = '';
+  authors.forEach(function (a) {
+    (a.points || []).forEach(function (p) { if (p.day > latestDay) latestDay = p.day; });
+  });
   return authors.map(function (a) {
     var pts = a.points || [];
-    var latest = pts.length ? pts[pts.length - 1].sharePct : 0;
+    var latest = 0;
+    for (var k = 0; k < pts.length; k++) { if (pts[k].day === latestDay) { latest = pts[k].sharePct || 0; break; } }
     return '<span class="ms-legend-item"><i class="ms-swatch" style="background:' + authorColor(a.author) + '"></i>' +
       escape(a.author) + ' <b>' + (Math.round(latest * 10) / 10) + '%</b></span>';
   }).join('');
@@ -2862,11 +2871,18 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function loadMarketShare() {
+    var body = document.getElementById('market-share-body');
     try {
       var res = await fetch('/api/market-share?window=' + encodeURIComponent(state.msWindow));
       var data = await res.json();
-      if (data && !data.error) { state.marketShare = data; renderMarketShare(); }
-    } catch (err) { /* leave the loading/empty state */ }
+      if (data && !data.error) { state.marketShare = data; renderMarketShare(); return; }
+    } catch (err) { /* fall through to the failure state below */ }
+    // Endpoint error or network failure: don't leave the static "Loading…"
+    // placeholder stuck. Keep any data we already have; otherwise show a neutral
+    // retry message (snapshots refresh hourly via cron).
+    if (body && !state.marketShare) {
+      body.innerHTML = '<div class="ms-empty">Market share could not be loaded right now. It refreshes hourly, so check back shortly.</div>';
+    }
   }
 
   document.getElementById('ms-window-toggle').addEventListener('click', function (e) {
