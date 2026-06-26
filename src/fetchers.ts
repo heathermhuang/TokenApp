@@ -1,9 +1,10 @@
 import puppeteer from '@cloudflare/puppeteer';
 import { APP_CATEGORIES, CATEGORY_SCRAPE_CAP, categoryUrl } from './categories';
-import type { Env, NormalizedModel, OpenRouterModel, OpenRouterResponse, RankingsData, ModelRanking, AppRanking, RankingPeriod, RankDelta, MarketShareData, MarketSharePoint } from './types';
+import type { Env, NormalizedModel, OpenRouterModel, OpenRouterResponse, RankingsData, ModelRanking, AppRanking, RankingPeriod, RankDelta } from './types';
 import { KV_KEYS } from './types';
 import { getProvider } from './providers';
 import { SUBSCRIPTIONS } from './subscriptions';
+import { fetchShareSeries, fetchAppsBoards, fetchModelBoard } from './openrouter-json';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/models';
 
@@ -178,311 +179,6 @@ export async function fetchModelsFromOpenRouter(): Promise<NormalizedModel[]> {
     });
 }
 
-// ── Fetch rankings from OpenRouter ───────────────────────────────────────────
-//
-// As of ~2026-05, openrouter.ai/rankings is fully client-rendered (turbopack
-// Next.js app). The data is no longer present in the SSR HTML — it arrives
-// after JS hydration via POST Server Action calls. Worker `fetch()` can't run
-// JS, so we use Cloudflare's Browser Rendering binding (puppeteer) to load the
-// page, wait for content to hydrate, then extract from the rendered DOM.
-//
-// Sentinels:
-//   - Models: each row tagged with data-testid="model-rankings-leaderboard-row"
-//     and contains an <a href="/{provider}/{slug}"> to the model page.
-//   - Apps:   no stable testid — rendered as a numbered list inside the
-//     "Top Apps" section. Extract via the section's innerText.
-
-const RANKINGS_PAGE_URL = 'https://openrouter.ai/rankings';
-const RANKINGS_RENDER_TIMEOUT_MS = 45_000;
-// The #market-share legend is a separate React Suspense boundary, hydrated
-// AFTER initial load via a Server Action (spike Q2) — it is not covered by the
-// model-leaderboard waitForSelector. Bounded, best-effort wait: a miss leaves
-// marketShare empty (the writer skips the insert) rather than failing the scrape.
-const MARKET_SHARE_RENDER_TIMEOUT_MS = 12_000;
-
-// Extractor runs inside the rendered openrouter.ai/rankings page. Passed as a
-// string so TS won't try to type-check DOM references in a non-DOM context.
-const RANKINGS_EXTRACTOR_SOURCE = `(function () {
-  function parseTokens(raw) {
-    if (!raw) return 0;
-    var m = String(raw).replace(/,/g, '').match(/([\\d.]+)\\s*([KMBT])?/i);
-    if (!m) return 0;
-    var num = parseFloat(m[1]);
-    var unit = (m[2] || '').toUpperCase();
-    var mults = { K: 1e3, M: 1e6, B: 1e9, T: 1e12 };
-    var mult = mults[unit] || 1;
-    return Math.round(num * mult);
-  }
-
-  // ── Models — stable data-testid per row ─────────────────────────────────
-  var modelRows = Array.prototype.slice.call(
-    document.querySelectorAll('[data-testid="model-rankings-leaderboard-row"]')
-  );
-  var models = [];
-  for (var mi = 0; mi < modelRows.length; mi++) {
-    var row = modelRows[mi];
-    var link = row.querySelector('a[href^="/"]');
-    var slug = link ? link.getAttribute('href').replace(/^\\//, '') : '';
-    var name = link ? (link.textContent || '').trim() : '';
-    var rowText = row.innerText || '';
-    var tm = rowText.match(/([\\d.]+\\s*[KMBT]?)\\s*tokens/i);
-    var totalTokens = tm ? parseTokens(tm[1]) : 0;
-    if (slug && totalTokens > 0) {
-      models.push({ modelSlug: slug, modelName: name, totalTokens: totalTokens });
-    }
-  }
-
-  // ── Apps — no testid; walk from "Top Apps" heading ──────────────────────
-  var headings = Array.prototype.slice.call(document.querySelectorAll('h1,h2,h3'));
-  var appsHeading = null;
-  for (var hi = 0; hi < headings.length; hi++) {
-    var ht = (headings[hi].textContent || '').trim();
-    if (/^Top Apps$/i.test(ht)) { appsHeading = headings[hi]; break; }
-  }
-  var apps = [];
-  if (appsHeading) {
-    var section = appsHeading.parentElement;
-    for (var d = 0; d < 8 && section; d++, section = section.parentElement) {
-      var text = section.innerText || '';
-      var ranks = text.match(/(^|\\n)\\d+\\.(\\s|$)/g);
-      if (!ranks || ranks.length < 3) continue;
-
-      var lines = text.split('\\n');
-      for (var li = 0; li < lines.length; li++) lines[li] = lines[li].trim();
-
-      for (var i = 0; i < lines.length && apps.length < 30; i++) {
-        var rm = lines[i].match(/^(\\d+)\\.$/);
-        if (!rm) continue;
-        var rank = parseInt(rm[1], 10);
-        var title = (lines[i + 1] || '').trim();
-        if (!title || /^Show more$/i.test(title)) continue;
-
-        var descLines = [];
-        var tokensRaw = '';
-        for (var j = i + 2; j < Math.min(i + 15, lines.length); j++) {
-          var candidate = lines[j];
-          if (/tokens$/i.test(candidate)) {
-            tokensRaw = candidate.replace(/tokens$/i, '');
-            break;
-          }
-          if (candidate) descLines.push(candidate);
-        }
-        if (!tokensRaw) continue;
-
-        var description = descLines.filter(function (l) { return l.length > 6; }).join(' ').slice(0, 240);
-
-        var candidates = Array.prototype.slice.call(section.querySelectorAll('a, h2, h3, div, span'));
-        var headEl = null;
-        for (var ci = 0; ci < candidates.length; ci++) {
-          var ct = (candidates[ci].textContent || '').trim();
-          if (ct === title || ct.indexOf(title + ' ') === 0 || ct.indexOf(title + '\\n') === 0) {
-            headEl = candidates[ci];
-            break;
-          }
-        }
-        var originUrl = '';
-        var faviconUrl = null;
-        if (headEl) {
-          var linkEl = headEl.closest('a[href^="http"]');
-          if (linkEl) originUrl = linkEl.href;
-          var walk = headEl;
-          for (var k = 0; k < 5 && walk; k++, walk = walk.parentElement) {
-            var img = walk.querySelector('img');
-            if (img && img.src) { faviconUrl = img.src; break; }
-          }
-        }
-
-        apps.push({
-          rank: rank,
-          title: title,
-          description: description,
-          totalTokens: parseTokens(tokensRaw),
-          originUrl: originUrl,
-          faviconUrl: faviconUrl
-        });
-      }
-      if (apps.length > 0) break;
-    }
-  }
-
-  // ── Market share — ranked legend under #market-share ────────────────────
-  // Each named author has an <a href="/{author}"> plus a token total ("148B")
-  // and a share percent ("18.0%"). The row is NOT reliably a <button> wrapping
-  // all three (OpenRouter changed the DOM), so find the row by CONTENT: walk up
-  // from the author link to the nearest ancestor whose text carries a "%". If
-  // that ancestor spans several rows (flat layout), anchor on the link's own
-  // label so we read THIS author's token/percent, not a neighbor's. The
-  // aggregate "Others" row has no author link and is skipped (named only).
-  var marketShare = [];
-  var msSeen = {};
-  var msSection = document.getElementById('market-share');
-  if (msSection) {
-    var msLinks = Array.prototype.slice.call(msSection.querySelectorAll('a[href^="/"]'));
-    for (var ms = 0; ms < msLinks.length; ms++) {
-      var aEl = msLinks[ms];
-      var author = (aEl.getAttribute('href') || '').replace(/^\\//, '');
-      if (!author || msSeen[author]) continue;
-      // Author hrefs are clean single-segment slugs (lowercase alnum + hyphens).
-      // Reject CTA / nav links that also live in this section — e.g. the
-      // "/models?fmt=cards" compare link — so their neighboring percentages
-      // (often the unnamed "Others" aggregate) aren't mistaken for an author.
-      if (!/^[a-z0-9][a-z0-9-]*$/.test(author)) continue;
-      if (/^(models|rankings|apps|data|pricing|docs|chat|settings|login|enterprise|about|careers|blog|terms|privacy)$/.test(author)) continue;
-      var label = (aEl.innerText || aEl.textContent || '').trim();
-      var rowText = '';
-      var node = aEl;
-      for (var up = 0; up < 5 && node && node !== msSection; up++) {
-        var t = node.innerText || node.textContent || '';
-        if (/[\\d.]+\\s*%/.test(t)) { rowText = t; break; }
-        node = node.parentElement;
-      }
-      // Over-broad ancestor (more than one "%"): narrow to this author's slice.
-      if (label && (rowText.match(/%/g) || []).length > 1) {
-        var li = rowText.indexOf(label);
-        if (li !== -1) rowText = rowText.slice(li);
-      }
-      var pctM = rowText.match(/([\\d.]+)\\s*%/);
-      if (!pctM) continue;
-      var tokM = rowText.match(/([\\d.]+\\s*[KMBT])\\b/i);
-      msSeen[author] = true;
-      marketShare.push({
-        author: author,
-        sharePct: parseFloat(pctM[1]),
-        tokenTotal: tokM ? parseTokens(tokM[1]) : 0
-      });
-    }
-  }
-
-  return { models: models, apps: apps, marketShare: marketShare };
-})()`;
-
-// Internal shape produced by a single browser-rendered scrape.
-//
-// OpenRouter's new rankings UI exposes ONE view: weekly model totals and
-// daily app totals. There is no period toggle (the "Today"/"This Week"
-// buttons on the page open model-search comboboxes, not period selectors).
-// So we capture both lists per scrape and store them at their native
-// periods. UI-level period toggles for apps are computed from accumulated
-// daily snapshots in D1; the model leaderboard is fixed at weekly.
-interface RankingsScrape {
-  fetchedAt: string;
-  modelsWeek: Array<{ rank: number; slug: string; name: string; totalTokens: number }>;
-  apps: Array<{
-    rank: number;
-    title: string;
-    description: string;
-    totalTokens: number;
-    originUrl: string;
-    faviconUrl: string | null;
-  }>;
-  marketShare: Array<{ author: string; tokenTotal: number; sharePct: number }>;
-}
-
-export async function fetchRankingsFromOpenRouter(env: Env): Promise<RankingsScrape> {
-  if (!env.BROWSER) {
-    throw new Error('BROWSER binding not configured (requires Cloudflare Browser Rendering)');
-  }
-
-  const browser = await puppeteer.launch(env.BROWSER);
-  try {
-    const page = await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (compatible; token.app/1.0; +https://token.app)');
-    await page.setViewport({ width: 1280, height: 1600 });
-
-    await page.goto(RANKINGS_PAGE_URL, {
-      waitUntil: 'networkidle0',
-      timeout: RANKINGS_RENDER_TIMEOUT_MS,
-    });
-
-    // Wait until model rows are hydrated (skeleton state replaced).
-    await page.waitForSelector('[data-testid="model-rankings-leaderboard-row"]', {
-      timeout: RANKINGS_RENDER_TIMEOUT_MS,
-    });
-
-    // Scroll to the bottom to trigger lazy rendering of the Top Apps section.
-    // Extractor passed as a JS string because tsconfig excludes the DOM lib.
-    await page.evaluate('window.scrollTo(0, document.body.scrollHeight);');
-    await new Promise((r) => setTimeout(r, 1500));
-
-    // Market share hydrates separately from the model leaderboard (its own
-    // Suspense boundary, filled by a post-load Server Action). Scroll it into
-    // view in case the fetch is intersection-triggered, then poll until the
-    // skeleton is gone and author links exist. We poll via page.evaluate (whose
-    // string form is reliable here) instead of page.waitForFunction (whose
-    // string-predicate form throws under @cloudflare/puppeteer). Best-effort: if
-    // it never hydrates we extract anyway and record models/apps only.
-    try {
-      await page.evaluate("document.getElementById('market-share')?.scrollIntoView();");
-      for (let waited = 0; waited < MARKET_SHARE_RENDER_TIMEOUT_MS; waited += 1000) {
-        const ready = await page.evaluate(`(function () {
-          var s = document.getElementById('market-share');
-          if (!s || s.querySelector('[data-testid="rankings-skeleton-chart"]')) return false;
-          // Mirror the extractor's success condition, not just "any link": a CTA
-          // like /models?fmt=cards can render before the author legend, and a bare
-          // a[href^="/"] check would exit the poll too early. Require a clean
-          // author slug whose nearest ancestor carries a "%".
-          var links = s.querySelectorAll('a[href^="/"]');
-          for (var i = 0; i < links.length; i++) {
-            var slug = (links[i].getAttribute('href') || '').replace(/^\\//, '');
-            if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) continue;
-            var node = links[i];
-            for (var up = 0; up < 5 && node && node !== s; up++) {
-              if (/[\\d.]+\\s*%/.test(node.innerText || node.textContent || '')) return true;
-              node = node.parentElement;
-            }
-          }
-          return false;
-        })()`);
-        if (ready) break;
-        await new Promise((r) => setTimeout(r, 1000));
-      }
-    } catch (e) {
-      console.warn('[rankings] market-share wait failed (non-fatal):', String(e));
-    }
-
-    const extracted = (await page.evaluate(RANKINGS_EXTRACTOR_SOURCE)) as {
-      models: Array<{ modelSlug: string; modelName: string; totalTokens: number }>;
-      apps: Array<{
-        rank: number;
-        title: string;
-        description: string;
-        totalTokens: number;
-        originUrl: string;
-        faviconUrl: string | null;
-      }>;
-      marketShare: Array<{ author: string; tokenTotal: number; sharePct: number }>;
-    };
-
-    const modelsWeek = extracted.models.slice(0, 20).map((m, i) => ({
-      rank: i + 1,
-      slug: m.modelSlug,
-      name: m.modelName,
-      totalTokens: m.totalTokens,
-    }));
-
-    const seen = new Set<string>();
-    const apps: RankingsScrape['apps'] = [];
-    for (const a of extracted.apps) {
-      if (!a.title || seen.has(a.title)) continue;
-      seen.add(a.title);
-      apps.push(a);
-      if (apps.length >= 20) break;
-    }
-
-    const marketShare = (extracted.marketShare ?? [])
-      .filter((m) => m.author && m.sharePct > 0)
-      .slice(0, 12);
-
-    return {
-      fetchedAt: new Date().toISOString(),
-      modelsWeek,
-      apps,
-      marketShare,
-    };
-  } finally {
-    await browser.close();
-  }
-}
 
 // Extractor for a category leaderboard page (/apps/category/{group}/{slug}).
 // Reads the live label from <h1> ("<Label> Rankings") and the ranked app list.
@@ -618,46 +314,27 @@ async function writeCategorySnapshot(env: Env, scrape: CategoryScrape): Promise<
 // Indefinite retention. Queries are bounded by snapshot_at >= cutoff so growth
 // doesn't slow lookups.
 
-async function writeRankingsSnapshot(env: Env, scrape: RankingsScrape): Promise<void> {
-  const snapshotAt = scrape.fetchedAt;
-  const snapshotDay = snapshotAt.slice(0, 10);
-
+// Append the JSON-sourced day app board + weekly model board to D1. The JSON
+// endpoints already carry their own history (52-week share series) for the chart,
+// but app/model sparklines + deltas + "view as of" are computed from accumulated
+// D1 snapshots, so we keep writing one row-set per refresh. Append-only.
+async function writeJsonSnapshots(
+  env: Env, models: ModelRanking[], appsDay: AppRanking[], fetchedAt: string,
+): Promise<void> {
+  const snapshotDay = fetchedAt.slice(0, 10);
   const stmt = env.RANKINGS_DB.prepare(`
     INSERT INTO rankings_snapshots
       (snapshot_at, snapshot_day, kind, period, rank, identifier, name, description, total_tokens, origin_url, favicon_url)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-
   const batch: D1PreparedStatement[] = [];
-  for (const m of scrape.modelsWeek) {
-    batch.push(stmt.bind(snapshotAt, snapshotDay, 'model', 'week', m.rank, m.slug, m.name, null, m.totalTokens, null, null));
+  models.forEach((m, i) => {
+    batch.push(stmt.bind(fetchedAt, snapshotDay, 'model', 'week', i + 1, m.modelSlug, m.modelSlug, null, m.totalTokens, null, null));
+  });
+  for (const a of appsDay) {
+    batch.push(stmt.bind(fetchedAt, snapshotDay, 'app', 'day', a.rank, a.title, null, a.description || null, a.totalTokens, a.originUrl || null, a.faviconUrl));
   }
-  for (const a of scrape.apps) {
-    batch.push(stmt.bind(
-      snapshotAt, snapshotDay, 'app', 'day', a.rank, a.title,
-      null, a.description, a.totalTokens, a.originUrl || null, a.faviconUrl,
-    ));
-  }
-
-  if (batch.length > 0) {
-    await env.RANKINGS_DB.batch(batch);
-  }
-}
-
-// Append a market-share snapshot. Empty result = skip the insert (the table is
-// append-only, so the read path just keeps the last good day — no overwrite).
-async function writeMarketShareSnapshot(env: Env, scrape: RankingsScrape): Promise<void> {
-  if (!scrape.marketShare || scrape.marketShare.length === 0) return;
-  const snapshotAt = scrape.fetchedAt;
-  const snapshotDay = snapshotAt.slice(0, 10);
-  const stmt = env.RANKINGS_DB.prepare(`
-    INSERT INTO market_share_snapshots
-      (snapshot_at, snapshot_day, author, token_total, share_pct, period)
-    VALUES (?, ?, ?, ?, ?, 'day')
-  `);
-  const batch = scrape.marketShare.map((m) =>
-    stmt.bind(snapshotAt, snapshotDay, m.author, m.tokenTotal, m.sharePct));
-  await env.RANKINGS_DB.batch(batch);
+  if (batch.length > 0) await env.RANKINGS_DB.batch(batch);
 }
 
 // ── Period-aware reads ────────────────────────────────────────────────────────
@@ -912,60 +589,42 @@ export async function refreshAllData(
   // Store subscriptions (static data, updated on deploy)
   await env.TOKEN_APP_KV.put(KV_KEYS.SUBSCRIPTIONS, JSON.stringify(SUBSCRIPTIONS));
 
-  // Fetch and store rankings (best-effort, don't fail the whole refresh)
+  // Fetch and store rankings from OpenRouter's JSON endpoints (best-effort, don't
+  // fail the whole refresh). Replaces the old puppeteer scrape for all primary
+  // data — only the per-category boards still use Browser Rendering (below).
   let rankingsStatus: string | undefined;
   let rankingsError: string | undefined;
   try {
-    const scrape = await fetchRankingsFromOpenRouter(env);
-    const weekModelCount = scrape.modelsWeek.length;
-    const appCount = scrape.apps.length;
+    const [{ author, model }, apps, topModels] = await Promise.all([
+      fetchShareSeries(), fetchAppsBoards(), fetchModelBoard(),
+    ]);
 
-    // Guard: refuse to record an empty snapshot. Old scraper failed silently
-    // for days because no anchors matched; KV (now D1) cache stayed empty.
-    if (weekModelCount === 0 && appCount === 0) {
-      throw new Error('Rankings fetcher returned empty result — snapshot not recorded');
+    // Empty-overwrite guard: keep last-good KV if OpenRouter returns nothing,
+    // rather than poisoning the cache (the silent-failure lesson, now for JSON).
+    if (topModels.length === 0 && apps.day.length === 0 && author.entities.length === 0) {
+      throw new Error('Rankings JSON returned empty — KV left unchanged');
     }
 
-    // 1) Append a new history snapshot to D1.
-    await writeRankingsSnapshot(env, scrape);
+    const fetchedAt = new Date().toISOString();
+    await env.TOKEN_APP_KV.put(KV_KEYS.SHARE_SERIES,
+      JSON.stringify({ author, model, fetchedAt }), { expirationTtl: 7200 });
+    await env.TOKEN_APP_KV.put(KV_KEYS.APPS_BOARDS,
+      JSON.stringify({ ...apps, fetchedAt }), { expirationTtl: 7200 });
 
-    // 1b) Append market share (extracted from the same render — zero extra
-    //     page loads). Best-effort: it's inside the rankings try/catch already.
-    await writeMarketShareSnapshot(env, scrape);
-
-    // 2) Mirror the latest snapshot into KV for SSR initial state. The
-    //    legacy RankingsData shape stays compatible with the client.
-    //    topModels reflects the weekly leaderboard — OpenRouter's only view.
     const ssrPayload: RankingsData = {
-      topModels: scrape.modelsWeek.map((m) => ({
-        modelSlug: m.slug,
-        totalTokens: m.totalTokens,
-        totalRequests: 0,
-        date: scrape.fetchedAt.slice(0, 10),
-      })),
-      topApps: {
-        day: scrape.apps.map((a) => ({
-          rank: a.rank,
-          title: a.title,
-          description: a.description,
-          categories: [],
-          originUrl: a.originUrl,
-          faviconUrl: a.faviconUrl,
-          totalTokens: a.totalTokens,
-          totalRequests: 0,
-        })),
-        week: [],
-        month: [],
-      },
-      fetchedAt: scrape.fetchedAt,
+      topModels,
+      topApps: { day: apps.day, week: apps.week, month: apps.month },
+      fetchedAt,
     };
-    await env.TOKEN_APP_KV.put(KV_KEYS.RANKINGS, JSON.stringify(ssrPayload), {
-      expirationTtl: 7200,
-    });
+    await env.TOKEN_APP_KV.put(KV_KEYS.RANKINGS, JSON.stringify(ssrPayload), { expirationTtl: 7200 });
 
-    rankingsStatus = `models: ${weekModelCount}w, apps: ${appCount}d`;
+    // D1 continuity: keep accumulating the day app board + weekly model board so
+    // app/model sparklines, deltas, and "view as of" keep working going forward.
+    await writeJsonSnapshots(env, topModels, apps.day, fetchedAt);
+
+    rankingsStatus = `models: ${topModels.length}, apps: ${apps.day.length}d, series: ${author.weeks}w`;
   } catch (err) {
-    console.error('Rankings fetch failed (non-fatal):', err);
+    console.error('Rankings JSON fetch failed (non-fatal):', err);
     rankingsError = String(err);
   }
 
@@ -1063,6 +722,46 @@ export async function getRankings(
   category?: string | null,
 ): Promise<RankingsData | null> {
   const cat = category ?? null;
+
+  // Fast path — global board, latest: straight from the cron-written KV blob
+  // (JSON-sourced). Apps day/week/month all come from OpenRouter directly, so the
+  // 7D/30D agent boards light up immediately (no D1 accumulation gate). Sparklines
+  // + deltas still come from accumulated D1 history.
+  if (cat == null && !asOf) {
+    const raw = await env.TOKEN_APP_KV.get(KV_KEYS.RANKINGS);
+    if (raw) {
+      const base = JSON.parse(raw) as RankingsData;
+      const models = base.topModels || [];
+      const apps = (base.topApps && base.topApps[period]) || [];
+      try {
+        const periodDays = period === 'month' ? 30 : period === 'week' ? 7 : 1;
+        await Promise.all([
+          attachTrends(env, 'model', 'week', models.map((m): TrendRow => ({
+            identifier: m.modelSlug, set: (sp, d) => { m.sparkline = sp; m.delta = d; },
+          })), 7, undefined),
+          attachTrends(env, 'app', 'day', apps.map((a): TrendRow => ({
+            identifier: a.title, set: (sp, d) => { a.sparkline = sp; a.delta = period === 'day' ? d : null; },
+          })), periodDays, undefined),
+        ]);
+      } catch (err) { console.error('Trend attach failed (non-fatal):', err); }
+      const topApps: Record<RankingPeriod, AppRanking[]> = { day: [], week: [], month: [] };
+      topApps[period] = apps;
+      return { topModels: models, topApps, fetchedAt: base.fetchedAt };
+    }
+    // KV empty (first run / expired) → fall through to the D1 path.
+  }
+
+  // "View as of", category boards, or KV miss → D1 (categories via puppeteer; the
+  // global board's day/week snapshots are accumulated by writeJsonSnapshots).
+  return getRankingsFromD1(env, period, asOf, cat);
+}
+
+async function getRankingsFromD1(
+  env: Env,
+  period: RankingPeriod,
+  asOf: string | undefined,
+  cat: string | null,
+): Promise<RankingsData | null> {
   const requiredDays = period === 'week' ? 7 : period === 'month' ? 30 : 0;
   try {
     const modelsTask = readLatestModels(env, 'week', asOf); // models are always the global weekly board
@@ -1130,55 +829,3 @@ export async function getRankings(
   return JSON.parse(raw) as RankingsData;
 }
 
-// ── Market share read ─────────────────────────────────────────────────────────
-
-// Author slugs are clean single-segment tokens (lowercase alnum + hyphens). The
-// market-share section also holds CTA/nav links (e.g. "models?fmt=cards"); the
-// write-side extractor filters them, but sanitize on read too so any junk that
-// ever leaked into D1 (e.g. from an older extractor) never reaches the chart.
-const MARKET_SHARE_NON_AUTHORS = new Set([
-  'models', 'rankings', 'apps', 'data', 'pricing', 'docs', 'chat', 'settings',
-  'login', 'enterprise', 'about', 'careers', 'blog', 'terms', 'privacy',
-]);
-function isAuthorSlug(author: string): boolean {
-  return /^[a-z0-9][a-z0-9-]*$/.test(author) && !MARKET_SHARE_NON_AUTHORS.has(author);
-}
-
-// Author-share time series over the trailing window. One point per author per
-// calendar day (the LAST snapshot that day). Authors sorted by latest share.
-export async function readMarketShare(env: Env, windowDays: number, asOf?: string): Promise<MarketShareData> {
-  const anchor = asOf ?? new Date().toISOString();
-  const cutoff = new Date(new Date(anchor).getTime() - windowDays * 86400_000).toISOString();
-  const upperClause = asOf ? ' AND snapshot_at <= ?' : '';
-  const binds: unknown[] = [cutoff];
-  if (asOf) binds.push(asOf);
-  const sql = `
-    WITH daily AS (
-      SELECT author, snapshot_day AS day, share_pct, token_total,
-        ROW_NUMBER() OVER (PARTITION BY author, snapshot_day ORDER BY snapshot_at DESC) AS rn
-      FROM market_share_snapshots
-      WHERE snapshot_at >= ?${upperClause}
-    )
-    SELECT author, day, share_pct, token_total FROM daily WHERE rn = 1 ORDER BY day ASC
-  `;
-  const res = await env.RANKINGS_DB.prepare(sql).bind(...binds)
-    .all<{ author: string; day: string; share_pct: number; token_total: number }>();
-
-  const byAuthor = new Map<string, MarketSharePoint[]>();
-  for (const r of res.results ?? []) {
-    if (!isAuthorSlug(r.author)) continue; // drop CTA/nav links that ever leaked into D1
-    const arr = byAuthor.get(r.author) ?? [];
-    arr.push({ day: r.day, sharePct: Number(r.share_pct) || 0, tokens: Number(r.token_total) || 0 });
-    byAuthor.set(r.author, arr);
-  }
-  // Honesty gate counts only days that have >= 1 VALID author, derived from the
-  // filtered set so it can't disagree with the authors we return — a junk-only
-  // day must not satisfy the chart's >= 2-day requirement.
-  const validDays = new Set<string>();
-  for (const points of byAuthor.values()) for (const p of points) validDays.add(p.day);
-  const historyDays = validDays.size;
-  const authors = Array.from(byAuthor.entries())
-    .map(([author, points]) => ({ author, points }))
-    .sort((a, b) => (b.points[b.points.length - 1]?.sharePct || 0) - (a.points[a.points.length - 1]?.sharePct || 0));
-  return { authors, window: windowDays, historyDays, fetchedAt: anchor };
-}
