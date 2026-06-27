@@ -1368,7 +1368,10 @@ export function getHtml(params: {
       /* Subscriptions: tiers wrap to 2-up, never horizontal-scroll */
       #subs-section { padding: 0 16px 32px; }
       .tiers-row { grid-template-columns: 1fr 1fr; gap: 8px; padding: 14px 14px 16px; }
-      .tier { min-width: 0; }
+      .tier { min-width: 0; padding: 12px 12px 10px; }
+      /* Fewer features per tier + tighter spacing → shorter scroll on phones */
+      .tier-features { margin-top: 6px; gap: 2px; }
+      .tier-feature:nth-child(n+4) { display: none; }
     }
 
     @media (max-width: 460px) {
@@ -1534,6 +1537,10 @@ export function getHtml(params: {
           <button class="period-btn" data-window="90">90D</button>
           <button class="period-btn active" data-window="365">1Y</button>
         </div>
+        <div class="period-toggle" id="ms-scale-toggle">
+          <button class="period-btn active" data-scale="linear">Linear</button>
+          <button class="period-btn" data-scale="log">Log</button>
+        </div>
       </div>
     </div>
     <div id="market-share-body">
@@ -1686,6 +1693,7 @@ const state = {
   rankingsPeriod: 'day',  // 'day' | 'week' | 'month'
   asOf: null,        // ISO8601 when viewing a historical snapshot, else null (latest)
   msWindow: 365,       // share-chart window in days (30 | 90 | 365)
+  msScale: 'linear',   // share-chart y-axis: 'linear' | 'log'
   shareSeries: null,   // cached { author: ShareSeries, model: ShareSeries }
   category: null,    // active rankings category slug, null = global "All"
   categories: [],    // [{slug,label,group}] from /api/rankings/categories
@@ -2402,36 +2410,25 @@ function chartColor(slug) {
   if (!slug || slug.toLowerCase() === 'others') return othersColor();
   return chartPalette()[chartSlot(slug)];
 }
-// Band + legend color, keyed by entity. Author entities are plain slugs; the
-// split keeps it correct if ever handed a "provider/model" key.
+// Chart/legend color for a market-share entity. Author entities are plain slugs
+// → curated brand palette. Model entities are "provider/model" keys → a distinct
+// hue per model, so same-brand siblings (Sonnet vs Haiku) don't collide — the way
+// OpenRouter colors each model separately. "Others" is always the grey band.
 function entityColor(e) {
   var key = e && e.key ? e.key : '';
   if (!key || key.toLowerCase() === 'others') return othersColor();
-  var prov = key.indexOf('/') >= 0 ? key.split('/')[0] : key;
-  return chartColor(prov);
+  if (key.indexOf('/') >= 0) return modelHue(key);
+  return chartColor(key);
 }
-// Mix a #rrggbb hex toward a target hex by t (0..1).
-function mixHex(hex, target, t) {
-  if (hex.charAt(0) !== '#' || hex.length !== 7) return hex;
-  function ch(c, o) { return parseInt(c.substr(o, 2), 16); }
-  function hx(n) { return ('0' + (n < 0 ? 0 : n > 255 ? 255 : n).toString(16)).slice(-2); }
-  var r = Math.round(ch(hex, 1) + (ch(target, 1) - ch(hex, 1)) * t);
-  var g = Math.round(ch(hex, 3) + (ch(target, 3) - ch(hex, 3)) * t);
-  var b = Math.round(ch(hex, 5) + (ch(target, 5) - ch(hex, 5)) * t);
-  return '#' + hx(r) + hx(g) + hx(b);
+// Distinct, theme-tuned color per model key — a pure hash of the key → hue, so a
+// model keeps its color across window/scale toggles. S/L picked so ~15 stacked
+// segments stay legible on either theme.
+function modelHue(key) {
+  var h = Math.abs(hashCode(key.toLowerCase())) % 360;
+  return isLightTheme() ? 'hsl(' + h + ', 62%, 45%)' : 'hsl(' + h + ', 60%, 60%)';
 }
-// Tooltip swatch for one model: its brand hue, nudged per model so siblings
-// (Sonnet vs Haiku) differ while staying in the family. Generated hsl() brand
-// colors (unknown providers) are returned unchanged.
-function modelTint(modelKey) {
-  if (!modelKey || modelKey.toLowerCase() === 'others') return othersColor();
-  var prov = modelKey.indexOf('/') >= 0 ? modelKey.split('/')[0] : modelKey;
-  var base = chartColor(prov);
-  if (base.charAt(0) !== '#') return base;
-  var bucket = Math.abs(hashCode(modelKey)) % 3;
-  if (bucket === 0) return base;
-  return bucket === 1 ? mixHex(base, '#ffffff', 0.18) : mixHex(base, '#000000', 0.16);
-}
+// (modelTint/mixHex removed — they only served the old per-model tooltip tint
+// in attachShareHover, which the stacked-bar chart replaced.)
 
 // Week date → "Jun 22" (UTC, so it matches the bucket date exactly).
 function shortDate(iso) {
@@ -2441,16 +2438,16 @@ function shortDate(iso) {
 
 function shareChartAria(series) {
   var top = (series.entities || []).filter(function (e) { return e.key !== 'others'; }).slice(0, 4);
-  return 'Weekly token volume by brand, stacked bars. Hover for the per-brand volume that week. Latest: ' + top.map(function (e) {
+  return 'Weekly token volume by model, stacked bars. Hover for the per-model volume that week. Latest: ' + top.map(function (e) {
     return e.label + ' ' + Math.round(e.latestPct) + '%';
   }).join(', ') + '.';
 }
 
-// Multi-line weekly share chart (OpenRouter-style): one thin line per entity on
-// a data-fit y-axis. The "others" aggregate is dropped from the plot + scale so
-// the real models aren't compressed into the floor. Hover overlay + crosshair
-// are wired by attachShareHover(); the tooltip lists each brand's share/week.
-function shareChartSvg(series) {
+// Stacked-bar weekly token-volume chart (OpenRouter-style): one column per week,
+// segments stacked by entity, on a nice-rounded absolute-token y-axis (auto-fit
+// to the largest weekly total). Hover overlay + crosshair are wired by
+// attachBarHover(); the tooltip lists each entity's token volume that week.
+function shareChartSvg(series, scale) {
   var ents = (series && series.entities) || [];
   if (ents.length === 0) return '<div class="ms-empty">Market share data unavailable.</div>';
   var pts0 = ents[0].points || [];
@@ -2459,34 +2456,75 @@ function shareChartSvg(series) {
   var W = 760, H = 260, mL = 42, mR = 8, mT = 8, mB = 22;
   var pw = W - mL - mR, ph = H - mT - mB;
   var tokAt = function (e, i) { var p = e.points[i]; return (p && p.tokens) || 0; };
-  var maxTotal = 0;
+  // Per-week totals → linear-axis ceiling and log-axis floor (smallest positive).
+  var totals = [], maxTotal = 0, minPos = Infinity;
   for (var i = 0; i < n; i++) {
     var s = 0; for (var k = 0; k < ents.length; k++) s += tokAt(ents[k], i);
+    totals.push(s);
     if (s > maxTotal) maxTotal = s;
+    if (s > 0 && s < minPos) minPos = s;
   }
   if (maxTotal <= 0) return '<div class="ms-empty">Not enough history yet.</div>';
-  // Nice round y-axis ceiling + step (~4 gridlines) for the token-volume scale.
-  var sr = maxTotal / 4, pw10 = Math.pow(10, Math.floor(Math.log10(sr))), fr = sr / pw10;
-  var step = (fr <= 1 ? 1 : fr <= 2 ? 2 : fr <= 2.5 ? 2.5 : fr <= 5 ? 5 : 10) * pw10;
-  var yMax = Math.ceil(maxTotal / step) * step;
-  var yScale = function (v) { return mT + (1 - v / yMax) * ph; };
-  var barSlot = pw / n, barW = Math.max(2, barSlot * 0.72);
-  var grid = '';
-  for (var g = 0; g <= yMax + 0.001; g += step) {
-    grid += '<line x1="' + mL + '" y1="' + yScale(g).toFixed(1) + '" x2="' + (W - mR) + '" y2="' + yScale(g).toFixed(1) +
-      '" stroke="var(--border)" stroke-width="1"/>' +
-      '<text x="' + (mL - 6) + '" y="' + (yScale(g) + 3).toFixed(1) + '" text-anchor="end" class="ms-axis">' + fmtTokens(g).replace('.0', '') + '</text>';
+  var isLog = scale === 'log';
+  var barSlot = pw / n, barW = Math.max(2, barSlot * 0.72), baseY = mT + ph;
+  var grid = '', yScale;
+  if (isLog) {
+    // Log y-axis: decade gridlines from the smallest positive week to the max.
+    // Each bar's TOP sits at log(weekly total); the segments below fill the bar
+    // in proportion to each model's share that week (linear stacking on a log
+    // total would misplace boundaries, so we scale the bar then split it).
+    var hiE = Math.ceil(Math.log10(maxTotal));
+    var loE = Math.floor(Math.log10(minPos === Infinity ? maxTotal : minPos));
+    if (loE > hiE - 1) loE = hiE - 1;   // always span ≥1 decade
+    if (loE < hiE - 5) loE = hiE - 5;   // cap span so bars aren't hair-thin
+    var span = hiE - loE;
+    yScale = function (v) {
+      if (v <= 0) return baseY;
+      var f = (Math.log10(v) - loE) / span;
+      return mT + (1 - Math.max(0, Math.min(1, f))) * ph;
+    };
+    for (var e2 = loE; e2 <= hiE; e2++) {
+      var gv = Math.pow(10, e2), gy = yScale(gv);
+      grid += '<line x1="' + mL + '" y1="' + gy.toFixed(1) + '" x2="' + (W - mR) + '" y2="' + gy.toFixed(1) +
+        '" stroke="var(--border)" stroke-width="1"/>' +
+        '<text x="' + (mL - 6) + '" y="' + (gy + 3).toFixed(1) + '" text-anchor="end" class="ms-axis">' + fmtTokens(gv).replace('.0', '') + '</text>';
+    }
+  } else {
+    // Linear y-axis: nice round ceiling + step (~4 gridlines).
+    var sr = maxTotal / 4, pw10 = Math.pow(10, Math.floor(Math.log10(sr))), fr = sr / pw10;
+    var step = (fr <= 1 ? 1 : fr <= 2 ? 2 : fr <= 2.5 ? 2.5 : fr <= 5 ? 5 : 10) * pw10;
+    var yMax = Math.ceil(maxTotal / step) * step;
+    yScale = function (v) { return mT + (1 - v / yMax) * ph; };
+    for (var g = 0; g <= yMax + 0.001; g += step) {
+      grid += '<line x1="' + mL + '" y1="' + yScale(g).toFixed(1) + '" x2="' + (W - mR) + '" y2="' + yScale(g).toFixed(1) +
+        '" stroke="var(--border)" stroke-width="1"/>' +
+        '<text x="' + (mL - 6) + '" y="' + (yScale(g) + 3).toFixed(1) + '" text-anchor="end" class="ms-axis">' + fmtTokens(g).replace('.0', '') + '</text>';
+    }
   }
   var bars = '';
   for (var bi = 0; bi < n; bi++) {
-    var cx = mL + (bi + 0.5) * barSlot, bx = cx - barW / 2, cum = 0;
-    for (var be = 0; be < ents.length; be++) {
-      var tok = tokAt(ents[be], bi);
-      if (tok <= 0) continue;
-      var y0 = yScale(cum), y1 = yScale(cum + tok);
-      bars += '<rect x="' + bx.toFixed(1) + '" y="' + y1.toFixed(1) + '" width="' + barW.toFixed(1) +
-        '" height="' + Math.max(0.5, y0 - y1).toFixed(1) + '" fill="' + entityColor(ents[be]) + '"/>';
-      cum += tok;
+    var cx = mL + (bi + 0.5) * barSlot, bx = cx - barW / 2, tot = totals[bi];
+    if (tot <= 0) continue;
+    if (isLog) {
+      var topY = yScale(tot), barH = baseY - topY, acc = 0;
+      for (var be = 0; be < ents.length; be++) {
+        var tk = tokAt(ents[be], bi);
+        if (tk <= 0) continue;
+        var h0 = barH * (acc / tot), h1 = barH * ((acc + tk) / tot);
+        bars += '<rect x="' + bx.toFixed(1) + '" y="' + (baseY - h1).toFixed(1) + '" width="' + barW.toFixed(1) +
+          '" height="' + Math.max(0.5, h1 - h0).toFixed(1) + '" fill="' + entityColor(ents[be]) + '"/>';
+        acc += tk;
+      }
+    } else {
+      var cum = 0;
+      for (var be2 = 0; be2 < ents.length; be2++) {
+        var tok = tokAt(ents[be2], bi);
+        if (tok <= 0) continue;
+        var y0 = yScale(cum), y1 = yScale(cum + tok);
+        bars += '<rect x="' + bx.toFixed(1) + '" y="' + y1.toFixed(1) + '" width="' + barW.toFixed(1) +
+          '" height="' + Math.max(0.5, y0 - y1).toFixed(1) + '" fill="' + entityColor(ents[be2]) + '"/>';
+        cum += tok;
+      }
     }
   }
   var nLab = Math.min(6, n), xlab = '';
@@ -2502,7 +2540,7 @@ function shareChartSvg(series) {
     xlab + '</svg>';
 }
 
-// Stacked-bar hover: snap to the nearest weekly column, list each brand's token
+// Stacked-bar hover: snap to the nearest weekly column, list each model's token
 // volume that week (sorted desc). Geometry mirrors shareChartSvg (mL=42 + n
 // even slots) so the crosshair lands on the column center.
 function attachBarHover(series) {
@@ -2554,61 +2592,6 @@ function marketShareLegend(series) {
     return '<span class="ms-legend-item"><i class="ms-swatch" style="background:' + entityColor(e) + '"></i>' +
       escape(e.label) + ' <b>' + (Math.round(last * 10) / 10) + '%</b>' + dh + '</span>';
   }).join('');
-}
-
-// Crosshair + tooltip: on hover, snap to the nearest week and list every entity's
-// share that week (sorted desc). Reads geometry from the SVG viewBox so it stays
-// correct at any rendered width. No position:fixed — the tooltip is absolute
-// inside #market-share-body (which is position:relative).
-// Crosshair + tooltip. Bands are brand-level (author); the tooltip breaks the
-// hovered week down by MODEL (sorted desc, capped). Falls back to the author
-// breakdown if the model series is absent — never an empty tooltip.
-function attachShareHover(author, model) {
-  var body = document.getElementById('market-share-body');
-  var svg = body && body.querySelector('.ms-chart');
-  var hit = svg && svg.querySelector('.ms-hit');
-  var cross = svg && svg.querySelector('.ms-crosshair');
-  var tip = document.getElementById('ms-tip');
-  if (!svg || !hit || !cross || !tip) return;
-  var aEnts = author.entities, n = aEnts[0].points.length;
-  var vb = svg.viewBox.baseVal, mL = 34, pw = vb.width - mL - 8;
-  var useModel = !!(model && model.entities && model.entities.length);
-  var breakdown = useModel ? model : author;
-  var tintOf = useModel
-    ? function (key) { return modelTint(key); }
-    : function (key) { return entityColor({ key: key }); };
-  hit.addEventListener('mousemove', function (ev) {
-    var r = svg.getBoundingClientRect();
-    var sx = (ev.clientX - r.left) / r.width * vb.width;
-    var i = Math.max(0, Math.min(n - 1, Math.round((sx - mL) / pw * (n - 1))));
-    var cx = mL + (i / (n - 1)) * pw;
-    cross.setAttribute('x1', cx); cross.setAttribute('x2', cx); cross.style.display = '';
-    var date = aEnts[0].points[i].date;
-    var rows = breakdown.entities.map(function (e) {
-      var p = pointForDate(e.points, date, i);
-      return { label: e.label, pct: p ? p.pct : 0, key: e.key };
-    }).filter(function (rr) { return rr.pct >= 0.05; })
-      .sort(function (a, b) { return b.pct - a.pct; })
-      .slice(0, 12);
-    tip.innerHTML = '<div class="ms-tip-date">' + shortDate(date) + '</div>' +
-      rows.map(function (rr) {
-        return '<div class="ms-tip-row"><span><i class="ms-swatch" style="background:' + tintOf(rr.key) +
-          '"></i>' + escape(rr.label) + '</span><b>' + rr.pct.toFixed(1) + '%</b></div>';
-      }).join('');
-    tip.style.opacity = '1';
-    var left = (cx / vb.width) * r.width + 12;
-    if (left + 170 > r.width) left -= 194;
-    tip.style.left = Math.max(0, left) + 'px';
-    tip.style.top = '8px';
-  });
-  hit.addEventListener('mouseleave', function () { tip.style.opacity = '0'; cross.style.display = 'none'; });
-}
-// Match the author week's date in a model entity's points; fall back to index
-// when the two series line up 1:1.
-function pointForDate(points, date, idx) {
-  if (!points || !points.length) return null;
-  for (var j = 0; j < points.length; j++) { if (points[j].date === date) return points[j]; }
-  return points[idx] || null;
 }
 
 function renderRankings() {
@@ -3045,16 +3028,19 @@ document.addEventListener('DOMContentLoaded', () => {
     var body = document.getElementById('market-share-body');
     if (!body) return;
     if (!state.shareSeries) { body.innerHTML = '<div class="ms-empty">Market share data unavailable.</div>'; return; }
-    var authorFull = state.shareSeries.author;
-    if (!authorFull || !authorFull.entities || !authorFull.entities.length) {
+    // Prefer the per-model series (OpenRouter-style distinct model segments);
+    // fall back to the author/brand series if the model series is missing.
+    var full = state.shareSeries.model;
+    if (!full || !full.entities || !full.entities.length) full = state.shareSeries.author;
+    if (!full || !full.entities || !full.entities.length) {
       body.innerHTML = '<div class="ms-empty">Market share data unavailable.</div>'; return;
     }
-    var author = windowSlice(authorFull, state.msWindow);
-    body.innerHTML = shareChartSvg(author) +
-      '<div class="ms-legend">' + marketShareLegend(author) + '</div>' +
+    var sliced = windowSlice(full, state.msWindow);
+    body.innerHTML = shareChartSvg(sliced, state.msScale) +
+      '<div class="ms-legend">' + marketShareLegend(sliced) + '</div>' +
       '<div class="ms-tip" id="ms-tip"></div>';
-    // Stacked-bar hover: per-brand token volume for the hovered week.
-    attachBarHover(author);
+    // Stacked-bar hover: per-model token volume for the hovered week.
+    attachBarHover(sliced);
   }
 
   async function loadMarketShare() {
@@ -3074,6 +3060,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!btn) return;
     state.msWindow = parseInt(btn.dataset.window, 10);
     document.querySelectorAll('#ms-window-toggle .period-btn').forEach(function (b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    renderMarketShare();
+  });
+
+  document.getElementById('ms-scale-toggle').addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-scale]');
+    if (!btn) return;
+    state.msScale = btn.dataset.scale;
+    document.querySelectorAll('#ms-scale-toggle .period-btn').forEach(function (b) { b.classList.remove('active'); });
     btn.classList.add('active');
     renderMarketShare();
   });
