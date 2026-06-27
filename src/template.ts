@@ -710,8 +710,8 @@ export function getHtml(params: {
 
     .subs-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-      gap: 16px;
+      grid-template-columns: 1fr;
+      gap: 14px;
     }
 
     .sub-card {
@@ -760,23 +760,22 @@ export function getHtml(params: {
     }
 
     .tiers-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+      gap: 10px;
+      padding: 18px 20px 20px;
     }
 
     .tier {
-      flex: 1;
-      min-width: 100px;
-      padding: 12px 16px;
-      border-right: 1px solid var(--border);
-      position: relative;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 14px 14px 12px;
     }
 
-    .tier:last-child { border-right: none; }
-
     .tier.highlight {
-      background: rgba(99,102,241,0.05);
+      background: var(--accent-dim);
+      border-color: var(--accent);
     }
 
     .tier-name {
@@ -815,18 +814,17 @@ export function getHtml(params: {
     }
 
     .tier-badge {
-      position: absolute;
-      top: -8px; left: 50%;
-      transform: translateX(-50%);
+      display: inline-block;
       background: var(--accent);
-      color: white;
+      color: #fff;
       font-size: 9px;
       font-weight: 700;
       padding: 2px 7px;
-      border-radius: 10px;
+      border-radius: 4px;
       text-transform: uppercase;
       letter-spacing: 0.5px;
       white-space: nowrap;
+      margin-bottom: 7px;
     }
 
     .tier-features {
@@ -1367,11 +1365,14 @@ export function getHtml(params: {
       .provider-chip img { width: 13px; height: 13px; }
       .price { font-size: 12px; }
 
-      /* Subscriptions */
-      .subs-grid { grid-template-columns: 1fr; }
+      /* Subscriptions: tiers wrap to 2-up, never horizontal-scroll */
       #subs-section { padding: 0 16px 32px; }
-      .tiers-row { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-      .tier { min-width: 100px; flex-shrink: 0; }
+      .tiers-row { grid-template-columns: 1fr 1fr; gap: 8px; padding: 14px 14px 16px; }
+      .tier { min-width: 0; }
+    }
+
+    @media (max-width: 460px) {
+      .tiers-row { grid-template-columns: 1fr; }
     }
   </style>
 </head>
