@@ -1739,9 +1739,13 @@ function escape(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function getProviderStyle(providerId) {
-  var isLight = document.documentElement.getAttribute('data-theme') === 'light';
-  var dark = {
+function isLightTheme() {
+  return document.documentElement.getAttribute('data-theme') === 'light';
+}
+function isKnownProvider(id) {
+  return Object.prototype.hasOwnProperty.call(PROVIDER_STYLE_DARK, id);
+}
+var PROVIDER_STYLE_DARK = {
     openai:       { color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
     anthropic:    { color: '#f97316', bg: 'rgba(249,115,22,0.12)' },
     google:       { color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' },
@@ -1773,7 +1777,7 @@ function getProviderStyle(providerId) {
     openrouter:   { color: '#94a3b8', bg: 'rgba(148,163,184,0.12)' },
     nvidia:       { color: '#76b900', bg: 'rgba(118,185,0,0.12)' },
   };
-  var light = {
+  var PROVIDER_STYLE_LIGHT = {
     openai:       { color: '#059669', bg: 'rgba(5,150,105,0.08)' },
     anthropic:    { color: '#c2410c', bg: 'rgba(194,65,12,0.08)' },
     google:       { color: '#2563eb', bg: 'rgba(37,99,235,0.08)' },
@@ -1805,11 +1809,12 @@ function getProviderStyle(providerId) {
     openrouter:   { color: '#475569', bg: 'rgba(71,85,105,0.08)' },
     nvidia:       { color: '#4d7c0f', bg: 'rgba(77,124,15,0.08)' },
   };
-  var map = isLight ? light : dark;
-  var fallback = isLight
+function getProviderStyle(providerId) {
+  var map = isLightTheme() ? PROVIDER_STYLE_LIGHT : PROVIDER_STYLE_DARK;
+  var fallback = isLightTheme()
     ? { color: '#475569', bg: 'rgba(71,85,105,0.08)' }
     : { color: '#94a3b8', bg: 'rgba(148,163,184,0.12)' };
-  return map[providerId] ?? fallback;
+  return map[providerId] || fallback;
 }
 
 const PROVIDER_DOMAINS = {
