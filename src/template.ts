@@ -2331,21 +2331,60 @@ function deltaBadge(d) {
   return parts.join('');
 }
 
-// Author band color. Reuse the model-table provider styling; 'Others' + unknown
-// authors fall back to a neutral gray. getProviderStyle() already exists in this
-// template (returns { color }), keyed by provider slug.
-function authorColor(author) {
-  if (!author || author.toLowerCase() === 'others') return '#94a3b8';
-  try { var s = getProviderStyle(author); if (s && s.color) return s.color; } catch (e) {}
-  return '#94a3b8';
+// ── Token-share band colors ─────────────────────────────────────────────────
+// One source of truth for band, legend, and tooltip swatches so they never
+// drift. Theme is read live (same as getProviderStyle), so a theme toggle
+// recolors on the next render. Color follows the ENTITY, never its rank —
+// filtering / window changes never repaint a band.
+function hashCode(s) {
+  var h = 0;
+  for (var i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) | 0; }
+  return h;
 }
-
-// Color for a share entity. Author keys are plain slugs ("deepseek"); model keys
-// are "provider/name" — colour by the provider segment. "others" is neutral gray.
+// Neutral reserved for "Others" + the unnamed aggregate — never a real entity.
+function othersColor() { return isLightTheme() ? '#94a3b8' : '#475569'; }
+// Stable generated hue for an author with no brand-palette entry, so two
+// distinct unknowns never collapse into the same grey.
+function genHue(slug) {
+  var h = Math.abs(hashCode(slug)) % 360;
+  return isLightTheme() ? 'hsl(' + h + ',62%,40%)' : 'hsl(' + h + ',58%,62%)';
+}
+// Canonical brand hue for an author/provider slug.
+function brandColor(slug) {
+  if (!slug || slug.toLowerCase() === 'others') return othersColor();
+  var id = slug.toLowerCase().replace(/\s+/g, '-');
+  if (isKnownProvider(id)) return getProviderStyle(id).color;
+  return genHue(id);
+}
+// Band + legend color, keyed by entity. Author entities are plain slugs; the
+// split keeps it correct if ever handed a "provider/model" key.
 function entityColor(e) {
   var key = e && e.key ? e.key : '';
-  if (!key || key.toLowerCase() === 'others') return '#94a3b8';
-  return authorColor(key.indexOf('/') >= 0 ? key.split('/')[0] : key);
+  if (!key || key.toLowerCase() === 'others') return othersColor();
+  var prov = key.indexOf('/') >= 0 ? key.split('/')[0] : key;
+  return brandColor(prov);
+}
+// Mix a #rrggbb hex toward a target hex by t (0..1).
+function mixHex(hex, target, t) {
+  if (hex.charAt(0) !== '#' || hex.length !== 7) return hex;
+  function ch(c, o) { return parseInt(c.substr(o, 2), 16); }
+  function hx(n) { return ('0' + (n < 0 ? 0 : n > 255 ? 255 : n).toString(16)).slice(-2); }
+  var r = Math.round(ch(hex, 1) + (ch(target, 1) - ch(hex, 1)) * t);
+  var g = Math.round(ch(hex, 3) + (ch(target, 3) - ch(hex, 3)) * t);
+  var b = Math.round(ch(hex, 5) + (ch(target, 5) - ch(hex, 5)) * t);
+  return '#' + hx(r) + hx(g) + hx(b);
+}
+// Tooltip swatch for one model: its brand hue, nudged per model so siblings
+// (Sonnet vs Haiku) differ while staying in the family. Generated hsl() brand
+// colors (unknown providers) are returned unchanged.
+function modelTint(modelKey) {
+  if (!modelKey || modelKey.toLowerCase() === 'others') return othersColor();
+  var prov = modelKey.indexOf('/') >= 0 ? modelKey.split('/')[0] : modelKey;
+  var base = brandColor(prov);
+  if (base.charAt(0) !== '#') return base;
+  var bucket = Math.abs(hashCode(modelKey)) % 3;
+  if (bucket === 0) return base;
+  return bucket === 1 ? mixHex(base, '#ffffff', 0.18) : mixHex(base, '#000000', 0.16);
 }
 
 // Week date → "Jun 22" (UTC, so it matches the bucket date exactly).
