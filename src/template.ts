@@ -938,6 +938,13 @@ export function getHtml(params: {
       border-radius: 4px;
       flex-shrink: 0;
     }
+    .lb-icon-wrap { position: relative; width: 20px; height: 20px; flex-shrink: 0; }
+    .lb-icon-tile {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      border-radius: 4px; background: var(--surface2); color: var(--text2);
+      font-size: 11px; font-weight: 600; line-height: 1;
+    }
+    .lb-icon-wrap .lb-icon { position: relative; z-index: 1; display: block; }
 
     .lb-info {
       flex: 1;
@@ -2025,6 +2032,24 @@ function getProviderLogo(providerId) {
   return \`https://www.google.com/s2/favicons?domain=\${domain}&sz=32\`;
 }
 
+function hostOf(url) {
+  try { return new URL(url).hostname; } catch (e) { return null; }
+}
+function s2Favicon(url) {
+  var h = hostOf(url);
+  return h ? 'https://www.google.com/s2/favicons?domain=' + h + '&sz=64' : null;
+}
+// App/agent icon with a layered fallback: faviconUrl -> s2 favicon from
+// originUrl -> a letter-tile. The tile sits behind the <img>; a broken image
+// removes itself and reveals the tile. Never renders blank.
+function appIconHtml(a) {
+  var letter = escape((((a.title || '?').trim().charAt(0)) || '?').toUpperCase());
+  var tile = '<span class="lb-icon-tile">' + letter + '</span>';
+  var src = safeUrl(a.faviconUrl) || s2Favicon(a.originUrl);
+  if (!src) return '<span class="lb-icon-wrap">' + tile + '</span>';
+  return '<span class="lb-icon-wrap">' + tile +
+    '<img class="lb-icon" src="' + escape(src) + '" alt="" loading="lazy" onerror="this.remove()"></span>';
+}
 function providerLogoImg(providerId) {
   const src = getProviderLogo(providerId);
   if (!src) return '';
@@ -2559,9 +2584,7 @@ function renderRankings() {
   if (apps.length > 0) {
     appList.innerHTML = apps.slice(0, 15).map(function(a, i) {
       var cats = (a.categories || []).join(', ').replace(/-/g, ' ');
-      var icon = a.faviconUrl
-        ? '<img class="lb-icon" src="' + escape(a.faviconUrl) + '" alt="" onerror="this.hidden=true">'
-        : '';
+      var icon = appIconHtml(a);
       var link = a.originUrl ? '<a href="' + escape(a.originUrl) + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">' + escape(a.title) + '</a>' : escape(a.title);
       return '<li class="lb-item">' +
         '<span class="lb-rank">' + (i + 1) + '</span>' +
