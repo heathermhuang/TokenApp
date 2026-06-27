@@ -7,3 +7,4 @@ dist/
 .gstack/
 wrangler.toml
 .DS_Store
+scratchpad/
