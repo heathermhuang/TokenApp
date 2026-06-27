@@ -1524,14 +1524,14 @@ export function getHtml(params: {
   <div class="market-share" id="market-share-section">
     <div class="market-share-head">
       <div>
-        <div class="leaderboard-title">Token Share Over Time</div>
-        <div class="leaderboard-subtitle">Weekly share of OpenRouter tokens · source: OpenRouter</div>
+        <div class="leaderboard-title">Token Usage Over Time</div>
+        <div class="leaderboard-subtitle">Weekly token volume on OpenRouter · source: OpenRouter</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <div class="period-toggle" id="ms-window-toggle">
           <button class="period-btn" data-window="30">30D</button>
-          <button class="period-btn active" data-window="90">90D</button>
-          <button class="period-btn" data-window="365">1Y</button>
+          <button class="period-btn" data-window="90">90D</button>
+          <button class="period-btn active" data-window="365">1Y</button>
         </div>
       </div>
     </div>
@@ -1684,7 +1684,7 @@ const state = {
   rankingsLoading: false,
   rankingsPeriod: 'day',  // 'day' | 'week' | 'month'
   asOf: null,        // ISO8601 when viewing a historical snapshot, else null (latest)
-  msWindow: 90,        // share-chart window in days (30 | 90 | 365)
+  msWindow: 365,       // share-chart window in days (30 | 90 | 365)
   shareSeries: null,   // cached { author: ShareSeries, model: ShareSeries }
   category: null,    // active rankings category slug, null = global "All"
   categories: [],    // [{slug,label,group}] from /api/rankings/categories
@@ -2440,7 +2440,7 @@ function shortDate(iso) {
 
 function shareChartAria(series) {
   var top = (series.entities || []).filter(function (e) { return e.key !== 'others'; }).slice(0, 4);
-  return 'Weekly token share by brand, one line per brand. Hover for the per-brand share that week. Latest: ' + top.map(function (e) {
+  return 'Weekly token volume by brand, stacked bars. Hover for the per-brand volume that week. Latest: ' + top.map(function (e) {
     return e.label + ' ' + Math.round(e.latestPct) + '%';
   }).join(', ') + '.';
 }
@@ -2450,43 +2450,94 @@ function shareChartAria(series) {
 // the real models aren't compressed into the floor. Hover overlay + crosshair
 // are wired by attachShareHover(); the tooltip lists each brand's share/week.
 function shareChartSvg(series) {
-  var allEnts = (series && series.entities) || [];
-  if (allEnts.length === 0) return '<div class="ms-empty">Market share data unavailable.</div>';
-  var ents = allEnts.filter(function (e) { return (e.key || '').toLowerCase() !== 'others'; });
-  if (!ents.length) ents = allEnts;
-  var pts0 = allEnts[0].points || [];
+  var ents = (series && series.entities) || [];
+  if (ents.length === 0) return '<div class="ms-empty">Market share data unavailable.</div>';
+  var pts0 = ents[0].points || [];
   var n = pts0.length;
   if (n < 2) return '<div class="ms-empty">Not enough history yet.</div>';
-  var W = 760, H = 260, mL = 34, mR = 8, mT = 8, mB = 22;
+  var W = 760, H = 260, mL = 42, mR = 8, mT = 8, mB = 22;
   var pw = W - mL - mR, ph = H - mT - mB;
-  var maxV = 0;
-  ents.forEach(function (e) { (e.points || []).forEach(function (p) { if ((p.pct || 0) > maxV) maxV = p.pct || 0; }); });
-  var step = maxV <= 8 ? 2 : maxV <= 20 ? 5 : maxV <= 50 ? 10 : 20;
-  var yMax = Math.max(step, Math.ceil(maxV / step) * step);
-  var x = function (i) { return mL + (i / (n - 1)) * pw; };
-  var y = function (pct) { return mT + (1 - pct / yMax) * ph; };
+  var tokAt = function (e, i) { var p = e.points[i]; return (p && p.tokens) || 0; };
+  var maxTotal = 0;
+  for (var i = 0; i < n; i++) {
+    var s = 0; for (var k = 0; k < ents.length; k++) s += tokAt(ents[k], i);
+    if (s > maxTotal) maxTotal = s;
+  }
+  if (maxTotal <= 0) return '<div class="ms-empty">Not enough history yet.</div>';
+  // Nice round y-axis ceiling + step (~4 gridlines) for the token-volume scale.
+  var sr = maxTotal / 4, pw10 = Math.pow(10, Math.floor(Math.log10(sr))), fr = sr / pw10;
+  var step = (fr <= 1 ? 1 : fr <= 2 ? 2 : fr <= 2.5 ? 2.5 : fr <= 5 ? 5 : 10) * pw10;
+  var yMax = Math.ceil(maxTotal / step) * step;
+  var yScale = function (v) { return mT + (1 - v / yMax) * ph; };
+  var barSlot = pw / n, barW = Math.max(2, barSlot * 0.72);
   var grid = '';
   for (var g = 0; g <= yMax + 0.001; g += step) {
-    grid += '<line x1="' + mL + '" y1="' + y(g).toFixed(1) + '" x2="' + (W - mR) + '" y2="' + y(g).toFixed(1) +
+    grid += '<line x1="' + mL + '" y1="' + yScale(g).toFixed(1) + '" x2="' + (W - mR) + '" y2="' + yScale(g).toFixed(1) +
       '" stroke="var(--border)" stroke-width="1"/>' +
-      '<text x="' + (mL - 6) + '" y="' + (y(g) + 3).toFixed(1) + '" text-anchor="end" class="ms-axis">' + g + '%</text>';
+      '<text x="' + (mL - 6) + '" y="' + (yScale(g) + 3).toFixed(1) + '" text-anchor="end" class="ms-axis">' + fmtTokens(g).replace('.0', '') + '</text>';
   }
-  var nLab = Math.min(5, n), xlab = '';
+  var bars = '';
+  for (var bi = 0; bi < n; bi++) {
+    var cx = mL + (bi + 0.5) * barSlot, bx = cx - barW / 2, cum = 0;
+    for (var be = 0; be < ents.length; be++) {
+      var tok = tokAt(ents[be], bi);
+      if (tok <= 0) continue;
+      var y0 = yScale(cum), y1 = yScale(cum + tok);
+      bars += '<rect x="' + bx.toFixed(1) + '" y="' + y1.toFixed(1) + '" width="' + barW.toFixed(1) +
+        '" height="' + Math.max(0.5, y0 - y1).toFixed(1) + '" fill="' + entityColor(ents[be]) + '"/>';
+      cum += tok;
+    }
+  }
+  var nLab = Math.min(6, n), xlab = '';
   for (var t = 0; t < nLab; t++) {
     var li = nLab > 1 ? Math.round(t * (n - 1) / (nLab - 1)) : n - 1;
-    xlab += '<text x="' + x(li).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle" class="ms-axis">' +
+    xlab += '<text x="' + (mL + (li + 0.5) * barSlot).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle" class="ms-axis">' +
       shortDate(pts0[li].date) + '</text>';
   }
-  var lines = ents.map(function (e) {
-    var pp = (e.points || []).map(function (p, i) { return x(i).toFixed(1) + ',' + y(p.pct || 0).toFixed(1); }).join(' ');
-    return '<polyline points="' + pp + '" fill="none" stroke="' + entityColor(e) +
-      '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/>';
-  }).join('');
   return '<svg class="ms-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + escape(shareChartAria(series)) + '">' +
-    grid + lines +
+    grid + bars +
     '<line class="ms-crosshair" x1="0" y1="' + mT + '" x2="0" y2="' + (mT + ph) + '" stroke="var(--text3)" stroke-width="1" style="display:none"/>' +
     '<rect class="ms-hit" x="' + mL + '" y="' + mT + '" width="' + pw + '" height="' + ph + '" fill="transparent"/>' +
     xlab + '</svg>';
+}
+
+// Stacked-bar hover: snap to the nearest weekly column, list each brand's token
+// volume that week (sorted desc). Geometry mirrors shareChartSvg (mL=42 + n
+// even slots) so the crosshair lands on the column center.
+function attachBarHover(series) {
+  var body = document.getElementById('market-share-body');
+  var svg = body && body.querySelector('.ms-chart');
+  var hit = svg && svg.querySelector('.ms-hit');
+  var cross = svg && svg.querySelector('.ms-crosshair');
+  var tip = document.getElementById('ms-tip');
+  if (!svg || !hit || !cross || !tip) return;
+  var ents = series.entities, n = ents[0].points.length;
+  var vb = svg.viewBox.baseVal, mL = 42, pw = vb.width - mL - 8, barSlot = pw / n;
+  hit.addEventListener('mousemove', function (ev) {
+    var r = svg.getBoundingClientRect();
+    var sx = (ev.clientX - r.left) / r.width * vb.width;
+    var i = Math.max(0, Math.min(n - 1, Math.floor((sx - mL) / barSlot)));
+    var cx = mL + (i + 0.5) * barSlot;
+    cross.setAttribute('x1', cx); cross.setAttribute('x2', cx); cross.style.display = '';
+    var date = ents[0].points[i].date;
+    var rows = ents.map(function (e) {
+      var p = e.points[i];
+      return { label: e.label, tokens: (p && p.tokens) || 0, key: e.key };
+    }).filter(function (rr) { return rr.tokens > 0; })
+      .sort(function (a, b) { return b.tokens - a.tokens; })
+      .slice(0, 12);
+    tip.innerHTML = '<div class="ms-tip-date">' + shortDate(date) + '</div>' +
+      rows.map(function (rr) {
+        return '<div class="ms-tip-row"><span><i class="ms-swatch" style="background:' + entityColor({ key: rr.key }) +
+          '"></i>' + escape(rr.label) + '</span><b>' + fmtTokens(rr.tokens) + '</b></div>';
+      }).join('');
+    tip.style.opacity = '1';
+    var left = (cx / vb.width) * r.width + 12;
+    if (left + 170 > r.width) left -= 194;
+    tip.style.left = Math.max(0, left) + 'px';
+    tip.style.top = '8px';
+  });
+  hit.addEventListener('mouseleave', function () { tip.style.opacity = '0'; cross.style.display = 'none'; });
 }
 
 // Legend: entity swatch + latest share % + change across the visible window
@@ -3001,10 +3052,8 @@ document.addEventListener('DOMContentLoaded', () => {
     body.innerHTML = shareChartSvg(author) +
       '<div class="ms-legend">' + marketShareLegend(author) + '</div>' +
       '<div class="ms-tip" id="ms-tip"></div>';
-    // Tooltip lists each brand's share that week (the plotted lines). The model
-    // series is intentionally NOT used: it collapses to ~100% "Others" on early
-    // weeks (today's tracked models barely existed then) and reads as broken.
-    attachShareHover(author, null);
+    // Stacked-bar hover: per-brand token volume for the hovered week.
+    attachBarHover(author);
   }
 
   async function loadMarketShare() {
