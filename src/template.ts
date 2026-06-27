@@ -1517,10 +1517,6 @@ export function getHtml(params: {
         <div class="leaderboard-subtitle">Weekly share of OpenRouter tokens · source: OpenRouter</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <div class="period-toggle" id="ms-view-toggle">
-          <button class="period-btn active" data-view="author">By author</button>
-          <button class="period-btn" data-view="model">By model</button>
-        </div>
         <div class="period-toggle" id="ms-window-toggle">
           <button class="period-btn" data-window="30">30D</button>
           <button class="period-btn active" data-window="90">90D</button>
@@ -1678,7 +1674,6 @@ const state = {
   rankingsPeriod: 'day',  // 'day' | 'week' | 'month'
   asOf: null,        // ISO8601 when viewing a historical snapshot, else null (latest)
   msWindow: 90,        // share-chart window in days (30 | 90 | 365)
-  msView: 'author',    // 'author' | 'model'
   shareSeries: null,   // cached { author: ShareSeries, model: ShareSeries }
   category: null,    // active rankings category slug, null = global "All"
   categories: [],    // [{slug,label,group}] from /api/rankings/categories
@@ -2395,7 +2390,7 @@ function shortDate(iso) {
 
 function shareChartAria(series) {
   var top = (series.entities || []).filter(function (e) { return e.key !== 'others'; }).slice(0, 4);
-  return 'Weekly token share over time. Latest: ' + top.map(function (e) {
+  return 'Weekly token share by brand. Hover for the per-model breakdown. Latest: ' + top.map(function (e) {
     return e.label + ' ' + Math.round(e.latestPct) + '%';
   }).join(', ') + '.';
 }
@@ -2927,15 +2922,19 @@ document.addEventListener('DOMContentLoaded', () => {
     var body = document.getElementById('market-share-body');
     if (!body) return;
     if (!state.shareSeries) { body.innerHTML = '<div class="ms-empty">Market share data unavailable.</div>'; return; }
-    var full = state.shareSeries[state.msView];
-    if (!full || !full.entities || !full.entities.length) {
+    var authorFull = state.shareSeries.author;
+    if (!authorFull || !authorFull.entities || !authorFull.entities.length) {
       body.innerHTML = '<div class="ms-empty">Market share data unavailable.</div>'; return;
     }
-    var sliced = windowSlice(full, state.msWindow);
-    body.innerHTML = shareChartSvg(sliced) +
-      '<div class="ms-legend">' + marketShareLegend(sliced) + '</div>' +
+    var author = windowSlice(authorFull, state.msWindow);
+    var modelFull = state.shareSeries.model;
+    var model = (modelFull && modelFull.entities && modelFull.entities.length)
+      ? windowSlice(modelFull, state.msWindow)
+      : null;
+    body.innerHTML = shareChartSvg(author) +
+      '<div class="ms-legend">' + marketShareLegend(author) + '</div>' +
       '<div class="ms-tip" id="ms-tip"></div>';
-    attachShareHover(sliced);
+    attachShareHover(author, model);
   }
 
   async function loadMarketShare() {
@@ -2955,15 +2954,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!btn) return;
     state.msWindow = parseInt(btn.dataset.window, 10);
     document.querySelectorAll('#ms-window-toggle .period-btn').forEach(function (b) { b.classList.remove('active'); });
-    btn.classList.add('active');
-    renderMarketShare();
-  });
-
-  document.getElementById('ms-view-toggle').addEventListener('click', function (e) {
-    var btn = e.target.closest('[data-view]');
-    if (!btn) return;
-    state.msView = btn.dataset.view;
-    document.querySelectorAll('#ms-view-toggle .period-btn').forEach(function (b) { b.classList.remove('active'); });
     btn.classList.add('active');
     renderMarketShare();
   });
