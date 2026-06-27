@@ -211,6 +211,9 @@ export function getHtml(params: {
       font-size: 14px;
       line-height: 1.5;
       min-height: 100vh;
+      font-variant-numeric: tabular-nums;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
     /* ── Nav ──────────────────────────────────────────────────────────────── */
@@ -375,8 +378,9 @@ export function getHtml(params: {
 
     .stat-label {
       font-size: 11px;
+      font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.6px;
       color: var(--text3);
     }
 
@@ -2326,11 +2330,9 @@ function sparklineSvg(points) {
     var y = h - 1 - ((v - min) / span) * (h - 2);
     return x.toFixed(1) + ',' + y.toFixed(1);
   }).join(' ');
-  var up = points[n - 1] >= points[0];
   return '<svg class="lb-spark" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h +
-    '" aria-hidden="true"><polyline points="' + pts + '" fill="none" stroke="' +
-    (up ? 'var(--green)' : 'var(--red)') +
-    '" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/></svg>';
+    '" aria-hidden="true"><polyline points="' + pts + '" fill="none" stroke="var(--text2)"' +
+    ' stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/></svg>';
 }
 
 // Trend badge: rank move (up arrow 3 / down arrow 2) + token % change. Empty
@@ -2363,18 +2365,41 @@ function hashCode(s) {
 }
 // Neutral reserved for "Others" + the unnamed aggregate — never a real entity.
 function othersColor() { return isLightTheme() ? '#94a3b8' : '#475569'; }
-// Stable generated hue for an author with no brand-palette entry, so two
-// distinct unknowns never collapse into the same grey.
-function genHue(slug) {
-  var h = Math.abs(hashCode(slug)) % 360;
-  return isLightTheme() ? 'hsl(' + h + ',62%,40%)' : 'hsl(' + h + ',58%,62%)';
+// Harmonized categorical chart palette — one saturation/lightness band so the
+// stacked chart reads as a single family. Color follows the ENTITY (stable per
+// slug), never rank, so toggling periods never repaints. Decoupled from the
+// brand chips (PROVIDER_STYLE_*), which stay raw-brand on their tinted bgs.
+var CHART_PALETTE_DARK  = ['#3987e5', '#1fa97e', '#9085e9', '#d3982f', '#d55181', '#e0703a', '#e06666', '#46b06a', '#7d8ba6'];
+var CHART_PALETTE_LIGHT = ['#2a78d6', '#14906a', '#6257c8', '#b3791a', '#be3f6c', '#c5551f', '#cf4444', '#2f8a4f', '#5d6b8a'];
+// Curated, brand-sympathetic slot per provider so common co-occurring brands
+// stay distinct and roughly on-brand; unknown authors hash INTO the palette
+// (never a random hue, never a collision with the neutral). Slots index both
+// palette arrays above.
+var CHART_SLOT = {
+  deepseek: 0, 'meta-llama': 0, microsoft: 0, baidu: 0, 'ibm-granite': 0, allenai: 0,
+  openai: 1, cohere: 1, windsurf: 1,
+  google: 2, perplexityai: 2, cursor: 2,
+  xiaomi: 3, qwen: 3, stepfun: 3, meituan: 3,
+  minimax: 4, zhipuai: 4,
+  anthropic: 5, mistralai: 5, alibaba: 5, kwaipilot: 5,
+  'z-ai': 6, bytedance: 6, 'bytedance-seed': 6,
+  tencent: 7, nvidia: 7,
+  openrouter: 8, 'x-ai': 8, moonshotai: 8,
+};
+function chartPalette() { return isLightTheme() ? CHART_PALETTE_LIGHT : CHART_PALETTE_DARK; }
+function chartSlot(slug) {
+  // Inputs are already slugs; collapse any stray spaces with a literal-space
+  // regex — a backslash class like \s gets eaten by the template literal and
+  // silently mangles slugs containing "s" (deepseek → deep-eek).
+  var id = slug.toLowerCase().replace(/ +/g, '-');
+  return Object.prototype.hasOwnProperty.call(CHART_SLOT, id)
+    ? CHART_SLOT[id]
+    : Math.abs(hashCode(id)) % CHART_PALETTE_DARK.length;
 }
-// Canonical brand hue for an author/provider slug.
-function brandColor(slug) {
+// Canonical chart color for an author/provider slug.
+function chartColor(slug) {
   if (!slug || slug.toLowerCase() === 'others') return othersColor();
-  var id = slug.toLowerCase().replace(/\s+/g, '-');
-  if (isKnownProvider(id)) return getProviderStyle(id).color;
-  return genHue(id);
+  return chartPalette()[chartSlot(slug)];
 }
 // Band + legend color, keyed by entity. Author entities are plain slugs; the
 // split keeps it correct if ever handed a "provider/model" key.
@@ -2382,7 +2407,7 @@ function entityColor(e) {
   var key = e && e.key ? e.key : '';
   if (!key || key.toLowerCase() === 'others') return othersColor();
   var prov = key.indexOf('/') >= 0 ? key.split('/')[0] : key;
-  return brandColor(prov);
+  return chartColor(prov);
 }
 // Mix a #rrggbb hex toward a target hex by t (0..1).
 function mixHex(hex, target, t) {
@@ -2400,7 +2425,7 @@ function mixHex(hex, target, t) {
 function modelTint(modelKey) {
   if (!modelKey || modelKey.toLowerCase() === 'others') return othersColor();
   var prov = modelKey.indexOf('/') >= 0 ? modelKey.split('/')[0] : modelKey;
-  var base = brandColor(prov);
+  var base = chartColor(prov);
   if (base.charAt(0) !== '#') return base;
   var bucket = Math.abs(hashCode(modelKey)) % 3;
   if (bucket === 0) return base;
@@ -2451,7 +2476,7 @@ function shareChartSvg(series) {
     var lo = []; for (var i = n - 1; i >= 0; i--) lo.push(x(i).toFixed(1) + ',' + y(base[i]).toFixed(1));
     base = top;
     return '<polygon points="' + up.join(' ') + ' ' + lo.join(' ') + '" fill="' + entityColor(e) +
-      '" fill-opacity="0.85" stroke="var(--surface)" stroke-width="0.5"/>';
+      '" fill-opacity="0.9" stroke="var(--surface)" stroke-width="1" stroke-linejoin="round"/>';
   }).join('');
   return '<svg class="ms-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + escape(shareChartAria(series)) + '">' +
     grid + bands +
