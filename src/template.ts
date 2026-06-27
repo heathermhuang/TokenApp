@@ -2440,46 +2440,50 @@ function shortDate(iso) {
 
 function shareChartAria(series) {
   var top = (series.entities || []).filter(function (e) { return e.key !== 'others'; }).slice(0, 4);
-  return 'Weekly token share by brand. Hover for the per-model breakdown. Latest: ' + top.map(function (e) {
+  return 'Weekly token share by brand, one line per brand. Hover for the per-brand share that week. Latest: ' + top.map(function (e) {
     return e.label + ' ' + Math.round(e.latestPct) + '%';
   }).join(', ') + '.';
 }
 
-// Stacked-area time-series of token share. series = { entities: [{key,label,points:[{date,pct}]}] }.
-// Proper margins + axes (no preserveAspectRatio distortion); the hover overlay + crosshair
-// are wired by attachShareHover().
+// Multi-line weekly share chart (OpenRouter-style): one thin line per entity on
+// a data-fit y-axis. The "others" aggregate is dropped from the plot + scale so
+// the real models aren't compressed into the floor. Hover overlay + crosshair
+// are wired by attachShareHover(); the tooltip lists each brand's share/week.
 function shareChartSvg(series) {
-  var ents = (series && series.entities) || [];
-  if (ents.length === 0) return '<div class="ms-empty">Market share data unavailable.</div>';
-  var pts0 = ents[0].points || [];
+  var allEnts = (series && series.entities) || [];
+  if (allEnts.length === 0) return '<div class="ms-empty">Market share data unavailable.</div>';
+  var ents = allEnts.filter(function (e) { return (e.key || '').toLowerCase() !== 'others'; });
+  if (!ents.length) ents = allEnts;
+  var pts0 = allEnts[0].points || [];
   var n = pts0.length;
   if (n < 2) return '<div class="ms-empty">Not enough history yet.</div>';
   var W = 760, H = 260, mL = 34, mR = 8, mT = 8, mB = 22;
   var pw = W - mL - mR, ph = H - mT - mB;
+  var maxV = 0;
+  ents.forEach(function (e) { (e.points || []).forEach(function (p) { if ((p.pct || 0) > maxV) maxV = p.pct || 0; }); });
+  var step = maxV <= 8 ? 2 : maxV <= 20 ? 5 : maxV <= 50 ? 10 : 20;
+  var yMax = Math.max(step, Math.ceil(maxV / step) * step);
   var x = function (i) { return mL + (i / (n - 1)) * pw; };
-  var y = function (pct) { return mT + (1 - pct / 100) * ph; };
-  var grid = [0, 25, 50, 75, 100].map(function (g) {
-    return '<line x1="' + mL + '" y1="' + y(g).toFixed(1) + '" x2="' + (W - mR) + '" y2="' + y(g).toFixed(1) +
+  var y = function (pct) { return mT + (1 - pct / yMax) * ph; };
+  var grid = '';
+  for (var g = 0; g <= yMax + 0.001; g += step) {
+    grid += '<line x1="' + mL + '" y1="' + y(g).toFixed(1) + '" x2="' + (W - mR) + '" y2="' + y(g).toFixed(1) +
       '" stroke="var(--border)" stroke-width="1"/>' +
       '<text x="' + (mL - 6) + '" y="' + (y(g) + 3).toFixed(1) + '" text-anchor="end" class="ms-axis">' + g + '%</text>';
-  }).join('');
+  }
   var nLab = Math.min(5, n), xlab = '';
   for (var t = 0; t < nLab; t++) {
     var li = nLab > 1 ? Math.round(t * (n - 1) / (nLab - 1)) : n - 1;
     xlab += '<text x="' + x(li).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle" class="ms-axis">' +
       shortDate(pts0[li].date) + '</text>';
   }
-  var base = []; for (var k = 0; k < n; k++) base.push(0);
-  var bands = ents.map(function (e) {
-    var top = e.points.map(function (p, i) { return base[i] + (p.pct || 0); });
-    var up = top.map(function (v, i) { return x(i).toFixed(1) + ',' + y(v).toFixed(1); });
-    var lo = []; for (var i = n - 1; i >= 0; i--) lo.push(x(i).toFixed(1) + ',' + y(base[i]).toFixed(1));
-    base = top;
-    return '<polygon points="' + up.join(' ') + ' ' + lo.join(' ') + '" fill="' + entityColor(e) +
-      '" fill-opacity="0.9" stroke="var(--surface)" stroke-width="1" stroke-linejoin="round"/>';
+  var lines = ents.map(function (e) {
+    var pp = (e.points || []).map(function (p, i) { return x(i).toFixed(1) + ',' + y(p.pct || 0).toFixed(1); }).join(' ');
+    return '<polyline points="' + pp + '" fill="none" stroke="' + entityColor(e) +
+      '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/>';
   }).join('');
   return '<svg class="ms-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + escape(shareChartAria(series)) + '">' +
-    grid + bands +
+    grid + lines +
     '<line class="ms-crosshair" x1="0" y1="' + mT + '" x2="0" y2="' + (mT + ph) + '" stroke="var(--text3)" stroke-width="1" style="display:none"/>' +
     '<rect class="ms-hit" x="' + mL + '" y="' + mT + '" width="' + pw + '" height="' + ph + '" fill="transparent"/>' +
     xlab + '</svg>';
@@ -2994,14 +2998,13 @@ document.addEventListener('DOMContentLoaded', () => {
       body.innerHTML = '<div class="ms-empty">Market share data unavailable.</div>'; return;
     }
     var author = windowSlice(authorFull, state.msWindow);
-    var modelFull = state.shareSeries.model;
-    var model = (modelFull && modelFull.entities && modelFull.entities.length)
-      ? windowSlice(modelFull, state.msWindow)
-      : null;
     body.innerHTML = shareChartSvg(author) +
       '<div class="ms-legend">' + marketShareLegend(author) + '</div>' +
       '<div class="ms-tip" id="ms-tip"></div>';
-    attachShareHover(author, model);
+    // Tooltip lists each brand's share that week (the plotted lines). The model
+    // series is intentionally NOT used: it collapses to ~100% "Others" on early
+    // weeks (today's tracked models barely existed then) and reads as broken.
+    attachShareHover(author, null);
   }
 
   async function loadMarketShare() {
