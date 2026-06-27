@@ -599,24 +599,36 @@ export async function refreshAllData(
       fetchShareSeries(), fetchAppsBoards(), fetchModelBoard(),
     ]);
 
-    // Empty-overwrite guard: keep last-good KV if OpenRouter returns nothing,
-    // rather than poisoning the cache (the silent-failure lesson, now for JSON).
+    // Total-failure guard: if EVERY section is empty, keep all last-good KV and
+    // surface the error rather than silently no-op'ing.
     if (topModels.length === 0 && apps.day.length === 0 && author.entities.length === 0) {
       throw new Error('Rankings JSON returned empty — KV left unchanged');
     }
 
+    // Per-section empty-overwrite guards: a PARTIAL upstream failure (e.g. the
+    // share endpoints come back empty while models/apps succeed) must not
+    // overwrite a healthy section's last-good KV with empty data — that 404s the
+    // chart or empties a board. Each write is gated on its own payload, so a bad
+    // section leaves the previous KV value intact (empty-overwrite lesson applied
+    // per-key; see codex review 2026-06-27).
     const fetchedAt = new Date().toISOString();
-    await env.TOKEN_APP_KV.put(KV_KEYS.SHARE_SERIES,
-      JSON.stringify({ author, model, fetchedAt }), { expirationTtl: 7200 });
-    await env.TOKEN_APP_KV.put(KV_KEYS.APPS_BOARDS,
-      JSON.stringify({ ...apps, fetchedAt }), { expirationTtl: 7200 });
 
-    const ssrPayload: RankingsData = {
-      topModels,
-      topApps: { day: apps.day, week: apps.week, month: apps.month },
-      fetchedAt,
-    };
-    await env.TOKEN_APP_KV.put(KV_KEYS.RANKINGS, JSON.stringify(ssrPayload), { expirationTtl: 7200 });
+    if (author.entities.length > 0 && model.entities.length > 0) {
+      await env.TOKEN_APP_KV.put(KV_KEYS.SHARE_SERIES,
+        JSON.stringify({ author, model, fetchedAt }), { expirationTtl: 7200 });
+    }
+    if (apps.day.length > 0) {
+      await env.TOKEN_APP_KV.put(KV_KEYS.APPS_BOARDS,
+        JSON.stringify({ ...apps, fetchedAt }), { expirationTtl: 7200 });
+    }
+    if (topModels.length > 0 || apps.day.length > 0) {
+      const ssrPayload: RankingsData = {
+        topModels,
+        topApps: { day: apps.day, week: apps.week, month: apps.month },
+        fetchedAt,
+      };
+      await env.TOKEN_APP_KV.put(KV_KEYS.RANKINGS, JSON.stringify(ssrPayload), { expirationTtl: 7200 });
+    }
 
     // D1 continuity: keep accumulating the day app board + weekly model board so
     // app/model sparklines, deltas, and "view as of" keep working going forward.
