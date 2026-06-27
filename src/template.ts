@@ -2454,27 +2454,39 @@ function marketShareLegend(series) {
 // share that week (sorted desc). Reads geometry from the SVG viewBox so it stays
 // correct at any rendered width. No position:fixed — the tooltip is absolute
 // inside #market-share-body (which is position:relative).
-function attachShareHover(series) {
+// Crosshair + tooltip. Bands are brand-level (author); the tooltip breaks the
+// hovered week down by MODEL (sorted desc, capped). Falls back to the author
+// breakdown if the model series is absent — never an empty tooltip.
+function attachShareHover(author, model) {
   var body = document.getElementById('market-share-body');
   var svg = body && body.querySelector('.ms-chart');
   var hit = svg && svg.querySelector('.ms-hit');
   var cross = svg && svg.querySelector('.ms-crosshair');
   var tip = document.getElementById('ms-tip');
   if (!svg || !hit || !cross || !tip) return;
-  var ents = series.entities, n = ents[0].points.length;
+  var aEnts = author.entities, n = aEnts[0].points.length;
   var vb = svg.viewBox.baseVal, mL = 34, pw = vb.width - mL - 8;
+  var useModel = !!(model && model.entities && model.entities.length);
+  var breakdown = useModel ? model : author;
+  var tintOf = useModel
+    ? function (key) { return modelTint(key); }
+    : function (key) { return entityColor({ key: key }); };
   hit.addEventListener('mousemove', function (ev) {
     var r = svg.getBoundingClientRect();
     var sx = (ev.clientX - r.left) / r.width * vb.width;
     var i = Math.max(0, Math.min(n - 1, Math.round((sx - mL) / pw * (n - 1))));
     var cx = mL + (i / (n - 1)) * pw;
     cross.setAttribute('x1', cx); cross.setAttribute('x2', cx); cross.style.display = '';
-    var rows = ents.map(function (e) { return { label: e.label, pct: e.points[i].pct, key: e.key }; })
-      .filter(function (rr) { return rr.pct >= 0.05; })
-      .sort(function (a, b) { return b.pct - a.pct; });
-    tip.innerHTML = '<div class="ms-tip-date">' + shortDate(ents[0].points[i].date) + '</div>' +
+    var date = aEnts[0].points[i].date;
+    var rows = breakdown.entities.map(function (e) {
+      var p = pointForDate(e.points, date, i);
+      return { label: e.label, pct: p ? p.pct : 0, key: e.key };
+    }).filter(function (rr) { return rr.pct >= 0.05; })
+      .sort(function (a, b) { return b.pct - a.pct; })
+      .slice(0, 12);
+    tip.innerHTML = '<div class="ms-tip-date">' + shortDate(date) + '</div>' +
       rows.map(function (rr) {
-        return '<div class="ms-tip-row"><span><i class="ms-swatch" style="background:' + entityColor({ key: rr.key }) +
+        return '<div class="ms-tip-row"><span><i class="ms-swatch" style="background:' + tintOf(rr.key) +
           '"></i>' + escape(rr.label) + '</span><b>' + rr.pct.toFixed(1) + '%</b></div>';
       }).join('');
     tip.style.opacity = '1';
@@ -2484,6 +2496,13 @@ function attachShareHover(series) {
     tip.style.top = '8px';
   });
   hit.addEventListener('mouseleave', function () { tip.style.opacity = '0'; cross.style.display = 'none'; });
+}
+// Match the author week's date in a model entity's points; fall back to index
+// when the two series line up 1:1.
+function pointForDate(points, date, idx) {
+  if (!points || !points.length) return null;
+  for (var j = 0; j < points.length; j++) { if (points[j].date === date) return points[j]; }
+  return points[idx] || null;
 }
 
 function renderRankings() {
