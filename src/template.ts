@@ -2580,9 +2580,22 @@ function attachBarHover(series) {
 }
 
 // Legend: entity swatch + latest share % + change across the visible window
-// (Δ from the first to the last point in the slice). Sorted as provided.
+// (Δ from the first to the last point in the slice). The model display set is the
+// union of every week's top-N (can be 40+), so the legend shows only the current
+// top entities by latest share — Others always last; stacking order is unchanged.
 function marketShareLegend(series) {
-  return (series.entities || []).map(function (e) {
+  var all = series.entities || [];
+  var others = null, named = [];
+  for (var i = 0; i < all.length; i++) {
+    if (all[i].key === 'others') others = all[i]; else named.push(all[i]);
+  }
+  // Only the latest week's actual models (others fold the rest); the union set is
+  // 60+ over the year, so models at 0% this week would just be noise.
+  named = named.filter(function (e) { return (e.latestPct || 0) > 0; });
+  named.sort(function (a, b) { return (b.latestPct || 0) - (a.latestPct || 0); });
+  var show = named.slice(0, 14);
+  if (others) show.push(others);
+  return show.map(function (e) {
     var pts = e.points || [];
     var last = pts.length ? (pts[pts.length - 1].pct || 0) : 0;
     var first = pts.length ? (pts[0].pct || 0) : last;

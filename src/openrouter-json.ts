@@ -74,6 +74,62 @@ function modelLabel(permaslug: string): string {
   return tail.replace(/-20\d{6}$/, '').replace(/:free$/, ' (free)');
 }
 
+// Canonical model key: "provider/name", date suffix (-YYYYMMDD) stripped and the
+// ":free" variant preserved, so a model's band stays continuous across weeks even
+// as its dated permaslug rolls over (xiaomi/mimo-v2.5-20260422 → xiaomi/mimo-v2.5).
+function canonModel(permaslug: string): string {
+  const provider = permaslug.split('/')[0] || '';
+  let tail = permaslug.slice(provider.length + 1);
+  const free = /:free$/.test(tail);
+  tail = tail.replace(/:free$/, '').replace(/-20\d{6}$/, '');
+  return `${provider}/${tail}${free ? ':free' : ''}`;
+}
+
+// Build the per-MODEL weekly share series from model-rankings-chart points. The
+// endpoint gives each week its OWN top models + an "Others" bucket (verified:
+// "Others" is ~40%/week and is exactly what OpenRouter's chart shows as the big
+// base band). The old bug projected TODAY's top-9 backward, leaving historical
+// weeks empty/grey. Here the display set is the UNION of every week's named
+// models (so each era's leaders are coloured), keys are canonicalized for
+// continuity, and "Others" is kept as entities[0] → the BOTTOM band, matching
+// OpenRouter's Top Models chart.
+export function modelShareSeries(raw: RawPoint[]): ShareSeries {
+  const now = new Date().toISOString();
+  const clean = (raw || []).filter((p) => p && p.ys && p.x);
+  if (clean.length === 0) return { entities: [], weeks: 0, fetchedAt: now };
+  const isOthers = (k: string) => k.toLowerCase() === 'others';
+  // Per week: sum named models by canonical key, capture the endpoint's Others.
+  const wk = clean.map((p) => {
+    const m = new Map<string, number>();
+    let oth = 0;
+    for (const [k, v] of Object.entries(p.ys)) {
+      if (isOthers(k)) { oth += v || 0; continue; }
+      const ck = canonModel(k);
+      m.set(ck, (m.get(ck) || 0) + (v || 0));
+    }
+    return { x: p.x, m, oth };
+  });
+  // Display every named model that ever appears (the endpoint already caps each
+  // week to ~9, so this union is just the set of all weeks' leaders), ordered by
+  // all-time volume for stable stacking.
+  const allTime = new Map<string, number>();
+  for (const w of wk) for (const [k, v] of w.m) allTime.set(k, (allTime.get(k) || 0) + v);
+  const ordered = [...allTime.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k);
+  const others: ShareEntity = { key: 'others', label: 'Others', latestPct: 0, points: [] };
+  const entities: ShareEntity[] = ordered.map((key) => ({ key, label: modelLabel(key), latestPct: 0, points: [] }));
+  for (const w of wk) {
+    let total = w.oth; for (const v of w.m.values()) total += v; total = total || 1;
+    others.points.push({ date: w.x, pct: Math.round((w.oth / total) * 10000) / 100, tokens: w.oth });
+    for (const e of entities) {
+      const tok = w.m.get(e.key) || 0;
+      e.points.push({ date: w.x, pct: Math.round((tok / total) * 10000) / 100, tokens: tok });
+    }
+  }
+  const all = [others, ...entities];   // Others first → bottom of the stack
+  for (const e of all) e.latestPct = e.points[e.points.length - 1]?.pct ?? 0;
+  return { entities: all, weeks: wk.length, fetchedAt: now };
+}
+
 export async function fetchShareSeries(): Promise<{ author: ShareSeries; model: ShareSeries }> {
   const [ms, mc] = await Promise.all([
     getJson<{ data: RawPoint[] }>('market-share'),
@@ -81,7 +137,7 @@ export async function fetchShareSeries(): Promise<{ author: ShareSeries; model: 
   ]);
   return {
     author: normalizeShareSeries(ms.data, 9),
-    model: normalizeShareSeries(mc.data.data, 9, modelLabel),
+    model: modelShareSeries(mc.data.data),
   };
 }
 
