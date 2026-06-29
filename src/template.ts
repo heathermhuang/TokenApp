@@ -3281,6 +3281,31 @@ document.addEventListener('DOMContentLoaded', () => {
     return out;
   }
 
+  // Top-level CATEGORY placement. OpenRouter's desktop treemap isn't a plain
+  // squarify of the four macro-categories — the big ones (General, Agent) are
+  // full-height columns and the two smallest (Code, Data) SHARE the final column,
+  // stacked (bigger on top), instead of Data becoming a full-height sliver.
+  // Replicate that on wide layouts; keep squarify on narrow/tall (mobile) where
+  // columns would be too thin and the squarified portrait already reads well.
+  function tmLayoutCategories(items, W, H) {
+    if (items.length < 3 || W < H * 1.4) return tmSquarify(items, 0, 0, W, H);
+    var total = 0; items.forEach(function (c) { total += c.value; });
+    if (total <= 0) return [];
+    var out = [], x = 0;
+    // All but the last two get a full-height column, width ∝ share.
+    for (var i = 0; i < items.length - 2; i++) {
+      var cw = W * items[i].value / total;
+      out.push({ it: items[i], x: x, y: 0, w: cw, h: H }); x += cw;
+    }
+    // Final column: the last two stacked, bigger on top (OR's Code over Data).
+    var pair = items.slice(-2).sort(function (a, b) { return b.value - a.value; });
+    var remW = Math.max(0, W - x), denom = pair[0].value + pair[1].value || 1;
+    var h1 = H * pair[0].value / denom;
+    out.push({ it: pair[0], x: x, y: 0, w: remW, h: h1 });
+    out.push({ it: pair[1], x: x, y: h1, w: remW, h: H - h1 });
+    return out;
+  }
+
   function renderTaskTreemap() {
     var host = document.getElementById('task-treemap');
     if (!host) return;
@@ -3306,7 +3331,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return { value: sum, key: k };
     });
     var html = '';
-    tmSquarify(catItems, 0, 0, W, H).forEach(function (cr) {
+    tmLayoutCategories(catItems, W, H).forEach(function (cr) {
       var key = cr.it.key, tasks = byCat[key].slice().sort(function (a, b) { return b.share - a.share; });
       var maxShare = tasks[0] ? tasks[0].share : 1;
       tmSquarify(tasks.map(function (t) { return { value: t.share, t: t }; }), cr.x, cr.y, cr.w, cr.h).forEach(function (ir) {
