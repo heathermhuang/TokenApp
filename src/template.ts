@@ -3191,7 +3191,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function loadMarketShare() {
     var body = document.getElementById('market-share-body');
     try {
-      var res = await fetch('/api/market-share');
+      var res = await fetch('/api/market-share?b=' + Math.floor(Date.now() / 600000));
       var data = await res.json();
       if (data && !data.error && data.author) { state.shareSeries = data; renderMarketShare(); return; }
     } catch (err) { /* fall through to the failure state below */ }
