@@ -968,6 +968,16 @@ export function getHtml(params: {
     .tm-tile:hover { filter: brightness(1.1); }
     .tm-tile.selected { box-shadow: inset 0 0 0 2px var(--text), 0 0 0 1px var(--text); z-index: 2; }
     .tm-tile:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+    /* Only while toggling Spend↔Tokens: tiles morph to their new size/colour
+       instead of snapping. Scoped to .tm-animate so resize re-renders stay instant. */
+    .task-treemap.tm-animate .tm-tile {
+      transition: left .42s cubic-bezier(.4,0,.2,1), top .42s cubic-bezier(.4,0,.2,1),
+                  width .42s cubic-bezier(.4,0,.2,1), height .42s cubic-bezier(.4,0,.2,1),
+                  background-color .42s ease, filter .1s ease;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .task-treemap.tm-animate .tm-tile { transition: none; }
+    }
     /* Top model's provider icon, sat in a white chip so any logo reads on the
        coloured tile (mirrors OpenRouter's per-tile provider mark). */
     .tm-tile .provider-logo {
@@ -3330,7 +3340,7 @@ document.addEventListener('DOMContentLoaded', () => {
       var sum = 0; byCat[k].forEach(function (t) { sum += t.share; });
       return { value: sum, key: k };
     });
-    var html = '';
+    var computed = [];
     tmLayoutCategories(catItems, W, H).forEach(function (cr) {
       var key = cr.it.key, tasks = byCat[key].slice().sort(function (a, b) { return b.share - a.share; });
       var maxShare = tasks[0] ? tasks[0].share : 1;
@@ -3338,7 +3348,6 @@ document.addEventListener('DOMContentLoaded', () => {
         var t = ir.it.t;
         var f = 0.82 + 0.18 * (t.share / (maxShare || 1));   // bigger share → brighter
         var bg = tmShade(TASK_CAT_BASE[key] || '#888888', f);
-        var sel = (state.selectedTask === t.tag) ? ' selected' : '';
         var pct = (t.share * 100).toFixed(1);
         // Top model's provider icon (OpenRouter shows one per tile). Stacks above
         // the label; on tiles too short for both, only the icon survives so we
@@ -3348,19 +3357,45 @@ document.addEventListener('DOMContentLoaded', () => {
         var showIcon = !!icon && ir.w > 24 && ir.h > 22;
         var showLabel = ir.w > 50 && ir.h > (showIcon ? 40 : 26);
         var showPct = ir.w > 58 && ir.h > (showIcon ? 62 : 44);
-        html += '<button class="tm-tile' + sel + '" data-tag="' + escape(t.tag) +
-          '" title="' + escape(t.label) + ' — ' + pct + '% of ' + taskMetricNoun() + (top ? ' · top: ' + escape(top.label) : '') +
-          '" style="left:' + ir.x.toFixed(1) +
-          'px;top:' + ir.y.toFixed(1) + 'px;width:' + ir.w.toFixed(1) + 'px;height:' + ir.h.toFixed(1) +
-          'px;background:' + bg + '">' +
-          (showIcon ? icon : '') +
-          (showLabel ? '<span class="tm-label">' + escape(t.label) + '</span>' : '') +
-          (showPct ? '<span class="tm-sub">' + pct + '%</span>' : '') +
-          '</button>';
+        computed.push({
+          tag: t.tag, x: ir.x, y: ir.y, w: ir.w, h: ir.h, bg: bg,
+          title: t.label + ' — ' + pct + '% of ' + taskMetricNoun() + (top ? ' · top: ' + top.label : ''),
+          html: (showIcon ? icon : '') +
+            (showLabel ? '<span class="tm-label">' + escape(t.label) + '</span>' : '') +
+            (showPct ? '<span class="tm-sub">' + pct + '%</span>' : '')
+        });
       });
     });
-    host.innerHTML = html;
+    reconcileTreemapTiles(host, computed);
     renderTaskLegend();
+  }
+
+  // Update-or-create tiles keyed by data-tag instead of rebuilding innerHTML, so a
+  // CSS transition (.tm-animate) can animate them morphing to new sizes/colours
+  // when the metric toggles. Same-tag tiles move in place; vanished tags are removed.
+  function reconcileTreemapTiles(host, tiles) {
+    var ph = host.querySelector('.ms-empty'); if (ph) ph.remove();
+    var existing = {};
+    host.querySelectorAll('.tm-tile').forEach(function (el) { existing[el.getAttribute('data-tag')] = el; });
+    var seen = {};
+    tiles.forEach(function (t) {
+      seen[t.tag] = 1;
+      var el = existing[t.tag];
+      if (!el) {
+        el = document.createElement('button');
+        el.setAttribute('data-tag', t.tag);
+        host.appendChild(el);
+      }
+      el.className = 'tm-tile' + (state.selectedTask === t.tag ? ' selected' : '');
+      el.style.left = t.x.toFixed(1) + 'px';
+      el.style.top = t.y.toFixed(1) + 'px';
+      el.style.width = t.w.toFixed(1) + 'px';
+      el.style.height = t.h.toFixed(1) + 'px';
+      el.style.background = t.bg;
+      el.title = t.title;
+      el.innerHTML = t.html;
+    });
+    Object.keys(existing).forEach(function (tag) { if (!seen[tag]) existing[tag].remove(); });
   }
 
   function renderTaskLegend() {
@@ -3419,10 +3454,17 @@ document.addEventListener('DOMContentLoaded', () => {
     tg.addEventListener('click', function (e) {
       var btn = e.target.closest('[data-metric]');
       if (!btn) return;
+      if (state.taskMetric === btn.dataset.metric) return;  // no-op re-click
       state.taskMetric = btn.dataset.metric;
       tg.querySelectorAll('.period-btn').forEach(function (b) { b.classList.remove('active'); });
       btn.classList.add('active');
       updateTaskMetricCopy();
+      var host = document.getElementById('task-treemap');
+      if (host) {                 // animate tiles morphing to the new metric's sizes
+        host.classList.add('tm-animate');
+        clearTimeout(host._tmAnim);
+        host._tmAnim = setTimeout(function () { host.classList.remove('tm-animate'); }, 480);
+      }
       renderTaskTreemap();
       renderTaskModels();
     });
