@@ -179,10 +179,20 @@ export interface TaskSpendTask {
   models: TaskSpendModel[];
 }
 export interface TaskSpendCategory { key: string; label: string; share: number }
-export interface TaskSpend {
-  windowDays: number;
+// One metric's view of the breakdown — spend ($) or raw tokens. Same tags and
+// shape; only the shares and per-task model ordering differ between the halves.
+export interface TaskSpendMetric {
   categories: TaskSpendCategory[];
   tasks: TaskSpendTask[];
+}
+export interface TaskSpend {
+  windowDays: number;
+  // Top-level = the spend half, kept flat for back-compat with already-stored KV
+  // and the empty-guard checks in fetchers. `tokens` carries the parallel half
+  // (absent on pre-toggle KV blobs → client just hides the Spend/Tokens toggle).
+  categories: TaskSpendCategory[];
+  tasks: TaskSpendTask[];
+  tokens?: TaskSpendMetric;
   fetchedAt: string;
 }
 

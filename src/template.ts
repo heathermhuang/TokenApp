@@ -1653,9 +1653,15 @@ export function getHtml(params: {
 
   <!-- Top models by task — interactive treemap (OpenRouter parity) -->
   <div class="leaderboard" id="task-spend-section">
-    <div class="leaderboard-header">
-      <div class="leaderboard-title">Top Models by Task</div>
-      <div class="leaderboard-subtitle" id="task-spend-sub">Share of OpenRouter spend by task over the last 30 days · click a tile to see its top models</div>
+    <div class="leaderboard-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap">
+      <div>
+        <div class="leaderboard-title">Top Models by Task</div>
+        <div class="leaderboard-subtitle" id="task-spend-sub">Share of OpenRouter spend by task over the last 30 days · click a tile to see its top models</div>
+      </div>
+      <div class="period-toggle" id="task-metric-toggle" hidden>
+        <button class="period-btn active" data-metric="spend">Spend</button>
+        <button class="period-btn" data-metric="tokens">Tokens</button>
+      </div>
     </div>
     <div class="task-spend-body">
       <div class="task-treemap" id="task-treemap">
@@ -1807,6 +1813,7 @@ const state = {
   shareSeries: null,   // cached { author: ShareSeries, model: ShareSeries }
   taskSpend: null,     // cached TaskSpend (top-models-by-task treemap)
   selectedTask: null,  // tag of the treemap tile whose models are shown
+  taskMetric: 'spend', // 'spend' | 'tokens' — which half of the payload to show
   category: null,    // active rankings category slug, null = global "All"
   categories: [],    // [{slug,label,group}] from /api/rankings/categories
   view: 'api',       // 'api' | 'subscriptions' | 'rankings'
@@ -3209,6 +3216,21 @@ document.addEventListener('DOMContentLoaded', () => {
   var TASK_CAT_BASE = { general: '#f76b15', agent: '#6e56cf', code: '#30a46c', data: '#0090ff' };
   var TASK_CAT_ORDER = ['general', 'agent', 'code', 'data'];
 
+  // Spend is top-level; tokens (when present) is the parallel half. The toggle
+  // flips which one the treemap, legend and per-task model list read from.
+  function activeTaskMetric() {
+    var ts = state.taskSpend;
+    if (!ts) return { categories: [], tasks: [] };
+    if (state.taskMetric === 'tokens' && ts.tokens) return ts.tokens;
+    return { categories: ts.categories || [], tasks: ts.tasks || [] };
+  }
+  function taskMetricNoun() { return state.taskMetric === 'tokens' ? 'tokens' : 'spend'; }
+  function updateTaskMetricCopy() {
+    var sub = document.getElementById('task-spend-sub');
+    if (sub) sub.textContent = 'Share of OpenRouter ' + taskMetricNoun() +
+      ' by task over the last 30 days · click a tile to see its top models';
+  }
+
   function tmShade(hex, f) {
     var n = parseInt(hex.slice(1), 16);
     var r = Math.min(255, Math.round(((n >> 16) & 255) * f));
@@ -3263,7 +3285,8 @@ document.addEventListener('DOMContentLoaded', () => {
     var host = document.getElementById('task-treemap');
     if (!host) return;
     var ts = state.taskSpend;
-    if (!ts || !ts.tasks || !ts.tasks.length) {
+    var metric = activeTaskMetric();
+    if (!ts || !metric.tasks || !metric.tasks.length) {
       host.innerHTML = '<div class="ms-empty">Task breakdown unavailable.</div>'; return;
     }
     var W = host.clientWidth, H = host.clientHeight;
@@ -3275,7 +3298,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderTaskTreemap._t = 0;
     // Group tasks by category; squarify categories, then squarify each one's tasks.
     var byCat = {};
-    ts.tasks.forEach(function (t) { (byCat[t.macroCategory] = byCat[t.macroCategory] || []).push(t); });
+    metric.tasks.forEach(function (t) { (byCat[t.macroCategory] = byCat[t.macroCategory] || []).push(t); });
     var cats = TASK_CAT_ORDER.filter(function (k) { return byCat[k]; })
       .concat(Object.keys(byCat).filter(function (k) { return TASK_CAT_ORDER.indexOf(k) < 0; }));
     var catItems = cats.map(function (k) {
@@ -3301,7 +3324,7 @@ document.addEventListener('DOMContentLoaded', () => {
         var showLabel = ir.w > 50 && ir.h > (showIcon ? 40 : 26);
         var showPct = ir.w > 58 && ir.h > (showIcon ? 62 : 44);
         html += '<button class="tm-tile' + sel + '" data-tag="' + escape(t.tag) +
-          '" title="' + escape(t.label) + ' — ' + pct + '% of spend' + (top ? ' · top: ' + escape(top.label) : '') +
+          '" title="' + escape(t.label) + ' — ' + pct + '% of ' + taskMetricNoun() + (top ? ' · top: ' + escape(top.label) : '') +
           '" style="left:' + ir.x.toFixed(1) +
           'px;top:' + ir.y.toFixed(1) + 'px;width:' + ir.w.toFixed(1) + 'px;height:' + ir.h.toFixed(1) +
           'px;background:' + bg + '">' +
@@ -3318,7 +3341,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderTaskLegend() {
     var host = document.getElementById('task-legend');
     if (!host || !state.taskSpend) return;
-    host.innerHTML = (state.taskSpend.categories || []).slice()
+    host.innerHTML = (activeTaskMetric().categories || []).slice()
       .sort(function (a, b) { return b.share - a.share; })
       .map(function (c) {
         return '<span><i class="tm-dot" style="background:' + (TASK_CAT_BASE[c.key] || '#888888') + '"></i>' +
@@ -3329,10 +3352,10 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderTaskModels() {
     var head = document.getElementById('task-models-head'), list = document.getElementById('task-models');
     if (!head || !list || !state.taskSpend) return;
-    var task = null, tasks = state.taskSpend.tasks;
+    var task = null, tasks = activeTaskMetric().tasks;
     for (var i = 0; i < tasks.length; i++) { if (tasks[i].tag === state.selectedTask) { task = tasks[i]; break; } }
     if (!task) { head.innerHTML = ''; list.innerHTML = ''; return; }
-    head.innerHTML = escape(task.label) + ' <span class="tm-share">— ' + (task.share * 100).toFixed(1) + '% of all spend</span>';
+    head.innerHTML = escape(task.label) + ' <span class="tm-share">— ' + (task.share * 100).toFixed(1) + '% of all ' + taskMetricNoun() + '</span>';
     list.innerHTML = (task.models || []).slice(0, 10).map(function (m, i) {
       var d = m.deltaPp || 0;
       var dd = Math.abs(d) < 0.05 ? '' : ' <span class="lb-delta ' + (d > 0 ? 'up' : 'down') + '">' +
@@ -3365,6 +3388,21 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   })();
 
+  (function () {
+    var tg = document.getElementById('task-metric-toggle');
+    if (!tg) return;
+    tg.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-metric]');
+      if (!btn) return;
+      state.taskMetric = btn.dataset.metric;
+      tg.querySelectorAll('.period-btn').forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      updateTaskMetricCopy();
+      renderTaskTreemap();
+      renderTaskModels();
+    });
+  })();
+
   var _tmRAF = null;
   window.addEventListener('resize', function () {
     if (!state.taskSpend) return;
@@ -3379,6 +3417,11 @@ document.addEventListener('DOMContentLoaded', () => {
       if (data && !data.error && data.tasks && data.tasks.length) {
         state.taskSpend = data;
         if (!state.selectedTask) state.selectedTask = data.tasks[0].tag;  // default: largest task
+        // Only offer the Spend/Tokens toggle when the tokens half is present
+        // (older KV blobs predate it → stay spend-only, no dead toggle).
+        var mt = document.getElementById('task-metric-toggle');
+        if (mt) mt.hidden = !(data.tokens && data.tokens.tasks && data.tokens.tasks.length);
+        updateTaskMetricCopy();
         renderTaskTreemap();
         renderTaskModels();
         return;

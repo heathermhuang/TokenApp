@@ -13,7 +13,7 @@
 
 import type {
   ShareSeries, ShareEntity, AppRanking, ModelRanking,
-  TaskSpend, TaskSpendTask, TaskSpendCategory,
+  TaskSpend, TaskSpendTask, TaskSpendCategory, TaskSpendMetric,
 } from './types';
 
 const UA = 'Mozilla/5.0 (compatible; token.app/1.0; +https://token.app)';
@@ -271,14 +271,11 @@ function prettyTag(tag: string): string {
   return tail.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-// Pure transform (network-free, so the verify harness can run it on captured
-// JSON — same split as modelShareSeries/fetchShareSeries).
-export function taskSpendFromRaw(raw: RawTaskSpend): TaskSpend {
-  const now = new Date().toISOString();
-  const block = raw && raw.data && raw.data.spend;
-  if (!block || !Array.isArray(block.tasks)) {
-    return { windowDays: 0, categories: [], tasks: [], fetchedAt: now };
-  }
+// Both halves share the exact same block shape — even the field names
+// (spendShare / spendShareOfTotal) are reused verbatim in data.tokens; only the
+// values and per-task model ordering differ. So one extractor serves both.
+function metricFromBlock(block: RawSpendBlock | undefined): TaskSpendMetric {
+  if (!block || !Array.isArray(block.tasks)) return { categories: [], tasks: [] };
   const categories: TaskSpendCategory[] = (block.macroCategories || []).map((c) => ({
     key: c.key, label: c.label, share: c.spendShare,
   }));
@@ -298,7 +295,25 @@ export function taskSpendFromRaw(raw: RawTaskSpend): TaskSpend {
       })),
     }))
     .sort((a, b) => b.share - a.share);
-  return { windowDays: block.windowDays || 0, categories, tasks, fetchedAt: now };
+  return { categories, tasks };
+}
+
+// Pure transform (network-free, so the verify harness can run it on captured
+// JSON — same split as modelShareSeries/fetchShareSeries). Surfaces spend at the
+// top level (OpenRouter's default metric) plus the parallel tokens half.
+export function taskSpendFromRaw(raw: RawTaskSpend): TaskSpend {
+  const now = new Date().toISOString();
+  const spendBlock = raw && raw.data && raw.data.spend;
+  const tokensBlock = raw && raw.data && raw.data.tokens;
+  const spend = metricFromBlock(spendBlock);
+  const tokens = metricFromBlock(tokensBlock);
+  return {
+    windowDays: (spendBlock && spendBlock.windowDays) || (tokensBlock && tokensBlock.windowDays) || 0,
+    categories: spend.categories,
+    tasks: spend.tasks,
+    tokens: tokens.tasks.length ? tokens : undefined,
+    fetchedAt: now,
+  };
 }
 
 export async function fetchTaskSpend(): Promise<TaskSpend> {
