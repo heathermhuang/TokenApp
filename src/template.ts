@@ -3479,7 +3479,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadTaskSpend() {
     try {
-      var res = await fetch('/api/task-spend');
+      // Bucketed cache-bust: Cloudflare's edge can hold /api/task-spend for hours,
+      // which would keep a stale (pre-tokens) snapshot — and the Spend/Tokens
+      // toggle hidden — long after the cron refreshes KV. A 10-min bucket key still
+      // lets the edge cache within each window but never stalls data for hours.
+      var res = await fetch('/api/task-spend?b=' + Math.floor(Date.now() / 600000));
       var data = await res.json();
       if (data && !data.error && data.tasks && data.tasks.length) {
         state.taskSpend = data;
