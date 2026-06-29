@@ -941,6 +941,11 @@ export function getHtml(params: {
       overflow: hidden;
       background: var(--surface2);
     }
+    /* Narrow screens: the same ~30 tiles squeeze into a third of the width, so a
+       fixed 360px collapses most tiles to unreadable slivers. Go tall/portrait
+       (OpenRouter does the same) to give every tile room for icon + label. */
+    @media (max-width: 700px) { .task-treemap { height: 560px; } }
+    @media (max-width: 430px) { .task-treemap { height: 600px; } }
     .task-treemap .ms-empty {
       position: absolute; inset: 0;
       display: flex; align-items: center; justify-content: center;
@@ -963,9 +968,18 @@ export function getHtml(params: {
     .tm-tile:hover { filter: brightness(1.1); }
     .tm-tile.selected { box-shadow: inset 0 0 0 2px var(--text), 0 0 0 1px var(--text); z-index: 2; }
     .tm-tile:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+    /* Top model's provider icon, sat in a white chip so any logo reads on the
+       coloured tile (mirrors OpenRouter's per-tile provider mark). */
+    .tm-tile .provider-logo {
+      width: 16px; height: 16px; border-radius: 4px;
+      background: #fff; padding: 1.5px; box-sizing: border-box;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.25); margin-bottom: 1px;
+    }
     .tm-label {
       font-size: 11.5px; font-weight: 650; line-height: 1.15;
       text-shadow: 0 1px 2px rgba(0,0,0,0.35);
+      overflow: hidden; text-overflow: ellipsis;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
     }
     .tm-sub { font-size: 10px; font-weight: 500; opacity: 0.92; text-shadow: 0 1px 2px rgba(0,0,0,0.35); }
     .task-legend {
@@ -3278,12 +3292,22 @@ document.addEventListener('DOMContentLoaded', () => {
         var bg = tmShade(TASK_CAT_BASE[key] || '#888888', f);
         var sel = (state.selectedTask === t.tag) ? ' selected' : '';
         var pct = (t.share * 100).toFixed(1);
+        // Top model's provider icon (OpenRouter shows one per tile). Stacks above
+        // the label; on tiles too short for both, only the icon survives so we
+        // never render colliding truncated text.
+        var top = (t.models && t.models[0]) ? t.models[0] : null;
+        var icon = top ? providerLogoImg(top.provider) : '';
+        var showIcon = !!icon && ir.w > 24 && ir.h > 22;
+        var showLabel = ir.w > 50 && ir.h > (showIcon ? 40 : 26);
+        var showPct = ir.w > 58 && ir.h > (showIcon ? 62 : 44);
         html += '<button class="tm-tile' + sel + '" data-tag="' + escape(t.tag) +
-          '" title="' + escape(t.label) + ' — ' + pct + '% of spend" style="left:' + ir.x.toFixed(1) +
+          '" title="' + escape(t.label) + ' — ' + pct + '% of spend' + (top ? ' · top: ' + escape(top.label) : '') +
+          '" style="left:' + ir.x.toFixed(1) +
           'px;top:' + ir.y.toFixed(1) + 'px;width:' + ir.w.toFixed(1) + 'px;height:' + ir.h.toFixed(1) +
           'px;background:' + bg + '">' +
-          (ir.w > 46 && ir.h > 22 ? '<span class="tm-label">' + escape(t.label) + '</span>' : '') +
-          (ir.w > 60 && ir.h > 40 ? '<span class="tm-sub">' + pct + '%</span>' : '') +
+          (showIcon ? icon : '') +
+          (showLabel ? '<span class="tm-label">' + escape(t.label) + '</span>' : '') +
+          (showPct ? '<span class="tm-sub">' + pct + '%</span>' : '') +
           '</button>';
       });
     });
