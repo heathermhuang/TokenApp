@@ -1,10 +1,10 @@
 import puppeteer from '@cloudflare/puppeteer';
 import { APP_CATEGORIES, CATEGORY_SCRAPE_CAP, categoryUrl } from './categories';
-import type { Env, NormalizedModel, OpenRouterModel, OpenRouterResponse, RankingsData, ModelRanking, AppRanking, RankingPeriod, RankDelta } from './types';
+import type { Env, NormalizedModel, OpenRouterModel, OpenRouterResponse, RankingsData, ModelRanking, AppRanking, RankingPeriod, RankDelta, TaskSpend } from './types';
 import { KV_KEYS } from './types';
 import { getProvider } from './providers';
 import { SUBSCRIPTIONS } from './subscriptions';
-import { fetchShareSeries, fetchAppsBoards, fetchModelBoard } from './openrouter-json';
+import { fetchShareSeries, fetchAppsBoards, fetchModelBoard, fetchTaskSpend } from './openrouter-json';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/models';
 
@@ -595,8 +595,15 @@ export async function refreshAllData(
   let rankingsStatus: string | undefined;
   let rankingsError: string | undefined;
   try {
-    const [{ author, model }, apps, topModels] = await Promise.all([
+    const [{ author, model }, apps, topModels, taskSpend] = await Promise.all([
       fetchShareSeries(), fetchAppsBoards(), fetchModelBoard(),
+      // Supplementary (treemap): never let a task-spend outage reject the batch
+      // and skip the primary models/apps/share refresh — degrade to empty, which
+      // the per-key empty-overwrite guard below turns into "keep last-good KV".
+      fetchTaskSpend().catch((e): TaskSpend => {
+        console.error('task-spend fetch failed (non-fatal):', e);
+        return { windowDays: 0, categories: [], tasks: [], fetchedAt: new Date().toISOString() };
+      }),
     ]);
 
     // Total-failure guard: if EVERY section is empty, keep all last-good KV and
@@ -621,6 +628,10 @@ export async function refreshAllData(
       await env.TOKEN_APP_KV.put(KV_KEYS.APPS_BOARDS,
         JSON.stringify({ ...apps, fetchedAt }), { expirationTtl: 7200 });
     }
+    if (taskSpend.tasks.length > 0) {
+      await env.TOKEN_APP_KV.put(KV_KEYS.TASK_SPEND,
+        JSON.stringify({ ...taskSpend, fetchedAt }), { expirationTtl: 7200 });
+    }
     if (topModels.length > 0 || apps.day.length > 0) {
       const ssrPayload: RankingsData = {
         topModels,
@@ -634,7 +645,7 @@ export async function refreshAllData(
     // app/model sparklines, deltas, and "view as of" keep working going forward.
     await writeJsonSnapshots(env, topModels, apps.day, fetchedAt);
 
-    rankingsStatus = `models: ${topModels.length}, apps: ${apps.day.length}d, series: ${author.weeks}w`;
+    rankingsStatus = `models: ${topModels.length}, apps: ${apps.day.length}d, series: ${author.weeks}w, tasks: ${taskSpend.tasks.length}`;
   } catch (err) {
     console.error('Rankings JSON fetch failed (non-fatal):', err);
     rankingsError = String(err);

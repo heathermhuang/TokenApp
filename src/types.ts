@@ -160,6 +160,32 @@ export interface ShareEntity {
 export interface ShareSeries { entities: ShareEntity[]; weeks: number; fetchedAt: string }
 export interface MarketShareResponse { author: ShareSeries; model: ShareSeries; fetchedAt: string }
 
+// ── Top models by task (the "Top models by task" treemap) ────────────────────
+// Sourced from OpenRouter /rankings/task-spend (spend half). Tiles are sized by
+// each task's share of total spend and coloured by macroCategory; each task
+// carries its own top-model leaderboard.
+export interface TaskSpendModel {
+  slug: string;     // permaslug, e.g. "anthropic/claude-4.7-opus-20260416"
+  label: string;    // pretty, e.g. "claude-4.7-opus"
+  provider: string; // e.g. "anthropic"
+  share: number;    // share of this task's spend, 0..1
+  deltaPp: number;  // change in percentage points vs the prior window
+}
+export interface TaskSpendTask {
+  tag: string;          // e.g. "code:general_impl"
+  label: string;        // curated display label, e.g. "Code Generation"
+  macroCategory: string;// "code" | "agent" | "general" | "data"
+  share: number;        // share of TOTAL spend, 0..1 (drives tile size)
+  models: TaskSpendModel[];
+}
+export interface TaskSpendCategory { key: string; label: string; share: number }
+export interface TaskSpend {
+  windowDays: number;
+  categories: TaskSpendCategory[];
+  tasks: TaskSpendTask[];
+  fetchedAt: string;
+}
+
 // One OpenRouter app category. Path-addressable: /apps/category/{group}/{slug}.
 export interface AppCategory { group: string; slug: string; label: string; }
 
@@ -170,4 +196,5 @@ export const KV_KEYS = {
   RANKINGS: 'rankings:all',
   SHARE_SERIES: 'share:series',   // MarketShareResponse (author + model weekly series)
   APPS_BOARDS: 'rankings:apps',    // { day, week, month, fetchedAt } AppRanking arrays
+  TASK_SPEND: 'rankings:taskspend',// TaskSpend (top models by task treemap)
 } as const;

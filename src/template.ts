@@ -909,6 +909,85 @@ export function getHtml(params: {
       list-style: none;
     }
 
+    /* Vertical stack: every rankings card is full-width, stacked with a gap. */
+    #rankings-section > .leaderboard,
+    #rankings-section > .market-share { margin-bottom: 20px; }
+
+    /* Two-column leaderboard (ranks 1–5 | 6–10) — OpenRouter parity. Column flow
+       keeps source order so the gold/silver/bronze nth-child rank colours and the
+       per-rank numbering stay correct. */
+    .leaderboard-list.two-col {
+      display: grid;
+      grid-auto-flow: column;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: repeat(5, auto);
+    }
+    .leaderboard-list.two-col .lb-item:nth-child(5) { border-bottom: none; }
+    .leaderboard-list.two-col .lb-item:nth-child(n+6) { border-left: 1px solid var(--border); }
+    @media (max-width: 700px) {
+      .leaderboard-list.two-col { grid-auto-flow: row; grid-template-columns: 1fr; }
+      .leaderboard-list.two-col .lb-item:nth-child(5) { border-bottom: 1px solid var(--border); }
+      .leaderboard-list.two-col .lb-item:nth-child(n+6) { border-left: none; }
+      .leaderboard-list.two-col .lb-item:last-child { border-bottom: none; }
+    }
+
+    /* ── Top models by task — treemap ──────────────────────────────────────── */
+    .task-spend-body { padding: 12px 16px 16px; }
+    .task-treemap {
+      position: relative;
+      width: 100%;
+      height: 360px;
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--surface2);
+    }
+    .task-treemap .ms-empty {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .tm-tile {
+      position: absolute;
+      box-sizing: border-box;
+      border: 1.5px solid var(--surface);
+      padding: 5px 7px;
+      overflow: hidden;
+      cursor: pointer;
+      color: #fff;
+      text-align: left;
+      font-family: inherit;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      transition: filter 0.1s ease;
+    }
+    .tm-tile:hover { filter: brightness(1.1); }
+    .tm-tile.selected { box-shadow: inset 0 0 0 2px var(--text), 0 0 0 1px var(--text); z-index: 2; }
+    .tm-tile:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+    .tm-label {
+      font-size: 11.5px; font-weight: 650; line-height: 1.15;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.35);
+    }
+    .tm-sub { font-size: 10px; font-weight: 500; opacity: 0.92; text-shadow: 0 1px 2px rgba(0,0,0,0.35); }
+    .task-legend {
+      display: flex; flex-wrap: wrap; gap: 8px 18px;
+      padding: 12px 2px 2px; font-size: 12px; color: var(--text2);
+    }
+    .task-legend .tm-dot {
+      display: inline-block; width: 10px; height: 10px;
+      border-radius: 3px; margin-right: 6px; vertical-align: -1px;
+    }
+    .task-legend b { color: var(--text); font-variant-numeric: tabular-nums; }
+    .task-models-head { padding: 18px 2px 6px; font-size: 14px; font-weight: 700; color: var(--text); }
+    .task-models-head .tm-share { color: var(--text3); font-weight: 500; font-size: 12px; }
+    .task-model-list {
+      border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
+    }
+    .task-model-list .lb-item { padding: 8px 14px; }
+    .task-model-list .lb-share {
+      font-size: 13px; font-weight: 600; color: var(--accent);
+      font-variant-numeric: tabular-nums;
+    }
+
     .lb-item {
       display: flex;
       align-items: center;
@@ -1547,33 +1626,50 @@ export function getHtml(params: {
       <div class="ms-empty">Loading market share…</div>
     </div>
   </div>
-  <div class="rankings-grid">
-    <div class="leaderboard">
-      <div class="leaderboard-header">
-        <div class="leaderboard-title">Token Usage Leaderboard</div>
-        <div class="leaderboard-subtitle">Top models by weekly token volume on OpenRouter</div>
-      </div>
-      <ol class="leaderboard-list" id="model-leaderboard">
-        <li style="padding:40px;text-align:center;color:var(--text3)">Loading rankings…</li>
-      </ol>
+  <!-- LLM leaderboard — full-width, two columns (1–5 | 6–10), OpenRouter parity -->
+  <div class="leaderboard lb-llm">
+    <div class="leaderboard-header">
+      <div class="leaderboard-title">LLM Leaderboard</div>
+      <div class="leaderboard-subtitle">Most-used models by weekly token volume on OpenRouter</div>
     </div>
-    <div class="leaderboard">
-      <div class="leaderboard-header">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
-          <div class="leaderboard-title">Agent Usage Leaderboard</div>
-          <div class="period-toggle" id="period-toggle">
-            <button class="period-btn active" data-period="day">24H</button>
-            <button class="period-btn" data-period="week">7D</button>
-            <button class="period-btn" data-period="month">30D</button>
-          </div>
+    <ol class="leaderboard-list two-col" id="model-leaderboard">
+      <li style="padding:40px;text-align:center;color:var(--text3)">Loading rankings…</li>
+    </ol>
+  </div>
+
+  <!-- Top models by task — interactive treemap (OpenRouter parity) -->
+  <div class="leaderboard" id="task-spend-section">
+    <div class="leaderboard-header">
+      <div class="leaderboard-title">Top Models by Task</div>
+      <div class="leaderboard-subtitle" id="task-spend-sub">Share of OpenRouter spend by task over the last 30 days · click a tile to see its top models</div>
+    </div>
+    <div class="task-spend-body">
+      <div class="task-treemap" id="task-treemap">
+        <div class="ms-empty">Loading task breakdown…</div>
+      </div>
+      <div class="task-legend" id="task-legend"></div>
+      <div class="task-models-head" id="task-models-head"></div>
+      <ol class="leaderboard-list two-col task-model-list" id="task-models"></ol>
+    </div>
+  </div>
+
+  <!-- Apps / agents leaderboard — full width -->
+  <div class="leaderboard">
+    <div class="leaderboard-header">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+        <div class="leaderboard-title">Agent Usage Leaderboard</div>
+        <div class="period-toggle" id="period-toggle">
+          <button class="period-btn active" data-period="day">24H</button>
+          <button class="period-btn" data-period="week">7D</button>
+          <button class="period-btn" data-period="month">30D</button>
         </div>
-        <div class="leaderboard-subtitle" id="app-leaderboard-subtitle">Top apps and agents by daily token volume on OpenRouter</div>
-        <div class="category-tabs" id="category-tabs"></div>
       </div>
-      <ol class="leaderboard-list" id="app-leaderboard">
-        <li style="padding:40px;text-align:center;color:var(--text3)">Loading rankings…</li>
-      </ol>
+      <div class="leaderboard-subtitle" id="app-leaderboard-subtitle">Top apps and agents by daily token volume on OpenRouter</div>
+      <div class="category-tabs" id="category-tabs"></div>
     </div>
+    <ol class="leaderboard-list" id="app-leaderboard">
+      <li style="padding:40px;text-align:center;color:var(--text3)">Loading rankings…</li>
+    </ol>
   </div>
   <p class="rankings-source">Data sourced from <a href="https://openrouter.ai/rankings" target="_blank" rel="noopener">OpenRouter Rankings</a> · Updated hourly</p>
 </div>
@@ -1695,6 +1791,8 @@ const state = {
   msWindow: 365,       // share-chart window in days (30 | 90 | 365)
   msScale: 'linear',   // share-chart y-axis: 'linear' | 'log'
   shareSeries: null,   // cached { author: ShareSeries, model: ShareSeries }
+  taskSpend: null,     // cached TaskSpend (top-models-by-task treemap)
+  selectedTask: null,  // tag of the treemap tile whose models are shown
   category: null,    // active rankings category slug, null = global "All"
   categories: [],    // [{slug,label,group}] from /api/rankings/categories
   view: 'api',       // 'api' | 'subscriptions' | 'rankings'
@@ -2373,7 +2471,10 @@ function hashCode(s) {
   return h;
 }
 // Neutral reserved for "Others" + the unnamed aggregate — never a real entity.
-function othersColor() { return isLightTheme() ? '#94a3b8' : '#475569'; }
+// "Others" base band — OpenRouter's signature pink (sampled from their Top
+// Models chart, #fc68b4). Dark theme uses a hair-deeper pink so it doesn't
+// vibrate against the dark surface while still reading as the same hue.
+function othersColor() { return isLightTheme() ? '#fc68b4' : '#e86bab'; }
 // Harmonized categorical chart palette — one saturation/lightness band so the
 // stacked chart reads as a single family. Color follows the ENTITY (stable per
 // slug), never rank, so toggling periods never repaints. Decoupled from the
@@ -2635,7 +2736,7 @@ function renderRankings() {
   }
 
   if (models.length > 0) {
-    modelList.innerHTML = models.slice(0, 15).map(function(m, i) {
+    modelList.innerHTML = models.slice(0, 10).map(function(m, i) {
       var slug = m.modelSlug || '';
       var parts = slug.split('/');
       var provider = parts[0] || '';
@@ -2645,7 +2746,7 @@ function renderRankings() {
         '<span class="lb-rank">' + (i + 1) + '</span>' +
         '<div class="lb-info">' +
           '<div class="lb-name">' + escape(modelName) + '</div>' +
-          '<div class="lb-category">' + logoImg + ' ' + escape(provider) + '</div>' +
+          '<div class="lb-category">' + logoImg + ' by ' + escape(provider) + '</div>' +
         '</div>' +
         '<div class="lb-stats">' +
           sparklineSvg(m.sparkline) +
@@ -3086,6 +3187,185 @@ document.addEventListener('DOMContentLoaded', () => {
     renderMarketShare();
   });
 
+  // ── Top models by task (treemap) ───────────────────────────────────────────
+  // OpenRouter-style squarified treemap: one tile per task, sized by its share
+  // of total spend, coloured by macro-category (palette sampled from OpenRouter)
+  // and nested so each category's tasks cluster. Clicking a tile shows that
+  // task's top models in the two-column list below.
+  var TASK_CAT_BASE = { general: '#f76b15', agent: '#6e56cf', code: '#30a46c', data: '#0090ff' };
+  var TASK_CAT_ORDER = ['general', 'agent', 'code', 'data'];
+
+  function tmShade(hex, f) {
+    var n = parseInt(hex.slice(1), 16);
+    var r = Math.min(255, Math.round(((n >> 16) & 255) * f));
+    var g = Math.min(255, Math.round(((n >> 8) & 255) * f));
+    var b = Math.min(255, Math.round((n & 255) * f));
+    return 'rgb(' + r + ',' + g + ',' + b + ')';
+  }
+
+  // Squarified treemap (Bruls/Huizing/van Wijk): fill [X,Y,W,H] with rows along
+  // the shorter side, growing each row while it improves the worst aspect ratio.
+  function tmSquarify(items, X, Y, W, H) {
+    var out = [];
+    var total = 0; items.forEach(function (it) { total += it.value; });
+    if (total <= 0 || W <= 0 || H <= 0) return out;
+    var scale = (W * H) / total;
+    var data = items.map(function (it) { return { it: it, area: it.value * scale }; });
+    function worst(sum, mn, mx, side) {
+      var side2 = side * side, s2 = sum * sum;
+      return Math.max((side2 * mx) / s2, s2 / (side2 * mn));
+    }
+    var x = X, y = Y, w = W, h = H, i = 0, n = data.length;
+    while (i < n) {
+      var side = Math.min(w, h);
+      var row = [data[i]], sum = data[i].area, mn = data[i].area, mx = data[i].area, j = i + 1;
+      while (j < n) {
+        var a = data[j].area, nmn = Math.min(mn, a), nmx = Math.max(mx, a);
+        if (worst(sum + a, nmn, nmx, side) <= worst(sum, mn, mx, side)) {
+          row.push(data[j]); sum += a; mn = nmn; mx = nmx; j++;
+        } else break;
+      }
+      if (w >= h) {
+        var colW = sum / h, ty = y;
+        for (var k = 0; k < row.length; k++) {
+          var th = (k === row.length - 1) ? (y + h - ty) : row[k].area / colW;
+          out.push({ it: row[k].it, x: x, y: ty, w: colW, h: th }); ty += th;
+        }
+        x += colW; w -= colW;
+      } else {
+        var rowH = sum / w, tx = x;
+        for (var k2 = 0; k2 < row.length; k2++) {
+          var tw = (k2 === row.length - 1) ? (x + w - tx) : row[k2].area / rowH;
+          out.push({ it: row[k2].it, x: tx, y: y, w: tw, h: rowH }); tx += tw;
+        }
+        y += rowH; h -= rowH;
+      }
+      i = j;
+    }
+    return out;
+  }
+
+  function renderTaskTreemap() {
+    var host = document.getElementById('task-treemap');
+    if (!host) return;
+    var ts = state.taskSpend;
+    if (!ts || !ts.tasks || !ts.tasks.length) {
+      host.innerHTML = '<div class="ms-empty">Task breakdown unavailable.</div>'; return;
+    }
+    var W = host.clientWidth, H = host.clientHeight;
+    if (!W || !H) {  // tab just opened, not laid out yet — retry next frame (capped)
+      renderTaskTreemap._t = (renderTaskTreemap._t || 0) + 1;
+      if (renderTaskTreemap._t < 30) requestAnimationFrame(renderTaskTreemap);
+      return;
+    }
+    renderTaskTreemap._t = 0;
+    // Group tasks by category; squarify categories, then squarify each one's tasks.
+    var byCat = {};
+    ts.tasks.forEach(function (t) { (byCat[t.macroCategory] = byCat[t.macroCategory] || []).push(t); });
+    var cats = TASK_CAT_ORDER.filter(function (k) { return byCat[k]; })
+      .concat(Object.keys(byCat).filter(function (k) { return TASK_CAT_ORDER.indexOf(k) < 0; }));
+    var catItems = cats.map(function (k) {
+      var sum = 0; byCat[k].forEach(function (t) { sum += t.share; });
+      return { value: sum, key: k };
+    });
+    var html = '';
+    tmSquarify(catItems, 0, 0, W, H).forEach(function (cr) {
+      var key = cr.it.key, tasks = byCat[key].slice().sort(function (a, b) { return b.share - a.share; });
+      var maxShare = tasks[0] ? tasks[0].share : 1;
+      tmSquarify(tasks.map(function (t) { return { value: t.share, t: t }; }), cr.x, cr.y, cr.w, cr.h).forEach(function (ir) {
+        var t = ir.it.t;
+        var f = 0.82 + 0.18 * (t.share / (maxShare || 1));   // bigger share → brighter
+        var bg = tmShade(TASK_CAT_BASE[key] || '#888888', f);
+        var sel = (state.selectedTask === t.tag) ? ' selected' : '';
+        var pct = (t.share * 100).toFixed(1);
+        html += '<button class="tm-tile' + sel + '" data-tag="' + escape(t.tag) +
+          '" title="' + escape(t.label) + ' — ' + pct + '% of spend" style="left:' + ir.x.toFixed(1) +
+          'px;top:' + ir.y.toFixed(1) + 'px;width:' + ir.w.toFixed(1) + 'px;height:' + ir.h.toFixed(1) +
+          'px;background:' + bg + '">' +
+          (ir.w > 46 && ir.h > 22 ? '<span class="tm-label">' + escape(t.label) + '</span>' : '') +
+          (ir.w > 60 && ir.h > 40 ? '<span class="tm-sub">' + pct + '%</span>' : '') +
+          '</button>';
+      });
+    });
+    host.innerHTML = html;
+    renderTaskLegend();
+  }
+
+  function renderTaskLegend() {
+    var host = document.getElementById('task-legend');
+    if (!host || !state.taskSpend) return;
+    host.innerHTML = (state.taskSpend.categories || []).slice()
+      .sort(function (a, b) { return b.share - a.share; })
+      .map(function (c) {
+        return '<span><i class="tm-dot" style="background:' + (TASK_CAT_BASE[c.key] || '#888888') + '"></i>' +
+          escape(c.label) + ' <b>' + (c.share * 100).toFixed(1) + '%</b></span>';
+      }).join('');
+  }
+
+  function renderTaskModels() {
+    var head = document.getElementById('task-models-head'), list = document.getElementById('task-models');
+    if (!head || !list || !state.taskSpend) return;
+    var task = null, tasks = state.taskSpend.tasks;
+    for (var i = 0; i < tasks.length; i++) { if (tasks[i].tag === state.selectedTask) { task = tasks[i]; break; } }
+    if (!task) { head.innerHTML = ''; list.innerHTML = ''; return; }
+    head.innerHTML = escape(task.label) + ' <span class="tm-share">— ' + (task.share * 100).toFixed(1) + '% of all spend</span>';
+    list.innerHTML = (task.models || []).slice(0, 10).map(function (m, i) {
+      var d = m.deltaPp || 0;
+      var dd = Math.abs(d) < 0.05 ? '' : ' <span class="lb-delta ' + (d > 0 ? 'up' : 'down') + '">' +
+        (d > 0 ? '▲' : '▼') + Math.abs(d).toFixed(1) + 'pp</span>';
+      return '<li class="lb-item">' +
+        '<span class="lb-rank">' + (i + 1) + '</span>' +
+        '<div class="lb-info">' +
+          '<div class="lb-name">' + escape(m.label) + '</div>' +
+          '<div class="lb-category">' + providerLogoImg(m.provider) + ' by ' + escape(m.provider) + '</div>' +
+        '</div>' +
+        '<div class="lb-stats"><span class="lb-share">' + (m.share * 100).toFixed(1) + '%</span>' + dd + '</div>' +
+      '</li>';
+    }).join('');
+  }
+
+  function selectTask(tag) {
+    state.selectedTask = tag;
+    var host = document.getElementById('task-treemap');
+    if (host) host.querySelectorAll('.tm-tile').forEach(function (el) {
+      el.classList.toggle('selected', el.getAttribute('data-tag') === tag);
+    });
+    renderTaskModels();
+  }
+
+  (function () {
+    var host = document.getElementById('task-treemap');
+    if (host) host.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-tag]');
+      if (btn) selectTask(btn.getAttribute('data-tag'));
+    });
+  })();
+
+  var _tmRAF = null;
+  window.addEventListener('resize', function () {
+    if (!state.taskSpend) return;
+    if (_tmRAF) cancelAnimationFrame(_tmRAF);
+    _tmRAF = requestAnimationFrame(renderTaskTreemap);
+  });
+
+  async function loadTaskSpend() {
+    try {
+      var res = await fetch('/api/task-spend');
+      var data = await res.json();
+      if (data && !data.error && data.tasks && data.tasks.length) {
+        state.taskSpend = data;
+        if (!state.selectedTask) state.selectedTask = data.tasks[0].tag;  // default: largest task
+        renderTaskTreemap();
+        renderTaskModels();
+        return;
+      }
+    } catch (err) { /* fall through to the failure state */ }
+    var host = document.getElementById('task-treemap');
+    if (host && !state.taskSpend) {
+      host.innerHTML = '<div class="ms-empty">Task breakdown could not be loaded right now. It refreshes hourly, so check back shortly.</div>';
+    }
+  }
+
   // ── Category tabs on the apps board ────────────────────────────────────────
   function renderCategoryTabs() {
     var host = document.getElementById('category-tabs');
@@ -3124,6 +3404,7 @@ document.addEventListener('DOMContentLoaded', () => {
     rankingsAuxLoaded = true;
     loadMarketShare();
     loadCategories();
+    loadTaskSpend();
   }
 
   // "View as of" — re-anchor every board to a past snapshot. Clearing the

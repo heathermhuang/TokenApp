@@ -106,6 +106,24 @@ app.get(
 );
 
 app.get(
+  '/api/task-spend',
+  cache({ cacheName: 'token-app-task-spend', cacheControl: 'max-age=3600, stale-while-revalidate=86400' }),
+  async (c) => {
+    try {
+      // The "top models by task" treemap snapshot (spend half, ~30 tasks) is
+      // written to KV by the cron. The client fetches once and renders + toggles
+      // selection entirely client-side (same pattern as /api/market-share).
+      const raw = await c.env.TOKEN_APP_KV.get(KV_KEYS.TASK_SPEND);
+      if (!raw) return c.json({ error: 'Task spend not yet available' }, 404);
+      return c.body(raw, 200, { 'Content-Type': 'application/json' });
+    } catch (err) {
+      console.error('Failed to get task spend:', err);
+      return c.json({ error: 'Failed to load task spend' }, 500);
+    }
+  }
+);
+
+app.get(
   '/api/rankings/categories',
   cache({ cacheName: 'token-app-categories', cacheControl: 'max-age=3600, stale-while-revalidate=86400' }),
   async (c) => {
