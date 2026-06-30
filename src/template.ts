@@ -2978,6 +2978,16 @@ function closeModal() {
 
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
+// Append a 10-min time-bucket cache-bust key to an /api/* URL. Cloudflare's edge
+// holds /api/* for up to 4h (a zone Cache Rule overrides our max-age), so the
+// freshness-sensitive fetches bust per 10-min window — the edge still caches
+// within a window, but data never stalls for hours. Handles bare paths (?b=) and
+// paths already carrying a query string (&b=). See the caching policy in CLAUDE.md.
+// Declared at script top level so both init() and the DOMContentLoaded handler reach it.
+function withBust(url) {
+  return url + (url.includes('?') ? '&' : '?') + 'b=' + Math.floor(Date.now() / 600000);
+}
+
 // ── Init ───────────────────────────────────────────────────────────────────────
 async function init() {
   // Use server-injected initial data if available
@@ -3005,7 +3015,7 @@ async function init() {
       var [modelsRes, subsRes, rankingsRes] = await Promise.all([
         fetch('/api/models'),
         fetch('/api/subscriptions'),
-        fetch('/api/rankings'),
+        fetch(withBust('/api/rankings')),
       ]);
       var { models, lastUpdated: lu } = await modelsRes.json();
       var subs = await subsRes.json();
@@ -3126,7 +3136,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     try {
-      var res = await fetch(buildRankingsUrl(period));
+      var res = await fetch(withBust(buildRankingsUrl(period)));
       var data = await res.json();
       if (data && !data.error) {
         state.rankingsByPeriod[period] = data;
@@ -3191,7 +3201,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function loadMarketShare() {
     var body = document.getElementById('market-share-body');
     try {
-      var res = await fetch('/api/market-share?b=' + Math.floor(Date.now() / 600000));
+      var res = await fetch(withBust('/api/market-share'));
       var data = await res.json();
       if (data && !data.error && data.author) { state.shareSeries = data; renderMarketShare(); return; }
     } catch (err) { /* fall through to the failure state below */ }
@@ -3483,7 +3493,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // which would keep a stale (pre-tokens) snapshot — and the Spend/Tokens
       // toggle hidden — long after the cron refreshes KV. A 10-min bucket key still
       // lets the edge cache within each window but never stalls data for hours.
-      var res = await fetch('/api/task-spend?b=' + Math.floor(Date.now() / 600000));
+      var res = await fetch(withBust('/api/task-spend'));
       var data = await res.json();
       if (data && !data.error && data.tasks && data.tasks.length) {
         state.taskSpend = data;

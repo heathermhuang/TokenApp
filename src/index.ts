@@ -35,6 +35,17 @@ app.use('/api/*', cors({ origin: '*' }));
 
 // ── API Routes ────────────────────────────────────────────────────────────────
 
+// Caching policy (source of truth; mirrored in CLAUDE.md):
+//   • A Cloudflare *zone* Cache Rule overrides the edge TTL on /api/* to
+//     max-age=14400 (4h) — it WINS over the max-age values set below (which stay
+//     at the intended ~cron cadence). Verify with: curl -sI <origin>/api/rankings
+//   • Freshness-sensitive fetches (/api/rankings, /api/market-share,
+//     /api/task-spend) are therefore cache-busted client-side with a 10-min time
+//     bucket — see withBust() in template.ts. "Slow" endpoints (/api/models,
+//     /api/subscriptions, /api/rankings/categories) change rarely, so the 4h edge
+//     cache is fine and they are left un-busted.
+//   • The SSR page "/" is NOT edge-cached (re-rendered per request from KV/D1),
+//     so the leaderboard + apps board are already fresh to within ~1 cron cycle.
 app.get(
   '/api/models',
   cache({ cacheName: 'token-app-models', cacheControl: 'max-age=300, stale-while-revalidate=3600' }),
