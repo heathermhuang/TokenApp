@@ -1901,6 +1901,7 @@ var PROVIDER_STYLE_DARK = {
     perplexityai: { color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
     cursor:       { color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' },
     windsurf:     { color: '#38bdf8', bg: 'rgba(56,189,248,0.12)' },
+    midjourney:   { color: '#c084fc', bg: 'rgba(192,132,252,0.12)' },
     microsoft:    { color: '#60a5fa', bg: 'rgba(0,120,212,0.12)' },
     baidu:        { color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
     bytedance:    { color: '#f43f5e', bg: 'rgba(244,63,94,0.12)' },
@@ -1933,6 +1934,7 @@ var PROVIDER_STYLE_DARK = {
     perplexityai: { color: '#7c3aed', bg: 'rgba(124,58,237,0.08)' },
     cursor:       { color: '#2563eb', bg: 'rgba(37,99,235,0.08)' },
     windsurf:     { color: '#0284c7', bg: 'rgba(2,132,199,0.08)' },
+    midjourney:   { color: '#7c3aed', bg: 'rgba(124,58,237,0.08)' },
     microsoft:    { color: '#1d4ed8', bg: 'rgba(29,78,216,0.08)' },
     baidu:        { color: '#1d4ed8', bg: 'rgba(29,78,216,0.08)' },
     bytedance:    { color: '#be123c', bg: 'rgba(190,18,60,0.08)' },
@@ -1981,8 +1983,10 @@ const PROVIDER_DOMAINS = {
   '01-ai':              '01.ai',
   // Coding tools
   cursor:               'cursor.com',
-  windsurf:             'windsurf.com',
-  codeium:              'windsurf.com',
+  windsurf:             'devin.ai',
+  codeium:              'devin.ai',
+  // Media / creative
+  midjourney:           'midjourney.com',
   // Chinese providers
   qwen:                 'qianwen.aliyun.com',
   alibaba:              'alibaba.com',
@@ -2053,8 +2057,10 @@ const PROVIDER_URLS = {
   '01-ai':              'https://01.ai/',
   // Coding tools
   cursor:               'https://cursor.com/',
-  windsurf:             'https://windsurf.com/',
-  codeium:              'https://windsurf.com/',
+  windsurf:             'https://devin.ai/',
+  codeium:              'https://devin.ai/',
+  // Media / creative
+  midjourney:           'https://www.midjourney.com/',
   // Chinese — link to the actual AI chat/platform product
   qwen:                 'https://tongyi.aliyun.com/',
   alibaba:              'https://tongyi.aliyun.com/',

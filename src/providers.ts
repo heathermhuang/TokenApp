@@ -25,6 +25,7 @@ export const PROVIDERS: Record<string, ProviderMeta> = {
   cursor:       { displayName: 'Cursor',      color: '#60a5fa', bgColor: 'rgba(96,165,250,0.12)' },
   windsurf:     { displayName: 'Windsurf',    color: '#38bdf8', bgColor: 'rgba(56,189,248,0.12)' },
   codeium:      { displayName: 'Codeium',     color: '#38bdf8', bgColor: 'rgba(56,189,248,0.12)' },
+  midjourney:   { displayName: 'Midjourney',  color: '#c084fc', bgColor: 'rgba(192,132,252,0.12)' },
   // Chinese providers
   baidu:        { displayName: 'Baidu',       color: '#3b82f6', bgColor: 'rgba(59,130,246,0.12)' },
   bytedance:    { displayName: 'ByteDance',   color: '#f43f5e', bgColor: 'rgba(244,63,94,0.12)' },
