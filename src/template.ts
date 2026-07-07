@@ -852,7 +852,14 @@ export function getHtml(params: {
       padding: 10px 16px;
       border-top: 1px solid var(--border);
       display: flex;
-      justify-content: flex-end;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .sub-verified {
+      font-size: 11px;
+      color: var(--text3);
+      white-space: nowrap;
     }
 
     .sub-link {
@@ -2378,6 +2385,12 @@ function renderProviderFilters() {
 }
 
 // ── Render Subscriptions ───────────────────────────────────────────────────────
+function fmtVerified(iso) {
+  const m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const p = String(iso).split('-');
+  return (m[+p[1] - 1] || '') + ' ' + p[0];
+}
+
 function renderSubscriptions() {
   const grid = document.getElementById('subs-grid');
   const list = filterSubs();
@@ -2391,7 +2404,9 @@ function renderSubscriptions() {
     const ps = getProviderStyle(sub.providerId);
     const tiersHtml = sub.tiers.map(t => {
       const priceHtml = t.monthlyPrice === null
-        ? '<span class="tier-price">Contact</span>'
+        ? (t.cnMonthlyPrice != null
+          ? \`<span class="tier-price">¥\${t.cnMonthlyPrice}<span class="period">/mo</span></span>\`
+          : '<span class="tier-price">Contact</span>')
         : t.monthlyPrice === 0
           ? '<span class="tier-price" style="color:var(--green)">Free</span>'
           : \`<span class="tier-price">$\${t.monthlyPrice}<span class="period">/mo</span></span>\`;
@@ -2400,7 +2415,7 @@ function renderSubscriptions() {
         ? \`<div class="tier-annual">$\${t.annualMonthlyPrice}/mo billed annually</div>\`
         : '';
 
-      const cnPriceHtml = t.cnMonthlyPrice != null && t.monthlyPrice !== 0
+      const cnPriceHtml = t.cnMonthlyPrice != null && typeof t.monthlyPrice === 'number' && t.monthlyPrice > 0
         ? \`<div class="tier-cn-price">🇨🇳 ¥\${t.cnMonthlyPrice}/mo\${t.cnAnnualMonthlyPrice && t.cnAnnualMonthlyPrice < t.cnMonthlyPrice ? ' · ¥' + t.cnAnnualMonthlyPrice + ' annual' : ''}</div>\`
         : '';
 
@@ -2434,6 +2449,7 @@ function renderSubscriptions() {
       </div>
       <div class="tiers-row">\${tiersHtml}</div>
       <div class="sub-footer">
+        \${sub.lastVerified ? \`<span class="sub-verified" title="Prices last checked against the provider page on \${escape(sub.lastVerified)}">✓ Verified \${fmtVerified(sub.lastVerified)}</span>\` : '<span></span>'}
         <a href="\${escape(sub.url)}" target="_blank" rel="noopener" class="sub-link">View pricing →</a>
       </div>
     </div>\`;

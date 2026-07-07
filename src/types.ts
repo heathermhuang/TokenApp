@@ -56,6 +56,7 @@ export interface Subscription {
   url: string;
   category: 'chat' | 'coding' | 'search' | 'media' | 'other';
   underlyingModels?: string[];  // model IDs powering this service
+  lastVerified?: string;  // ISO date (YYYY-MM-DD) prices last checked against the provider page
 }
 
 // ── OpenRouter raw types ──────────────────────────────────────────────────────
