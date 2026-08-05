@@ -1,7 +1,7 @@
 # llm-stats.com review → benchmark integration plan
 
 **Date**: 2026-08-05
-**Status**: **Phases 0–2 BUILT** (see §3 for per-phase status). Phases 3–6 still proposed.
+**Status**: **Phases 0–4 and 6 BUILT + SHIPPED.** Only Phase 5 (multi-provider price spread) remains.
 **Scope**: What llm-stats.com does, what of it is actually obtainable, and a phased plan
 to put a quality axis next to token.app's price axis.
 
@@ -216,7 +216,7 @@ so the existing `m[sortKey]` sort picks them up with no sort-path changes.
 **Not built**: benchmark-filter chips ("only models scoring >90% GPQA"). Deferred —
 the toggle already re-ranks the table, and chips are worth designing against real usage.
 
-### Phase 3 — model detail pages `/model/{slug}` — ☐ NOT STARTED
+### Phase 3 — model detail pages `/model/{slug}` — ✅ BUILT
 
 We only have provider pages today. Each model page carries:
 benchmarks with citations · price incl. cheapest host · context · modalities ·
@@ -226,7 +226,18 @@ benchmarks with citations · price incl. cheapest host · context · modalities 
 The last two are things llm-stats structurally cannot show. These pages are also the
 link targets Phase 4 needs.
 
-### Phase 4 — compare pages
+**As built** (`src/pages.ts`): pricing, spec, benchmarks with per-row citations
+(score · ±stderr · effort variant · run date · source · self-reported flag), the
+subscriptions naming this model, and **"cheaper models that score at least as well"** —
+computed from price+score rather than editorialised. Claude Opus 5's page surfaces
+Gemini 3.6 Flash at −70% with a *higher* GPQA. Models with no verified score get an
+explicit "we show nothing rather than reprinting an unverified figure" panel, and the
+FAQ drops its benchmark questions rather than answering them emptily.
+
+The usage-sparkline tie-in was **not** built — it needs the D1 read path threading into
+the page handler, and the page stands up without it. Worth a follow-up.
+
+### Phase 4 — compare pages — ✅ BUILT
 
 Copy their SEO mechanics wholesale: auto-generated verdict prose, "Choose X if…",
 FAQ JSON-LD, dense related-comparison interlinking.
@@ -237,7 +248,23 @@ FAQ JSON-LD, dense related-comparison interlinking.
   dated, verified data. We have 28 providers with tiers, annual, CN pricing and
   `lastVerified` stamps. llm-stats is API-only and cannot follow us here.
 
-### Phase 5 — multi-provider price spread
+**As built**: both halves live, sharing one shell. Subscription pages render every tier
+(monthly + annual + per-seat) with each side's `lastVerified` stamp and a link to the
+official pricing page. Model pages do head-to-head with win highlighting, **restricted to
+benchmarks BOTH models have** — comparing one model's GPQA against another's SWE-bench
+would be meaningless. FAQ JSON-LD and related-comparison interlinking on both.
+
+`splitPair()` tries every `-vs-` position and accepts the first where *both* halves
+resolve; model slugs are hyphen-heavy, so splitting on the first occurrence is not safe.
+Subscriptions resolve first (verified: zero overlap between the 28 subscription ids and
+all 338 model slugs).
+
+**Sitemap now emits them** — 1,217 URLs live (337 model, 868 compare). An unlisted
+programmatic page does not exist to a crawler. Model pairs are capped to the 40 most
+recent and cross-provider only: all-pairs on 338 models is ~57k URLs of mostly worthless
+combinations. The dynamic section is try/caught so a KV hiccup degrades to the static core.
+
+### Phase 5 — multi-provider price spread — ☐ NOT STARTED (the only phase left)
 
 Verified live and unauthenticated: `openrouter.ai/api/v1/models/{id}/endpoints` → 200.
 For `meta-llama/llama-3.3-70b-instruct` it returns **13 hosts**:
@@ -257,12 +284,27 @@ llm-stats prints one "Best provider" line; this is a far better story and it is 
 Caveat: `latency_last_30m` / `throughput_last_30m` came back **null** on every probe, so
 speed is not reliably available from this endpoint. Uptime is.
 
-### Phase 6 — hero superlatives
+### Phase 6 — hero superlatives — ✅ BUILT
 
 Their hero strip (cheapest in top 10 / fastest / longest context / best open-weights) is a
 cheap, high-payoff pattern. Ours becomes value-framed once Phase 1 lands: *best value at the
 frontier · cheapest 1M-context model · biggest price drop this month · cheapest open-weights*.
 All computable from data we already hold.
+
+**As built**: best value · top score · best open weights · largest context, deduped so one
+model cannot fill two cards (without that, "best value" and "cheapest ≥85%" both resolved
+to DeepSeek V4 Flash).
+
+**This phase paid for itself by exposing a live data bug.** The strip first rendered
+"best open weights → Gemini 3.6 Flash", which is proprietary. `isOpenSource` was a
+provider/name heuristic listing whole authors — `'google'` and `'qwen'` among them — so
+every proprietary Gemini and Qwen-Max read as open, while GLM-5.2, Kimi K3 and gpt-oss-120b
+(all with public weights) read as proprietary. It now keys on OpenRouter's per-model
+`hugging_face_id`: **125 models reclassified**, 125 → 152 open. That also silently fixes the
+homepage "Open Source" filter chip, which had been wrong for every user.
+
+Also note: the "best open weights" card must pick the *highest-scoring* open model, not the
+cheapest. Picking the cheapest put a 29.9% model under a heading that reads as a quality claim.
 
 ---
 
