@@ -1,0 +1,48 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "token-app",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "wrangler",
+        "dev",
+        "--port",
+        "8799"
+      ],
+      "port": 8799
+    },
+    {
+      "name": "tokenapp-static",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "/tmp/tokenapp-preview/serve.js"
+      ],
+      "port": 8799
+    },
+    {
+      "name": "subs-preview",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scratchpad/serve-subs.cjs"
+      ],
+      "port": 8797
+    },
+    {
+      "name": "share-preview",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "/private/tmp/claude-501/-Users-heatherm-Documents-Claude-TokenApp/d71acc95-7507-44de-b252-664342a71005/scratchpad/serve.cjs"
+      ],
+      "port": 8788
+    },
+    {
+      "name": "bench-preview",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scratchpad/serve-bench.cjs"
+      ],
+      "port": 8796
+    }
+  ]
+}
