@@ -7,6 +7,7 @@ import { getModels, getSubscriptions, getRankings, refreshAllData } from './fetc
 import { readBenchmarks } from './benchmarks';
 import { getModelHtml, getSubCompareHtml, getModelCompareHtml } from './pages';
 import { PROVIDER_PAGE_SLUGS } from './providers';
+import { getModelEndpoints } from './endpoints';
 import { APP_CATEGORIES, CATEGORY_SLUGS, CATEGORY_LABELS } from './categories';
 import { getHtml, getProviderHtml, getAboutHtml } from './template';
 
@@ -432,7 +433,12 @@ app.get('/model/:slug', async (c) => {
     ]);
     const model = models.find((m) => m.slug === slug);
     if (!model) return c.redirect('/', 302);
-    return c.html(getModelHtml({ model, all: models, benchmarks, subscriptions: subs }), 200, {
+    // Per-host prices are fetched lazily (read-through KV, 6h TTL) because we
+    // can't afford 338 endpoint calls per cron. getModelEndpoints() already
+    // swallows its own failures and returns null → the panel is simply omitted,
+    // so a slow upstream can't block the page.
+    const endpoints = await getModelEndpoints(c.env, model.id);
+    return c.html(getModelHtml({ model, all: models, benchmarks, subscriptions: subs, endpoints }), 200, {
       'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400',
     });
   } catch (err) {
