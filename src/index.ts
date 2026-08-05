@@ -1,10 +1,12 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { cache } from 'hono/cache';
-import type { Env } from './types';
+import type { Env, Subscription } from './types';
 import { KV_KEYS } from './types';
 import { getModels, getSubscriptions, getRankings, refreshAllData } from './fetchers';
 import { readBenchmarks } from './benchmarks';
+import { getModelHtml, getSubCompareHtml, getModelCompareHtml } from './pages';
+import { PROVIDER_PAGE_SLUGS } from './providers';
 import { APP_CATEGORIES, CATEGORY_SLUGS, CATEGORY_LABELS } from './categories';
 import { getHtml, getProviderHtml, getAboutHtml } from './template';
 
@@ -261,31 +263,63 @@ app.get('/robots.txt', (c) => {
   return c.text(txt, 200, { 'Content-Type': 'text/plain; charset=utf-8' });
 });
 
-const PROVIDER_SLUGS = [
-  'openai', 'anthropic', 'google', 'meta-llama', 'mistralai',
-  'deepseek', 'x-ai', 'qwen', 'nvidia', 'cohere',
-];
+// Single source of truth in providers.ts — pages.ts reads the same list to
+// decide whether a model's breadcrumb should link to its provider page.
+const PROVIDER_SLUGS = PROVIDER_PAGE_SLUGS;
 
-app.get('/sitemap.xml', (c) => {
-  const providerUrls = PROVIDER_SLUGS.map(slug => `  <url>
-    <loc>https://token.app/${slug}</loc>
-    <changefreq>daily</changefreq>
-    <priority>0.8</priority>
-  </url>`).join('\n');
+app.get('/sitemap.xml', async (c) => {
+  const u = (loc: string, freq: string, pri: string) =>
+    `  <url>\n    <loc>${loc}</loc>\n    <changefreq>${freq}</changefreq>\n    <priority>${pri}</priority>\n  </url>`;
+
+  const urls: string[] = [
+    u('https://token.app/', 'hourly', '1.0'),
+    u('https://token.app/about', 'monthly', '0.6'),
+    ...PROVIDER_SLUGS.map((slug) => u(`https://token.app/${slug}`, 'daily', '0.8')),
+  ];
+
+  // Programmatic pages. Emitting them is the entire point of building them —
+  // an unlisted /compare page is a page that does not exist to a crawler.
+  // Bounded deliberately (see the caps below) to keep the sitemap under the
+  // 50k-URL / 50MB limits and to avoid asking crawlers to spider 338² pairs.
+  try {
+    const [{ models }, subs] = await Promise.all([getModels(c.env), getSubscriptions(c.env)]);
+    const live = models.filter((m) => !m.isDeprecated);
+
+    for (const m of live) {
+      urls.push(u(`https://token.app/model/${encodeURIComponent(m.slug)}`, 'weekly', '0.7'));
+    }
+
+    // Every subscription pair WITHIN a category (28 subs → ~150 pairs). These are
+    // the high-intent queries and the ones nobody else answers with structured data.
+    for (let i = 0; i < subs.length; i++) {
+      for (let j = i + 1; j < subs.length; j++) {
+        if (subs[i].category !== subs[j].category) continue;
+        urls.push(u(`https://token.app/compare/${encodeURIComponent(subs[i].id)}-vs-${encodeURIComponent(subs[j].id)}`, 'weekly', '0.9'));
+      }
+    }
+
+    // Model pairs: cap to the 40 most recent, cross-provider only. All-pairs on
+    // 338 models is 57k URLs of mostly-worthless combinations (two deprecated
+    // 2023 models nobody compares); the recency+cross-provider filter keeps the
+    // set to the comparisons people actually search for.
+    const recent = [...live]
+      .filter((m) => m.inputPer1M !== null && (m.inputPer1M ?? 0) >= 0)
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+      .slice(0, 40);
+    for (let i = 0; i < recent.length; i++) {
+      for (let j = i + 1; j < recent.length; j++) {
+        if (recent[i].providerId === recent[j].providerId) continue;
+        urls.push(u(`https://token.app/compare/${encodeURIComponent(recent[i].slug)}-vs-${encodeURIComponent(recent[j].slug)}`, 'weekly', '0.6'));
+      }
+    }
+  } catch (err) {
+    // A KV hiccup must not 500 the sitemap — serve the static core instead.
+    console.error('Sitemap dynamic section failed (serving core):', err);
+  }
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url>
-    <loc>https://token.app/</loc>
-    <changefreq>hourly</changefreq>
-    <priority>1.0</priority>
-  </url>
-  <url>
-    <loc>https://token.app/about</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
-  </url>
-${providerUrls}
+${urls.join('\n')}
 </urlset>`;
   return c.body(xml, 200, {
     'Content-Type': 'application/xml; charset=utf-8',
@@ -381,6 +415,84 @@ async function handleProviderPage(c: any, providerId: string) {
 for (const slug of PROVIDER_SLUGS) {
   app.get(`/${slug}`, (c) => handleProviderPage(c, slug));
 }
+
+// ── Model detail + comparison pages ──────────────────────────────────────────
+// SSR, cached at the edge for an hour. These are the programmatic SEO surface:
+// llm-stats' equivalent "X vs Y" pages are its main organic engine, and the
+// SUBSCRIPTION half of ours is uncontested — they are API-only and cannot answer
+// "ChatGPT Plus vs Claude Pro" at all.
+
+app.get('/model/:slug', async (c) => {
+  try {
+    const slug = c.req.param('slug');
+    const [{ models }, benchmarks, subs] = await Promise.all([
+      getModels(c.env),
+      readBenchmarks(c.env),
+      getSubscriptions(c.env),
+    ]);
+    const model = models.find((m) => m.slug === slug);
+    if (!model) return c.redirect('/', 302);
+    return c.html(getModelHtml({ model, all: models, benchmarks, subscriptions: subs }), 200, {
+      'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400',
+    });
+  } catch (err) {
+    console.error('Model page failed:', err);
+    return c.redirect('/', 302);
+  }
+});
+
+/**
+ * Split "a-vs-b" into its two halves.
+ *
+ * Naively splitting on the FIRST "-vs-" is wrong: model slugs are hyphen-heavy
+ * and nothing stops one containing the literal substring. So try every split
+ * point and accept the first where BOTH halves resolve — resolution is the
+ * disambiguator, not string position.
+ */
+function splitPair<T>(pair: string, resolve: (s: string) => T | undefined): [T, T] | null {
+  const SEP = '-vs-';
+  let i = pair.indexOf(SEP);
+  while (i !== -1) {
+    const a = resolve(pair.slice(0, i));
+    const b = resolve(pair.slice(i + SEP.length));
+    if (a && b) return [a, b];
+    i = pair.indexOf(SEP, i + 1);
+  }
+  return null;
+}
+
+app.get('/compare/:pair', async (c) => {
+  try {
+    const pair = c.req.param('pair');
+    const [{ models }, subs, benchmarks] = await Promise.all([
+      getModels(c.env),
+      getSubscriptions(c.env),
+      readBenchmarks(c.env),
+    ]);
+
+    // Subscriptions first: their ids are the higher-intent, higher-volume queries
+    // ("chatgpt-vs-claude-ai"). Verified today: zero overlap between the 28
+    // subscription ids and all 338 model slugs, so precedence is not lossy.
+    const subPair = splitPair(pair, (s) => subs.find((x: Subscription) => x.id === s));
+    if (subPair) {
+      return c.html(getSubCompareHtml({ a: subPair[0], b: subPair[1], all: subs }), 200, {
+        'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400',
+      });
+    }
+
+    const modelPair = splitPair(pair, (s) => models.find((x) => x.slug === s));
+    if (modelPair) {
+      return c.html(getModelCompareHtml({ a: modelPair[0], b: modelPair[1], all: models, benchmarks }), 200, {
+        'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400',
+      });
+    }
+
+    return c.redirect('/', 302);
+  } catch (err) {
+    console.error('Compare page failed:', err);
+    return c.redirect('/', 302);
+  }
+});
 
 // ── HTML App ─────────────────────────────────────────────────────────────────
 

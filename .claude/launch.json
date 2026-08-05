@@ -43,6 +43,14 @@
         "scratchpad/serve-bench.cjs"
       ],
       "port": 8796
+    },
+    {
+      "name": "pages-preview",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scratchpad/serve-pages.cjs"
+      ],
+      "port": 8795
     }
   ]
 }

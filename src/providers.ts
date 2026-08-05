@@ -56,6 +56,20 @@ export const PROVIDERS: Record<string, ProviderMeta> = {
   openrouter:   { displayName: 'OpenRouter',  color: '#94a3b8', bgColor: 'rgba(148,163,184,0.12)' },
 };
 
+/**
+ * Providers that have a dedicated `/{slug}` landing page.
+ *
+ * Lives here so `index.ts` (which registers the routes) and `pages.ts` (which
+ * decides whether a breadcrumb should be a link) cannot drift apart — linking a
+ * provider without a page sends the visitor to a 302 back to the homepage.
+ */
+export const PROVIDER_PAGE_SLUGS = [
+  'openai', 'anthropic', 'google', 'meta-llama', 'mistralai',
+  'deepseek', 'x-ai', 'qwen', 'nvidia', 'cohere',
+] as const;
+
+export const PROVIDER_PAGE_SET: ReadonlySet<string> = new Set(PROVIDER_PAGE_SLUGS);
+
 export function getProvider(id: string): ProviderMeta {
   const normalized = id.toLowerCase().replace(/\s+/g, '-');
   return PROVIDERS[normalized] ?? {
