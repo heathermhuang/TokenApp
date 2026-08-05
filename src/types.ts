@@ -200,6 +200,42 @@ export interface TaskSpend {
 // One OpenRouter app category. Path-addressable: /apps/category/{group}/{slug}.
 export interface AppCategory { group: string; slug: string; label: string; }
 
+// ── Benchmarks (Epoch AI, CC BY) ─────────────────────────────────────────────
+
+// One benchmark result for one model. Deliberately mirrors the shape the
+// llm-stats open dataset uses (CC BY): every score carries its provenance so
+// nothing can render without a citation. `isSelfReported` is false for every
+// Epoch row — Epoch RUNS these evals rather than reprinting vendor claims,
+// which is the entire reason we source from them.
+export interface BenchmarkScore {
+  benchmark: string;        // display label, e.g. "GPQA Diamond"
+  benchmarkId: string;      // stable slug, e.g. "gpqa_diamond"
+  score: number;            // normalized 0–1
+  stderr: number | null;    // standard error, when published
+  isSelfReported: boolean;  // false for Epoch-run evals
+  variant: string | null;   // e.g. "max" — the effort/config the score came from
+  recordedAt: string | null;// ISO date the run happened
+  source: string;           // attribution label, e.g. "Epoch AI"
+  sourceUrl: string;        // citation link
+}
+
+export interface ModelBenchmarks {
+  modelId: string;          // OpenRouter model id — the join key
+  epochModel: string;       // Epoch's display name, kept for auditability
+  scores: BenchmarkScore[];
+}
+
+export interface BenchmarksPayload {
+  models: ModelBenchmarks[];
+  benchmarks: { id: string; label: string; blurb: string }[]; // the surfaced set, in display order
+  // Models present in the Epoch feed that we have no OpenRouter id mapping for.
+  // Surfaced so the mapping table can be extended in a data-only PR rather than
+  // silently under-covering the catalogue.
+  unmapped: string[];
+  attribution: { text: string; url: string; license: string; licenseUrl: string };
+  fetchedAt: string;
+}
+
 export const KV_KEYS = {
   MODELS: 'models:all',
   MODELS_UPDATED: 'models:last_updated',
@@ -208,4 +244,5 @@ export const KV_KEYS = {
   SHARE_SERIES: 'share:series',   // MarketShareResponse (author + model weekly series)
   APPS_BOARDS: 'rankings:apps',    // { day, week, month, fetchedAt } AppRanking arrays
   TASK_SPEND: 'rankings:taskspend',// TaskSpend (top models by task treemap)
+  BENCHMARKS: 'benchmarks:all',    // BenchmarksPayload (Epoch AI, CC BY)
 } as const;

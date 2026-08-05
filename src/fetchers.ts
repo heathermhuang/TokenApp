@@ -5,6 +5,7 @@ import { KV_KEYS } from './types';
 import { getProvider } from './providers';
 import { SUBSCRIPTIONS } from './subscriptions';
 import { fetchShareSeries, fetchAppsBoards, fetchModelBoard, fetchTaskSpend } from './openrouter-json';
+import { fetchBenchmarks } from './benchmarks';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/models';
 
@@ -578,7 +579,12 @@ async function attachTrends(
 export async function refreshAllData(
   env: Env,
   opts: { includeCategories?: boolean } = {},
-): Promise<{ models: number; rankings?: string; rankingsError?: string; categories?: string; categoriesError?: string }> {
+): Promise<{
+  models: number;
+  rankings?: string; rankingsError?: string;
+  categories?: string; categoriesError?: string;
+  benchmarks?: string; benchmarksError?: string;
+}> {
   const models = await fetchModelsFromOpenRouter();
 
   await env.TOKEN_APP_KV.put(KV_KEYS.MODELS, JSON.stringify(models), {
@@ -651,6 +657,26 @@ export async function refreshAllData(
     rankingsError = String(err);
   }
 
+  // ── Benchmarks (Epoch AI, CC BY). Non-fatal and empty-guarded, same contract as
+  //    task-spend: a benchmark outage must never block the primary models/rankings
+  //    refresh, and must never overwrite good KV with an empty set. Epoch updates
+  //    daily-ish, so re-fetching hourly is cheap (2.5MB, cf-cached 30min).
+  let benchmarksStatus: string | undefined;
+  let benchmarksError: string | undefined;
+  try {
+    const bench = await fetchBenchmarks();
+    if (bench.models.length === 0) {
+      benchmarksStatus = 'empty — KV left unchanged';
+    } else {
+      await env.TOKEN_APP_KV.put(KV_KEYS.BENCHMARKS, JSON.stringify(bench));
+      const scored = bench.models.reduce((n, m) => n + m.scores.length, 0);
+      benchmarksStatus = `${bench.models.length} models, ${scored} scores, ${bench.unmapped.length} unmapped`;
+    }
+  } catch (err) {
+    console.error('Benchmark fetch failed (non-fatal):', err);
+    benchmarksError = String(err);
+  }
+
   // ── Categories: scrape AT MOST once per calendar day. Long-running (~2-3 min,
   //    up to 15 Browser Rendering pages), so it ONLY runs when the caller has the
   //    wall-clock budget — the hourly scheduled handler (15-min cron limit) passes
@@ -683,7 +709,12 @@ export async function refreshAllData(
     categoriesStatus = 'skipped (cron-only)';
   }
 
-  return { models: models.length, rankings: rankingsStatus, rankingsError, categories: categoriesStatus, categoriesError };
+  return {
+    models: models.length,
+    rankings: rankingsStatus, rankingsError,
+    categories: categoriesStatus, categoriesError,
+    benchmarks: benchmarksStatus, benchmarksError,
+  };
 }
 
 // ── Read from KV (with stale-while-revalidate fallback) ──────────────────────
