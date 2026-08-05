@@ -91,14 +91,20 @@ export function normalizeModel(raw: OpenRouterModel): NormalizedModel {
     slug.includes('r1') ||
     nameLC.includes('qwq');
 
-  // Open-source heuristics
-  const openSourceProviders = ['meta-llama', 'mistralai', 'qwen', 'deepseek', '01-ai', 'google', 'cohere'];
-  const isOpenSource =
-    openSourceProviders.some((p) => providerId?.startsWith(p)) ||
-    nameLC.includes('llama') ||
-    nameLC.includes('mistral') ||
-    nameLC.includes('gemma') ||
-    nameLC.includes('qwen');
+  // Open weights = OpenRouter published a Hugging Face repo for this model.
+  //
+  // This REPLACES a provider/name heuristic that was wrong in both directions
+  // (found 2026-08-05 when the homepage superlative strip surfaced "best open
+  // weights → Gemini 3.6 Flash"). The old list treated whole authors as open —
+  // 'google' and 'qwen' included — so every proprietary Gemini and Qwen-Max was
+  // flagged open, while GLM-5.2, Kimi K3 and gpt-oss-120b (all with public
+  // weights on HF) were flagged proprietary.
+  //
+  // `hugging_face_id` is first-party, per-model and verifiable, which no name
+  // match can be. Caveat accepted knowingly: a few HF repos are gated or carry
+  // non-commercial terms, so this means "weights published" rather than "OSI
+  // licensed" — still far closer to the truth than the heuristic it replaces.
+  const isOpenSource = Boolean(raw.hugging_face_id);
 
   // Tool use heuristic - most frontier models support it
   const hasToolUse =

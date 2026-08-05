@@ -386,6 +386,30 @@ export function getHtml(params: {
       color: var(--text3);
     }
 
+    /* ── Superlative strip ────────────────────────────────────────────────── */
+    .superlatives {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+      gap: 10px;
+      margin-top: 26px;
+    }
+    .sup {
+      display: block; padding: 11px 13px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); text-decoration: none;
+      transition: border-color .12s ease;
+    }
+    .sup:hover { border-color: var(--border2); }
+    .sup-k {
+      font-size: 10px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .06em; color: var(--text3); display: block; margin-bottom: 5px;
+    }
+    .sup-v { font-size: 14px; font-weight: 650; color: var(--text); display: block; line-height: 1.3; }
+    .sup-m { font-size: 12px; color: var(--text2); display: block; margin-top: 3px; font-variant-numeric: tabular-nums; }
+    @media (max-width: 600px) {
+      .superlatives { grid-template-columns: repeat(2, 1fr); margin-top: 18px; }
+    }
+
     /* ── Controls ─────────────────────────────────────────────────────────── */
     .controls {
       max-width: 1200px;
@@ -1598,6 +1622,10 @@ export function getHtml(params: {
       <span class="stat-label">Subscriptions</span>
     </div>
   </div>
+  <!-- Superlative strip (llm-stats pattern, re-pointed at value rather than raw
+       capability). Hidden until benchmarks load, since three of the five cards
+       need a score to be honest. -->
+  <div class="superlatives" id="superlatives" hidden></div>
 </section>
 
 <!-- ── Controls ─────────────────────────────────────────────────────────────── -->
@@ -2563,6 +2591,77 @@ function fmtVerified(iso) {
   return (m[+p[1] - 1] || '') + ' ' + p[0];
 }
 
+// ── Superlative strip ─────────────────────────────────────────────────────────
+// llm-stats' hero pattern, re-pointed. Theirs answers "what's strongest";
+// ours answers "what's the best deal", which is the only version we can claim
+// honestly and the only one that uses both of our axes.
+function renderSuperlatives() {
+  var el = document.getElementById('superlatives');
+  if (!el) return;
+  var pts = paretoPoints();          // priced + scored + not deprecated
+  if (pts.length < 3) { el.hidden = true; return; }
+
+  var live = state.models.filter(function (m) { return !m.isDeprecated; });
+  var cards = [];
+  // One model per strip. Without this, "best value" and "cheapest ≥85%" both
+  // resolve to the same model whenever the value leader is also the cheapest
+  // capable one — which is exactly what the current data does.
+  var used = {};
+  function add(key, m, meta) {
+    if (!m || used[m.slug]) return;
+    used[m.slug] = 1;
+    cards.push({ k: key, name: m.name, meta: meta, slug: m.slug });
+  }
+
+  // Best value: highest score per dollar among models scoring in the top half.
+  // Restricting to the top half stops a cheap-but-weak model winning on ratio
+  // alone — "value" has to mean usable quality, not just a small denominator.
+  var scores = pts.map(function (p) { return p.score; }).sort(function (a, b) { return a - b; });
+  var median = scores[Math.floor(scores.length / 2)];
+  var capable = pts.filter(function (p) { return p.score >= median; });
+  if (capable.length) {
+    var best = capable.reduce(function (x, y) { return (y.score / y.price) > (x.score / x.price) ? y : x; });
+    add('best value', best.m, fmtPrice(best.price) + '/1M · ' + best.score.toFixed(1) + '%');
+  }
+
+  // Top score outright, so the strip isn't only about thrift.
+  if (pts.length) {
+    var top = pts.reduce(function (x, y) { return y.score > x.score ? y : x; });
+    add('top score', top.m, top.score.toFixed(1) + '% · ' + fmtPrice(top.price) + '/1M');
+  }
+
+  // Highest-scoring OPEN-WEIGHTS model. Deliberately the best, not the cheapest:
+  // labelling the cheapest one "best open weights" reads as a quality claim and
+  // would have surfaced a 29.9% model under that heading.
+  var oss = pts.filter(function (p) { return p.m.isOpenSource; });
+  if (oss.length) {
+    var bestOss = oss.reduce(function (x, y) { return y.score > x.score ? y : x; });
+    add('best open weights', bestOss.m, bestOss.score.toFixed(1) + '% · ' + fmtPrice(bestOss.price) + '/1M');
+  }
+
+  // Cheapest model that still clears 85% — "the cheapest thing you can ship on".
+  var strong = pts.filter(function (p) { return p.score >= 85; });
+  if (strong.length) {
+    var cheapStrong = strong.reduce(function (x, y) { return y.price < x.price ? y : x; });
+    add('cheapest ≥85%', cheapStrong.m, fmtPrice(cheapStrong.price) + '/1M · ' + cheapStrong.score.toFixed(1) + '%');
+  }
+
+  // Largest context among priced models.
+  var ctx = live.filter(function (m) { return m.contextWindow && blendedPrice(m) !== null; });
+  if (ctx.length) {
+    var big = ctx.reduce(function (x, y) { return y.contextWindow > x.contextWindow ? y : x; });
+    add('largest context', big, fmtCtx(big.contextWindow) + ' tokens');
+  }
+
+  el.innerHTML = cards.slice(0, 5).map(function (c) {
+    return '<a class="sup" href="/model/' + encodeURIComponent(c.slug) + '">' +
+      '<span class="sup-k">' + escape(c.k) + '</span>' +
+      '<span class="sup-v">' + escape(shortModelName({ name: c.name })) + '</span>' +
+      '<span class="sup-m">' + escape(c.meta) + '</span></a>';
+  }).join('');
+  el.hidden = cards.length === 0;
+}
+
 // ── Price vs Quality frontier ─────────────────────────────────────────────────
 // Log-x (blended $/1M) against benchmark score. The dashed green step line is the
 // Pareto frontier: at every price point it is the best score money buys. A dot
@@ -2768,7 +2867,7 @@ function attachParetoHover(pts, onFront) {
 }
 
 async function loadBenchmarks() {
-  if (state.benchmarks) { renderPareto(); return; }
+  if (state.benchmarks) { renderPareto(); renderSuperlatives(); return; }
   try {
     // Slow-moving (Epoch re-runs daily at most) → no cache bust, same policy as
     // /api/subscriptions. See the caching block atop index.ts.
@@ -2778,6 +2877,7 @@ async function loadBenchmarks() {
       indexBenchmarks(data);
       renderTable();
       renderPareto();
+      renderSuperlatives();
       return;
     }
   } catch (e) { /* fall through */ }
@@ -3429,6 +3529,7 @@ async function init() {
     renderProviderFilters();
     renderTable();
     renderPareto();
+    renderSuperlatives();
     if (!initialBenchmarks) loadBenchmarks();
     if (lastUpdated) {
       var upd = fmtUpdated(lastUpdated);
@@ -3523,6 +3624,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       renderTable();
       renderPareto();
+      renderSuperlatives();
     });
   }
 
