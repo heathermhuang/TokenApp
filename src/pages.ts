@@ -13,7 +13,7 @@
  * run benchmark (Epoch AI, CC BY, cited). No number renders without provenance.
  */
 
-import type { NormalizedModel, Subscription, SubscriptionTier, BenchmarksPayload, ModelBenchmarks } from './types';
+import type { NormalizedModel, Subscription, SubscriptionTier, BenchmarksPayload, ModelBenchmarks, ModelEndpoints } from './types';
 import { getProvider, PROVIDER_PAGE_SET } from './providers';
 
 // ── Shared formatting ─────────────────────────────────────────────────────────
@@ -124,6 +124,7 @@ const SHELL_CSS = `
     .linkgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:8px; }
     .linkgrid a { display:block; padding:9px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); font-size:13px; color:var(--text2); text-decoration:none; }
     .linkgrid a:hover { color:var(--text); border-color:var(--border2); }
+    .hostwarn { font-size:11px; color:var(--orange,#f97316); margin-top:3px; font-weight:500; }
     .cite { font-size:11px; color:var(--text3); line-height:1.6; padding:12px 18px; border-top:1px solid var(--border); }
     .cite a { color:var(--text2); }
     details { border-bottom:1px solid var(--border); }
@@ -235,8 +236,9 @@ export function getModelHtml(params: {
   all: NormalizedModel[];
   benchmarks: BenchmarksPayload | null;
   subscriptions: Subscription[];
+  endpoints: ModelEndpoints | null;
 }): string {
-  const { model: m, all, benchmarks, subscriptions } = params;
+  const { model: m, all, benchmarks, subscriptions, endpoints } = params;
   const prov = getProvider(m.providerId);
   const bl = blended(m);
   const mb = benchOf(benchmarks, m.id);
@@ -385,6 +387,8 @@ export function getModelHtml(params: {
     </table></div>
   </div>` : ''}
 
+  ${hostsPanel(endpoints, m)}
+
   ${inSubs.length ? `<div class="panel">
     <div class="panel-head">
       <div class="panel-title">Subscriptions that include ${esc(disp)}</div>
@@ -436,6 +440,73 @@ export function getModelHtml(params: {
     })],
     body,
   });
+}
+
+/**
+ * "Where to run it" — the per-host price spread.
+ *
+ * The point is not the list, it is the two traps: a host can be cheapest because
+ * it serves a fraction of the context window, or because it runs lower-precision
+ * weights. Both are flagged inline against the best value available for the model,
+ * so "cheapest" is never presented as unqualified good news.
+ */
+function hostsPanel(eps: ModelEndpoints | null, m: NormalizedModel): string {
+  if (!eps || eps.endpoints.length < 2) return '';   // one host is not a comparison
+
+  const priced = eps.endpoints.filter((e) => e.blendedPer1M !== null);
+  if (priced.length < 2) return '';
+
+  const lo = priced[0], hi = priced[priced.length - 1];
+  const spread = lo.blendedPer1M! > 0 ? hi.blendedPer1M! / lo.blendedPer1M! : null;
+  const bestCtx = Math.max(...eps.endpoints.map((e) => e.contextLength ?? 0));
+  const showQuant = eps.endpoints.some((e) => e.quantization);
+  const anyLong = eps.endpoints.some((e) => e.longContext);
+
+  const rows = eps.endpoints.map((e) => {
+    const warn: string[] = [];
+    // Flag only a materially smaller window — trivial differences are noise.
+    if (bestCtx > 0 && e.contextLength && e.contextLength < bestCtx * 0.9) {
+      warn.push(`${fmtCtx(e.contextLength)} context, not ${fmtCtx(bestCtx)}`);
+    }
+    if (e.longContext) {
+      warn.push(`re-prices above ${fmtCtx(e.longContext.minPromptTokens)} prompt tokens (${fmtP(e.longContext.inputPer1M)}/${fmtP(e.longContext.outputPer1M)})`);
+    }
+    return `<tr>
+          <td><strong>${esc(e.label)}</strong>${warn.length ? `<div class="hostwarn">⚠ ${warn.map(esc).join(' · ')}</div>` : ''}</td>
+          <td class="num${e === lo ? ' win' : ''}">${esc(fmtP(e.blendedPer1M))}</td>
+          <td class="num muted">${esc(fmtP(e.inputPer1M))} / ${esc(fmtP(e.outputPer1M))}</td>
+          <td class="num muted">${esc(fmtCtx(e.contextLength))}</td>
+          ${showQuant ? `<td class="muted">${e.quantization ? esc(e.quantization) : '—'}</td>` : ''}
+          <td class="num muted">${e.uptimeDay !== null ? e.uptimeDay.toFixed(1) + '%' : '—'}</td>
+        </tr>`;
+  }).join('\n        ');
+
+  // Count PROVIDERS separately from endpoints. Several rows are often the same
+  // provider at a different service tier or region — GPT-5.6 Sol spans 4× purely
+  // across OpenAI's own flex/standard/priority tiers. Calling that "6 hosts, 4×
+  // spread" would imply competition between vendors that isn't there.
+  const providers = new Set(eps.endpoints.map((e) => e.provider));
+  const optionWord = eps.endpoints.length === providers.size ? 'hosts' : 'options';
+  const acrossBit = providers.size === eps.endpoints.length
+    ? ''
+    : ` across ${providers.size} provider${providers.size === 1 ? '' : 's'}`;
+  const headline = spread && spread >= 1.05
+    ? `${eps.endpoints.length} ${optionWord}${acrossBit} · ${spread.toFixed(spread >= 10 ? 0 : 1)}× between cheapest and dearest`
+    : `${eps.endpoints.length} ${optionWord}${acrossBit} · all priced within ~5% of each other`;
+
+  return `<div class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Where to run ${esc(shortName(m.name))}</div>
+      <div class="panel-sub">${esc(headline)}. Blended at 3:1. ⚠ marks an option serving less context than the best available, or re-pricing above a prompt-length threshold. Bracketed labels are the provider's own service tier or region.</div>
+    </div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Host</th><th>Blended $/1M</th><th>In / Out</th><th>Context</th>${showQuant ? '<th>Weights</th>' : ''}<th>Uptime 24h</th></tr></thead>
+      <tbody>
+        ${rows}
+      </tbody>
+    </table></div>
+    <div class="cite">Host prices and uptime from OpenRouter, synced ${esc((eps.fetchedAt || '').slice(0, 10))}.${showQuant ? ' Lower-precision weights (fp4, fp8) can cost less and score worse than the same model at bf16 — the score above is not host-specific.' : ''}${anyLong ? '' : ''}</div>
+  </div>`;
 }
 
 // Lowest non-zero monthly price across a subscription's tiers, used for "from $X".

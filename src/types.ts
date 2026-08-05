@@ -236,6 +236,36 @@ export interface BenchmarksPayload {
   fetchedAt: string;
 }
 
+// ── Per-provider endpoints (OpenRouter /models/{id}/endpoints) ───────────────
+
+// One host serving one model. The same model is frequently offered by a dozen+
+// providers at wildly different prices AND different context limits and weight
+// quantizations — the thing a pricing site should obviously surface and which
+// nobody displays well.
+export interface ProviderEndpoint {
+  provider: string;            // e.g. "DeepInfra"
+  label: string;               // disambiguated when a provider appears twice (regional Bedrock etc.)
+  tag: string;
+  inputPer1M: number | null;
+  outputPer1M: number | null;
+  blendedPer1M: number | null; // 3:1, same basis as the rest of the site
+  cacheReadPer1M: number | null;
+  contextLength: number | null;
+  maxOutput: number | null;
+  quantization: string | null; // fp4 / fp8 / bf16 / unknown — a real quality difference
+  uptimeDay: number | null;    // % over the last day
+  implicitCaching: boolean;
+  // Some hosts re-price above a prompt-length threshold (Claude doubles above
+  // 200k). Rendering only the headline price would understate long-context cost.
+  longContext: { minPromptTokens: number; inputPer1M: number; outputPer1M: number } | null;
+}
+
+export interface ModelEndpoints {
+  modelId: string;
+  endpoints: ProviderEndpoint[]; // ascending by blended price
+  fetchedAt: string;
+}
+
 export const KV_KEYS = {
   MODELS: 'models:all',
   MODELS_UPDATED: 'models:last_updated',
