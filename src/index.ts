@@ -4,6 +4,7 @@ import { cache } from 'hono/cache';
 import type { Env } from './types';
 import { KV_KEYS } from './types';
 import { getModels, getSubscriptions, getRankings, refreshAllData } from './fetchers';
+import { readBenchmarks } from './benchmarks';
 import { APP_CATEGORIES, CATEGORY_SLUGS, CATEGORY_LABELS } from './categories';
 import { getHtml, getProviderHtml, getAboutHtml } from './template';
 
@@ -130,6 +131,24 @@ app.get(
     } catch (err) {
       console.error('Failed to get task spend:', err);
       return c.json({ error: 'Failed to load task spend' }, 500);
+    }
+  }
+);
+
+app.get(
+  '/api/benchmarks',
+  cache({ cacheName: 'token-app-benchmarks', cacheControl: 'max-age=3600, stale-while-revalidate=86400' }),
+  async (c) => {
+    try {
+      // Epoch AI (CC BY) benchmark scores, written to KV by the cron. Slow-moving
+      // (Epoch re-runs daily at most), so the 4h edge cache is fine and this stays
+      // OFF the client-side bust list — same policy as /api/subscriptions.
+      const raw = await c.env.TOKEN_APP_KV.get(KV_KEYS.BENCHMARKS);
+      if (!raw) return c.json({ error: 'Benchmarks not yet available' }, 404);
+      return c.body(raw, 200, { 'Content-Type': 'application/json' });
+    } catch (err) {
+      console.error('Failed to get benchmarks:', err);
+      return c.json({ error: 'Failed to load benchmarks' }, 500);
     }
   }
 );
@@ -368,16 +387,18 @@ for (const slug of PROVIDER_SLUGS) {
 app.get('/', async (c) => {
   try {
     // Server-side render with initial data (avoids client-side waterfall)
-    const [{ models, lastUpdated }, subs, rankings] = await Promise.all([
+    const [{ models, lastUpdated }, subs, rankings, benchmarks] = await Promise.all([
       getModels(c.env),
       getSubscriptions(c.env),
       getRankings(c.env),
+      readBenchmarks(c.env),
     ]);
 
     const html = getHtml({
       initialModels: JSON.stringify(models),
       initialSubscriptions: JSON.stringify(subs),
       initialRankings: rankings ? JSON.stringify(rankings) : 'null',
+      initialBenchmarks: benchmarks ? JSON.stringify(benchmarks) : 'null',
       lastUpdated,
     });
 

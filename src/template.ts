@@ -2,6 +2,7 @@ export function getHtml(params: {
   initialModels?: string;
   initialSubscriptions?: string;
   initialRankings?: string;
+  initialBenchmarks?: string;
   lastUpdated?: string | null;
 }): string {
   const { lastUpdated = null } = params;
@@ -13,6 +14,7 @@ export function getHtml(params: {
   const initialModels = safeLiteral(params.initialModels ?? '[]');
   const initialSubscriptions = safeLiteral(params.initialSubscriptions ?? '[]');
   const initialRankings = safeLiteral(params.initialRankings ?? 'null');
+  const initialBenchmarks = safeLiteral(params.initialBenchmarks ?? 'null');
 
   // Compute counts server-side for accurate meta tags and hero description
   const parsedModels = JSON.parse(params.initialModels ?? '[]') as Array<{
@@ -390,6 +392,54 @@ export function getHtml(params: {
       margin: 0 auto;
       padding: 0 24px 16px;
     }
+
+    /* ── Quality column ─────────────────────────────────────────────────── */
+    .q-score { display:flex; align-items:center; gap:8px; font-variant-numeric:tabular-nums; }
+    .q-bar {
+      position:relative; display:block; width:46px; height:5px; flex:none;
+      background:var(--surface2); border-radius:3px; overflow:hidden;
+    }
+    .q-fill { position:absolute; inset:0 auto 0 0; background:var(--accent); border-radius:3px; }
+    .q-num { font-size:12px; color:var(--text); }
+    .q-none { color:var(--text3); }
+
+    /* ── Price vs quality scatter ───────────────────────────────────────── */
+    .pareto-shell { padding-bottom: 24px; }
+    .pareto-header {
+      display:flex; align-items:flex-start; justify-content:space-between;
+      gap:12px; flex-wrap:wrap;
+    }
+    /* Six benchmark labels overflow the card on a phone — scroll the toggle
+       rather than letting it push past the panel edge. */
+    #pareto-bench-toggle { max-width:100%; overflow-x:auto; flex-wrap:nowrap; }
+    #pareto-bench-toggle .period-btn { white-space:nowrap; }
+    @media (max-width: 700px) {
+      .pareto-header { flex-direction:column; align-items:stretch; }
+    }
+    .pareto-wrap { position:relative; width:100%; overflow-x:auto; padding:8px 12px 0; box-sizing:border-box; }
+    .pareto-svg { display:block; width:100%; min-width:520px; height:auto; }
+    .pareto-axis { stroke:var(--border); stroke-width:1; }
+    .pareto-grid { stroke:var(--border); stroke-width:1; stroke-dasharray:2 4; opacity:0.55; }
+    .pareto-tick { fill:var(--text3); font-size:10px; }
+    .pareto-axis-label { fill:var(--text2); font-size:11px; font-weight:500; }
+    .pareto-frontier { fill:none; stroke:var(--green); stroke-width:1.5; stroke-dasharray:4 3; opacity:0.75; }
+    /* Outline every dot: several provider colours are near-white and disappear
+       against the light-theme surface without it. */
+    .pareto-dot { cursor:pointer; transition:r 0.12s ease; stroke:var(--border2); stroke-width:0.75; }
+    .pareto-dot:hover { r:7; }
+    .pareto-dot.on-frontier { stroke:var(--green); stroke-width:2; }
+    .pareto-label { fill:var(--text2); font-size:9.5px; pointer-events:none; }
+    .pareto-tip {
+      position:absolute; pointer-events:none; opacity:0; transition:opacity 0.1s ease;
+      background:var(--surface2); border:1px solid var(--border2); border-radius:var(--radius-sm);
+      padding:8px 10px; font-size:12px; color:var(--text); box-shadow:var(--shadow-md); z-index:5; max-width:250px;
+    }
+    .pareto-tip.show { opacity:1; }
+    .pareto-tip .pt-name { font-weight:600; margin-bottom:3px; }
+    .pareto-tip .pt-row { color:var(--text2); font-size:11px; }
+    .pareto-tip .pt-best { color:var(--green); font-size:11px; margin-top:4px; }
+    .pareto-credit { padding:10px 16px 14px; font-size:11px; color:var(--text3); line-height:1.5; }
+    .pareto-credit a { color:var(--text2); }
 
     .main-tabs {
       display: flex;
@@ -1594,6 +1644,31 @@ export function getHtml(params: {
   </div>
 </div>
 
+<!-- ── Price vs quality frontier ──────────────────────────────────────────────
+     The chart llm-stats can't draw: they rank by score and treat price as a
+     column. We hold the deepest price data, so we plot the trade-off directly
+     and mark the Pareto frontier — everything above-and-left of it is strictly
+     a worse deal than something on it.
+     Sits ABOVE the table on purpose: below 338 rows it is ~28,000px down and
+     effectively invisible. -->
+<!-- .table-wrap supplies the page container width/gutters — .market-share does NOT
+     (it is a bare wrapper; the rankings tab provides that layout itself). -->
+<div class="table-wrap pareto-shell" id="pareto-section" style="display:none;">
+  <div class="leaderboard">
+    <div class="leaderboard-header pareto-header">
+      <div>
+        <div class="leaderboard-title">Price vs Quality</div>
+        <div class="leaderboard-subtitle" id="pareto-sub">Blended cost per 1M tokens against independently-run benchmark score</div>
+      </div>
+      <div class="period-toggle" id="pareto-bench-toggle"><!-- injected --></div>
+    </div>
+    <div id="pareto-body">
+      <div class="ms-empty">Loading benchmarks…</div>
+    </div>
+    <div class="pareto-credit" id="pareto-credit"></div>
+  </div>
+</div>
+
 <!-- ── API Pricing Table ─────────────────────────────────────────────────────── -->
 <h2 class="sr-only">API Pricing</h2>
 <div class="table-wrap" id="api-section">
@@ -1610,11 +1685,13 @@ export function getHtml(params: {
         <th data-sort="contextWindow" title="Context window">Context <span class="sort-icon">↕</span></th>
         <th data-sort="inputPer1M">Input $/1M <span class="sort-icon">↕</span></th>
         <th data-sort="outputPer1M">Output $/1M <span class="sort-icon">↕</span></th>
+        <th data-sort="blendedPer1M" title="Blended cost per 1M tokens at a 3:1 input:output mix — one number to sort real spend by">Blended $/1M <span class="sort-icon">↕</span></th>
+        <th data-sort="quality" id="quality-col-head" title="Independently-run benchmark score (Epoch AI)">Quality <span class="sort-icon">↕</span></th>
         <th>Modalities</th>
       </tr>
     </thead>
     <tbody id="models-tbody">
-      <tr><td colspan="7"><div class="loading"><div class="spinner"></div> Loading models…</div></td></tr>
+      <tr><td colspan="9"><div class="loading"><div class="spinner"></div> Loading models…</div></td></tr>
     </tbody>
   </table>
 </div>
@@ -1840,7 +1917,49 @@ const state = {
   search: '',
   sortKey: 'createdAt',
   sortDir: -1,       // 1 = asc, -1 = desc (newest first by default)
+  benchmarks: null,  // BenchmarksPayload from Epoch AI (CC BY)
+  benchIndex: {},    // modelId -> { benchmarkId: BenchmarkScore }
+  benchPrimary: 'gpqa_diamond', // benchmark driving the Quality column + chart
 };
+
+// ── Derived pricing/quality fields ─────────────────────────────────────────────
+// Attached onto each model object so the existing sort (which reads m[sortKey])
+// picks them up for free. Recomputed whenever the primary benchmark changes.
+
+// Blended $/1M at a 3:1 input:output mix. Two price columns can't be sorted
+// against each other — real spend is a mix, so collapse it to one number.
+// 3:1 matches the ratio llm-stats uses on its comparison pages.
+var BLEND_IN = 0.75, BLEND_OUT = 0.25;
+function blendedPrice(m) {
+  if (m.inputPer1M === null || m.inputPer1M === undefined) return null;
+  if (m.outputPer1M === null || m.outputPer1M === undefined) return null;
+  if (m.inputPer1M < 0 || m.outputPer1M < 0) return null; // sentinel rows (openrouter/auto)
+  return m.inputPer1M * BLEND_IN + m.outputPer1M * BLEND_OUT;
+}
+
+function attachDerived() {
+  for (var i = 0; i < state.models.length; i++) {
+    var m = state.models[i];
+    m.blendedPer1M = blendedPrice(m);
+    var row = state.benchIndex[m.id];
+    var s = row ? row[state.benchPrimary] : null;
+    m.quality = s ? s.score * 100 : null;
+    m.qualityScore = s || null;
+  }
+}
+
+function indexBenchmarks(payload) {
+  state.benchmarks = payload;
+  var idx = {};
+  var list = (payload && payload.models) || [];
+  for (var i = 0; i < list.length; i++) {
+    var row = {};
+    for (var j = 0; j < list[i].scores.length; j++) row[list[i].scores[j].benchmarkId] = list[i].scores[j];
+    idx[list[i].modelId] = row;
+  }
+  state.benchIndex = idx;
+  attachDerived();
+}
 
 // ── Utilities ──────────────────────────────────────────────────────────────────
 function fmtCtx(n) {
@@ -2302,7 +2421,7 @@ function renderTable() {
   document.getElementById('filtered-count').textContent = list.length.toLocaleString();
 
   if (list.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><h3>No models found</h3><p>Try adjusting your filters or search query.</p></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><h3>No models found</h3><p>Try adjusting your filters or search query.</p></div></td></tr>';
     return;
   }
 
@@ -2338,9 +2457,28 @@ function renderTable() {
       <td class="ctx">\${fmtCtx(m.contextWindow)}</td>
       <td><span class="price \${inPClass}">\${fmtPrice(m.inputPer1M)}</span></td>
       <td><span class="price \${outPClass}">\${fmtPrice(m.outputPer1M)}</span></td>
+      <td><span class="price \${priceClass(m.blendedPer1M, 'input')}">\${fmtPrice(m.blendedPer1M)}</span></td>
+      <td>\${qualityCell(m)}</td>
       <td><div class="modality-icons">\${modIcons}</div></td>
     </tr>\`;
   }).join('');
+}
+
+// Quality cell. Renders NOTHING when we have no verified score — an em dash that
+// could read as "scored zero" is worse than an honest blank, and every number
+// carries its citation in the title attribute.
+function qualityCell(m) {
+  var s = m.qualityScore;
+  if (!s) return '<span class="q-none" title="No independently-run score published for this model">—</span>';
+  var pct = (s.score * 100).toFixed(1);
+  var err = s.stderr ? ' ±' + (s.stderr * 100).toFixed(1) : '';
+  var tip = s.benchmark + ': ' + pct + '%' + err +
+    (s.variant ? ' (' + s.variant + ' effort)' : '') +
+    (s.recordedAt ? ' · run ' + s.recordedAt : '') +
+    ' · ' + s.source + (s.isSelfReported ? ' (self-reported)' : ' (independently run)');
+  return '<span class="q-score" title="' + escape(tip) + '">' +
+    '<span class="q-bar"><span class="q-fill" style="width:' + Math.max(2, Math.min(100, s.score * 100)) + '%"></span></span>' +
+    '<span class="q-num">' + pct + '</span></span>';
 }
 
 function buildModIcons(m) {
@@ -2423,6 +2561,228 @@ function fmtVerified(iso) {
   const m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const p = String(iso).split('-');
   return (m[+p[1] - 1] || '') + ' ' + p[0];
+}
+
+// ── Price vs Quality frontier ─────────────────────────────────────────────────
+// Log-x (blended $/1M) against benchmark score. The dashed green step line is the
+// Pareto frontier: at every price point it is the best score money buys. A dot
+// above-and-left of the line is dominated — something cheaper scores higher.
+
+// OpenRouter names models "Provider: Model" ("DeepSeek: DeepSeek V4 Flash 0731").
+// On the chart the dot already carries the provider colour, so the prefix is pure
+// noise — and it is what makes the frontier labels overlap.
+function shortModelName(m) {
+  var n = m.name || m.slug || m.id;
+  var i = n.indexOf(': ');
+  return i > 0 ? n.slice(i + 2) : n;
+}
+
+function paretoPoints() {
+  var out = [];
+  for (var i = 0; i < state.models.length; i++) {
+    var m = state.models[i];
+    var s = state.benchIndex[m.id] && state.benchIndex[m.id][state.benchPrimary];
+    // Free models are excluded, not hidden by accident: log(0) has no home on
+    // this axis and "free" is a different value proposition (use the Free filter).
+    if (!s || !m.blendedPer1M || m.blendedPer1M <= 0) continue;
+    if (m.isDeprecated) continue;
+    out.push({ m: m, price: m.blendedPer1M, score: s.score * 100, s: s });
+  }
+  return out.sort(function (a, b) { return a.price - b.price; });
+}
+
+function paretoFrontier(pts) {
+  // pts already price-ascending. Keep a point when nothing cheaper scores as high.
+  var front = [], best = -Infinity;
+  for (var i = 0; i < pts.length; i++) {
+    if (pts[i].score > best) { front.push(pts[i]); best = pts[i].score; }
+  }
+  return front;
+}
+
+function renderPareto() {
+  var sect = document.getElementById('pareto-section');
+  var body = document.getElementById('pareto-body');
+  if (!sect || !body) return;
+
+  if (!state.benchmarks || !state.benchmarks.models || !state.benchmarks.models.length) {
+    sect.style.display = 'none';
+    return;
+  }
+  sect.style.display = '';
+
+  // Benchmark toggle — only offer benchmarks that actually have coverage, so a
+  // sparsely-run eval can't present as an empty chart.
+  var toggle = document.getElementById('pareto-bench-toggle');
+  var avail = state.benchmarks.benchmarks.filter(function (b) {
+    var n = 0;
+    for (var id in state.benchIndex) if (state.benchIndex[id][b.id]) n++;
+    return n >= 5;
+  });
+  if (avail.length && toggle) {
+    toggle.innerHTML = avail.map(function (b) {
+      return '<button class="period-btn' + (b.id === state.benchPrimary ? ' active' : '') +
+        '" data-bench="' + b.id + '" title="' + escape(b.blurb) + '">' + escape(b.label) + '</button>';
+    }).join('');
+  }
+
+  var pts = paretoPoints();
+  if (pts.length < 3) {
+    body.innerHTML = '<div class="ms-empty">Not enough scored models with published pricing for this benchmark yet.</div>';
+    renderParetoCredit(0);
+    return;
+  }
+
+  var front = paretoFrontier(pts);
+  var onFront = new Set(front.map(function (p) { return p.m.id; }));
+
+  var W = 880, H = 420, PAD_L = 52, PAD_R = 18, PAD_T = 18, PAD_B = 46;
+  var plotW = W - PAD_L - PAD_R, plotH = H - PAD_T - PAD_B;
+
+  var minP = pts[0].price, maxP = pts[pts.length - 1].price;
+  var lo = Math.log10(minP), hi = Math.log10(maxP);
+  if (hi - lo < 0.5) { lo -= 0.25; hi += 0.25; }  // avoid a degenerate axis
+  var scores = pts.map(function (p) { return p.score; });
+  var minS = Math.min.apply(null, scores), maxS = Math.max.apply(null, scores);
+  var padS = Math.max(2, (maxS - minS) * 0.12);
+  var sLo = Math.max(0, minS - padS), sHi = Math.min(100, maxS + padS);
+
+  var x = function (p) { return PAD_L + ((Math.log10(p) - lo) / (hi - lo)) * plotW; };
+  var y = function (s) { return PAD_T + plotH - ((s - sLo) / (sHi - sLo)) * plotH; };
+
+  var svg = '<svg class="pareto-svg" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Price versus benchmark score scatter plot">';
+
+  // Y grid + ticks
+  var ySteps = 5;
+  for (var i = 0; i <= ySteps; i++) {
+    var sv = sLo + ((sHi - sLo) * i) / ySteps;
+    var yy = y(sv);
+    svg += '<line class="pareto-grid" x1="' + PAD_L + '" y1="' + yy.toFixed(1) + '" x2="' + (W - PAD_R) + '" y2="' + yy.toFixed(1) + '"/>';
+    svg += '<text class="pareto-tick" x="' + (PAD_L - 8) + '" y="' + (yy + 3.5).toFixed(1) + '" text-anchor="end">' + sv.toFixed(0) + '%</text>';
+  }
+
+  // X ticks at decade boundaries ($0.01, $0.1, $1, $10, $100)
+  for (var d = Math.floor(lo); d <= Math.ceil(hi); d++) {
+    var pv = Math.pow(10, d);
+    if (Math.log10(pv) < lo - 0.001 || Math.log10(pv) > hi + 0.001) continue;
+    var xx = x(pv);
+    svg += '<line class="pareto-grid" x1="' + xx.toFixed(1) + '" y1="' + PAD_T + '" x2="' + xx.toFixed(1) + '" y2="' + (PAD_T + plotH) + '"/>';
+    svg += '<text class="pareto-tick" x="' + xx.toFixed(1) + '" y="' + (PAD_T + plotH + 16) + '" text-anchor="middle">' + fmtPrice(pv) + '</text>';
+  }
+
+  // Axes
+  svg += '<line class="pareto-axis" x1="' + PAD_L + '" y1="' + (PAD_T + plotH) + '" x2="' + (W - PAD_R) + '" y2="' + (PAD_T + plotH) + '"/>';
+  svg += '<line class="pareto-axis" x1="' + PAD_L + '" y1="' + PAD_T + '" x2="' + PAD_L + '" y2="' + (PAD_T + plotH) + '"/>';
+  svg += '<text class="pareto-axis-label" x="' + (PAD_L + plotW / 2) + '" y="' + (H - 8) + '" text-anchor="middle">Blended cost per 1M tokens (3:1 in:out, log scale)</text>';
+  svg += '<text class="pareto-axis-label" transform="translate(13,' + (PAD_T + plotH / 2) + ') rotate(-90)" text-anchor="middle">' +
+    escape((state.benchmarks.benchmarks.find(function (b) { return b.id === state.benchPrimary; }) || {}).label || 'Score') + ' score</text>';
+
+  // Frontier step line — horizontal to the next price, then up to its score.
+  if (front.length > 1) {
+    var dPath = 'M ' + x(front[0].price).toFixed(1) + ' ' + y(front[0].score).toFixed(1);
+    for (var f = 1; f < front.length; f++) {
+      dPath += ' L ' + x(front[f].price).toFixed(1) + ' ' + y(front[f - 1].score).toFixed(1);
+      dPath += ' L ' + x(front[f].price).toFixed(1) + ' ' + y(front[f].score).toFixed(1);
+    }
+    svg += '<path class="pareto-frontier" d="' + dPath + '"/>';
+  }
+
+  // Dots
+  for (var k = 0; k < pts.length; k++) {
+    var p = pts[k];
+    var ps = getProviderStyle(p.m.providerId);
+    var f2 = onFront.has(p.m.id);
+    svg += '<circle class="pareto-dot' + (f2 ? ' on-frontier' : '') + '" data-i="' + k + '" cx="' + x(p.price).toFixed(1) +
+      '" cy="' + y(p.score).toFixed(1) + '" r="' + (f2 ? 5.5 : 4) + '" fill="' + ps.color + '" fill-opacity="' + (f2 ? '1' : '0.55') + '"/>';
+  }
+
+  // Label frontier models only — labelling all 70 is unreadable. Even with 8 the
+  // labels collide when frontier points cluster, so alternate above/below to give
+  // neighbours ~24px of vertical separation, and drop the redundant "Provider: "
+  // prefix (the dot is already provider-coloured).
+  for (var l = 0; l < front.length; l++) {
+    var fp = front[l];
+    var fx = x(fp.price), fy = y(fp.score);
+    var above = l % 2 === 0;
+    var ly = above ? fy - 11 : fy + 16;
+    // Keep labels inside the plot box rather than clipping at the edges.
+    if (ly < PAD_T + 8) ly = fy + 16;
+    if (ly > PAD_T + plotH - 4) ly = fy - 11;
+    var anchor = 'middle', lx = fx;
+    if (fx < PAD_L + 46) { anchor = 'start'; lx = PAD_L + 2; }
+    else if (fx > W - PAD_R - 46) { anchor = 'end'; lx = W - PAD_R - 2; }
+    svg += '<text class="pareto-label" x="' + lx.toFixed(1) + '" y="' + ly.toFixed(1) +
+      '" text-anchor="' + anchor + '">' + escape(shortModelName(fp.m)) + '</text>';
+  }
+
+  svg += '</svg>';
+
+  body.innerHTML = '<div class="pareto-wrap">' + svg + '<div class="pareto-tip" id="pareto-tip"></div></div>';
+  attachParetoHover(pts, onFront);
+  renderParetoCredit(pts.length);
+
+  var sub = document.getElementById('pareto-sub');
+  if (sub) {
+    sub.textContent = pts.length + ' priced models with an independently-run score · ' +
+      front.length + ' on the frontier · dashed line = best score available at each price';
+  }
+}
+
+function renderParetoCredit(n) {
+  var el = document.getElementById('pareto-credit');
+  if (!el || !state.benchmarks) return;
+  var a = state.benchmarks.attribution;
+  var when = state.benchmarks.fetchedAt ? state.benchmarks.fetchedAt.slice(0, 10) : '';
+  // CC BY obliges us to credit the source and link the licence. It also happens
+  // to be the honest thing to show: these are independently-run evals, not
+  // vendor self-reports, and that distinction is the whole value of the column.
+  el.innerHTML = 'Benchmark scores independently run and published by <a href="' + a.url +
+    '" target="_blank" rel="noopener">' + escape(a.text) + '</a>, used under <a href="' + a.licenseUrl +
+    '" target="_blank" rel="noopener">' + escape(a.license) + '</a>' + (when ? ' · synced ' + when : '') +
+    '. Prices from OpenRouter. Models without a published score are not plotted.';
+}
+
+function attachParetoHover(pts, onFront) {
+  var tip = document.getElementById('pareto-tip');
+  var wrap = tip && tip.parentElement;
+  if (!tip || !wrap) return;
+  wrap.addEventListener('mousemove', function (e) {
+    var dot = e.target.closest ? e.target.closest('.pareto-dot') : null;
+    if (!dot) { tip.classList.remove('show'); return; }
+    var p = pts[parseInt(dot.dataset.i, 10)];
+    if (!p) { tip.classList.remove('show'); return; }
+    var err = p.s.stderr ? ' ±' + (p.s.stderr * 100).toFixed(1) : '';
+    tip.innerHTML = '<div class="pt-name">' + escape(p.m.name) + '</div>' +
+      '<div class="pt-row">' + escape(p.m.provider) + ' · ' + fmtPrice(p.price) + '/1M blended</div>' +
+      '<div class="pt-row">' + escape(p.s.benchmark) + ' ' + (p.score).toFixed(1) + '%' + err + '</div>' +
+      '<div class="pt-row">in ' + fmtPrice(p.m.inputPer1M) + ' · out ' + fmtPrice(p.m.outputPer1M) + '</div>' +
+      (onFront.has(p.m.id) ? '<div class="pt-best">On the price/quality frontier</div>' : '');
+    var r = wrap.getBoundingClientRect();
+    var lx = e.clientX - r.left + 14, ly = e.clientY - r.top + 14;
+    if (lx > r.width - 200) lx = e.clientX - r.left - 200;
+    tip.style.left = lx + 'px';
+    tip.style.top = ly + 'px';
+    tip.classList.add('show');
+  });
+  wrap.addEventListener('mouseleave', function () { tip.classList.remove('show'); });
+}
+
+async function loadBenchmarks() {
+  if (state.benchmarks) { renderPareto(); return; }
+  try {
+    // Slow-moving (Epoch re-runs daily at most) → no cache bust, same policy as
+    // /api/subscriptions. See the caching block atop index.ts.
+    var res = await fetch('/api/benchmarks');
+    var data = await res.json();
+    if (data && !data.error && data.models) {
+      indexBenchmarks(data);
+      renderTable();
+      renderPareto();
+      return;
+    }
+  } catch (e) { /* fall through */ }
+  var sect = document.getElementById('pareto-section');
+  if (sect && !state.benchmarks) sect.style.display = 'none';
 }
 
 function renderSubscriptions() {
@@ -2947,15 +3307,21 @@ function switchView(view) {
   document.querySelectorAll('.main-tab').forEach(t => t.classList.remove('active'));
   document.querySelector(\`.main-tab[data-view="\${view}"]\`).classList.add('active');
 
+  var paretoSection = document.getElementById('pareto-section');
+
   apiSection.style.display = 'none';
   subsSection.style.display = 'none';
   rankingsSection.style.display = 'none';
   apiControls.style.display = 'none';
   subsControls.style.display = 'none';
+  // The frontier chart lives under the API table, so it has to follow the tab.
+  // renderPareto() re-decides its own visibility from the data on the way back.
+  if (paretoSection) paretoSection.style.display = 'none';
 
   if (view === 'api') {
     apiSection.style.display = '';
     apiControls.style.display = '';
+    renderPareto();
   } else if (view === 'subscriptions') {
     subsSection.style.display = '';
     subsControls.style.display = '';
@@ -3050,6 +3416,7 @@ async function init() {
   var initialModels = ${initialModels};
   var initialSubs = ${initialSubscriptions};
   var initialRankings = ${initialRankings};
+  var initialBenchmarks = ${initialBenchmarks};
   var lastUpdated = ${lastUpdated ? JSON.stringify(lastUpdated) : 'null'};
 
   if (initialModels && initialModels.length > 0) {
@@ -3057,9 +3424,12 @@ async function init() {
     state.subscriptions = initialSubs;
     state.rankings = initialRankings;
     if (initialRankings) state.rankingsByPeriod.day = initialRankings;
+    if (initialBenchmarks) indexBenchmarks(initialBenchmarks); else attachDerived();
     updateStats();
     renderProviderFilters();
     renderTable();
+    renderPareto();
+    if (!initialBenchmarks) loadBenchmarks();
     if (lastUpdated) {
       var upd = fmtUpdated(lastUpdated);
       document.getElementById('nav-updated').textContent = upd;
@@ -3084,9 +3454,11 @@ async function init() {
           state.rankingsByPeriod.day = rankingsData;
         }
       } catch(e) {}
+      attachDerived();
       updateStats();
       renderProviderFilters();
       renderTable();
+      loadBenchmarks();
       if (lu) {
         var upd2 = fmtUpdated(lu);
         document.getElementById('nav-updated').textContent = upd2;
@@ -3094,7 +3466,7 @@ async function init() {
       }
     } catch (err) {
       document.getElementById('models-tbody').innerHTML =
-        '<tr><td colspan="7"><div class="empty-state"><h3>Failed to load data</h3><p>' + err.message + '</p></div></td></tr>';
+        '<tr><td colspan="9"><div class="empty-state"><h3>Failed to load data</h3><p>' + err.message + '</p></div></td></tr>';
     }
   }
 }
@@ -3134,6 +3506,25 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.classList.add('active');
     renderTable();
   });
+
+  // Price/quality frontier — benchmark selector. Delegated because the buttons
+  // are injected by renderPareto() once we know which benchmarks have coverage.
+  var paretoToggle = document.getElementById('pareto-bench-toggle');
+  if (paretoToggle) {
+    paretoToggle.addEventListener('click', e => {
+      const btn = e.target.closest('[data-bench]');
+      if (!btn || btn.dataset.bench === state.benchPrimary) return;
+      state.benchPrimary = btn.dataset.bench;
+      attachDerived();          // Quality column follows the chart's benchmark
+      const head = document.getElementById('quality-col-head');
+      if (head && state.benchmarks) {
+        const b = state.benchmarks.benchmarks.find(x => x.id === state.benchPrimary);
+        if (b) head.title = b.label + ' — ' + b.blurb + ' (independently run by Epoch AI)';
+      }
+      renderTable();
+      renderPareto();
+    });
+  }
 
   // Subscription category tabs
   document.querySelectorAll('[data-subcat]').forEach(btn => {
