@@ -2591,6 +2591,48 @@ function fmtVerified(iso) {
   return (m[+p[1] - 1] || '') + ' ' + p[0];
 }
 
+// Per-benchmark leader, with the gap to #2 measured in standard errors.
+// sigma < 1 means the leader is inside its own error bar — a statistical tie,
+// not a winner. Several of the benchmarks we surface are saturated at the top
+// (GPQA Diamond, OTIS Mock AIME), so this has to be checked, not assumed.
+// (No backticks in this block: it lives inside the page template literal.)
+function benchLeader(benchId) {
+  var rows = [];
+  for (var i = 0; i < state.models.length; i++) {
+    var m = state.models[i];
+    if (m.isDeprecated) continue;
+    var s = state.benchIndex[m.id] && state.benchIndex[m.id][benchId];
+    if (s) rows.push({ m: m, score: s.score, stderr: s.stderr || 0 });
+  }
+  if (rows.length < 2) return null;
+  rows.sort(function (a, b) { return b.score - a.score; });
+  var gap = rows[0].score - rows[1].score;
+  var err = rows[0].stderr;
+  return {
+    m: rows[0].m,
+    score: rows[0].score,
+    runnerUp: rows[1].m,
+    gap: gap,
+    // No published stderr → treat any gap as unproven rather than infinitely
+    // significant. Erring toward "tie" is the safe direction here.
+    sigma: err > 0 ? gap / err : 0,
+  };
+}
+
+// The surfaced benchmark that best separates its leader. Returns null when none
+// of them do — in which case the strip simply omits the card.
+function leadingBenchmark() {
+  if (!state.benchmarks) return null;
+  var best = null;
+  for (var i = 0; i < state.benchmarks.benchmarks.length; i++) {
+    var b = state.benchmarks.benchmarks[i];
+    var l = benchLeader(b.id);
+    if (!l || l.sigma < 1) continue;             // inside the error bar → no claim
+    if (!best || l.sigma > best.sigma) { best = l; best.label = b.label; }
+  }
+  return best;
+}
+
 // ── Superlative strip ─────────────────────────────────────────────────────────
 // llm-stats' hero pattern, re-pointed. Theirs answers "what's strongest";
 // ours answers "what's the best deal", which is the only version we can claim
@@ -2624,10 +2666,16 @@ function renderSuperlatives() {
     add('best value', best.m, fmtPrice(best.price) + '/1M · ' + best.score.toFixed(1) + '%');
   }
 
-  // Top score outright, so the strip isn't only about thrift.
-  if (pts.length) {
-    var top = pts.reduce(function (x, y) { return y.score > x.score ? y : x; });
-    add('top score', top.m, top.score.toFixed(1) + '% · ' + fmtPrice(top.price) + '/1M');
+  // Top score — but ONLY from a benchmark whose leader is actually separated from
+  // the pack. GPQA Diamond is saturated (top 10 models within one stderr of each
+  // other), so ranking on it hands "#1" to whoever won a coin flip: a 0.5pp lead
+  // with ±1.6pp error bars. Claiming that is the same error as the fake-7D bug —
+  // presenting noise as a result. We pick the benchmark with the largest lead
+  // measured in standard errors, and if nothing clears 1σ we show no card at all.
+  var lead = leadingBenchmark();
+  if (lead) {
+    add('top score · ' + lead.label, lead.m,
+        (lead.score * 100).toFixed(1) + '% · ' + fmtPrice(blendedPrice(lead.m)) + '/1M');
   }
 
   // Highest-scoring OPEN-WEIGHTS model. Deliberately the best, not the cheapest:
@@ -2822,8 +2870,16 @@ function renderPareto() {
 
   var sub = document.getElementById('pareto-sub');
   if (sub) {
-    sub.textContent = pts.length + ' priced models with an independently-run score · ' +
+    var txt = pts.length + ' priced models with an independently-run score · ' +
       front.length + ' on the frontier · dashed line = best score available at each price';
+    // Saturation warning. On a saturated benchmark the whole top of the frontier
+    // is one statistical tie, and the chart's vertical axis reads as precision it
+    // does not have. Say so rather than letting the picture over-claim.
+    var l = benchLeader(state.benchPrimary);
+    if (l && l.sigma < 1) {
+      txt += ' · ⚠ scores at the top are within their error bars — treat the leaders as tied and choose on price';
+    }
+    sub.textContent = txt;
   }
 }
 
