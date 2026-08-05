@@ -1,7 +1,7 @@
 # llm-stats.com review → benchmark integration plan
 
 **Date**: 2026-08-05
-**Status**: **Phases 0–4 and 6 BUILT + SHIPPED.** Only Phase 5 (multi-provider price spread) remains.
+**Status**: **COMPLETE — all six phases built and shipped.**
 **Scope**: What llm-stats.com does, what of it is actually obtainable, and a phased plan
 to put a quality axis next to token.app's price axis.
 
@@ -283,6 +283,32 @@ llm-stats prints one "Best provider" line; this is a far better story and it is 
 
 Caveat: `latency_last_30m` / `throughput_last_30m` came back **null** on every probe, so
 speed is not reliably available from this endpoint. Uptime is.
+
+**As built** — a "Where to run it" panel on each model page. Live numbers:
+
+| Model | Panel headline | Traps flagged |
+|---|---|---|
+| GLM-5.2 | 33 options across 28 providers · **8.2×** spread | 9 (AkashML serves **97K** context, not 1.0M) |
+| Llama-3.3-70B | 13 options · **6.7×** | Novita at **6,000** context vs 131,072 |
+| Kimi K3 | 12 options across 9 providers · 1.8× | — |
+| GPT-5.6 Sol | 6 options across 3 providers · 4.0× | 5 (re-prices above 272K prompt tokens) |
+| Claude Opus 5 | 9 options across 5 providers · 1.1× | — |
+
+Design decisions that mattered:
+- **Fetched lazily per model page, not on the cron.** 338 endpoint calls per refresh is
+  unaffordable, and you cannot know which models have multiple hosts without asking.
+  Read-through KV cache (6h TTL), 4s timeout, failures return null → panel omitted rather
+  than a blocked render. Empty results are deliberately *not* cached, or an upstream blip
+  would persist as "no hosts" for six hours.
+- **Labels come from `tag`, not a counter.** The first pass numbered duplicate providers
+  "#1 #2 #3", which throws away the reason they differ. `tag` says it: a service tier
+  (`openai/flex` $2.50 vs `openai` $5 vs `openai/priority` $10), a region
+  (`amazon-bedrock/eu-west-1`), or a secondary pool.
+- **The headline counts providers separately from options.** GPT-5.6 Sol's 4× spread is
+  entirely across OpenAI's own service tiers — calling that "6 hosts, 4× spread" would
+  imply vendor competition that does not exist.
+- Quantization is surfaced because fp4 vs bf16 at a similar price is a real quality
+  difference, with an explicit caption that the benchmark score above is *not* host-specific.
 
 ### Phase 6 — hero superlatives — ✅ BUILT
 
