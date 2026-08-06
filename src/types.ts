@@ -232,6 +232,11 @@ export interface BenchmarksPayload {
   // Surfaced so the mapping table can be extended in a data-only PR rather than
   // silently under-covering the catalogue.
   unmapped: string[];
+  // Mapped names whose Epoch rows span more than one MODEL VERSION (two dated
+  // snapshots, or two harnesses) with no VERSION_PIN to disambiguate. Dropped
+  // rather than merged — welding one snapshot's GPQA to another's SWE-bench
+  // produces a model record that never existed. Surfaced so a pin can be added.
+  ambiguous: { model: string; versions: string[] }[];
   attribution: { text: string; url: string; license: string; licenseUrl: string };
   fetchedAt: string;
 }

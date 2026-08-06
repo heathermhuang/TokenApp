@@ -117,7 +117,7 @@ const MODEL_MAP: Record<string, string> = {
   'Gemini 3.5 Flash': 'google/gemini-3.5-flash',
   // Our catalogue carries only the preview of these two exact versions — there is
   // no GA entry to confuse them with, so the mapping is unambiguous.
-  'Gemini 3.1 Pro': 'google/gemini-3.1-pro-preview',   // NOT ...-preview-customtools
+  'Gemini 3.1 Pro': 'google/gemini-3.1-pro-preview',   // see VERSION_PIN — Epoch's rows also cover -customtools
   'Gemini 3 Flash': 'google/gemini-3-flash-preview',
   'Gemini 2.5 Flash': 'google/gemini-2.5-flash',
   'Gemma 4 31B IT': 'google/gemma-4-31b-it',
@@ -131,7 +131,9 @@ const MODEL_MAP: Record<string, string> = {
   'Kimi K2 Thinking': 'moonshotai/kimi-k2-thinking',
   // xAI
   'Grok 4.5': 'x-ai/grok-4.5',
-  'Grok 4.3 Beta': 'x-ai/grok-4.3',   // only 4.3 entry we carry; no GA/beta split to confuse
+  // 'Grok 4.3 Beta' is NOT mapped: Epoch evaluated a beta dated 2026-04-17 while
+  // our x-ai/grok-4.3 entry is dated 2026-04-30. Beta and GA may or may not be
+  // the same weights, and we cannot tell from either feed — so no number.
   'Grok 4.20': 'x-ai/grok-4.20',
   // DeepSeek
   'DeepSeek V4 Flash 0731': 'deepseek/deepseek-v4-flash-0731',
@@ -203,6 +205,59 @@ const MODEL_MAP: Record<string, string> = {
  *     'Claude 3.5 Sonnet (October 2024)'; 'Qwen3-235B-A22B (Jul 2025)'.
  */
 
+// ── Model VERSION disambiguation ──────────────────────────────────────────────
+
+/**
+ * Epoch's `Model` column is NOT a unique key. `id_model_version` is, and the two
+ * disagree in two very different ways:
+ *
+ *  a) EFFORT / CONTEXT VARIANTS of one model — `gpt-5.4-2026-03-05_{low,high,xhigh}`,
+ *     `claude-opus-4-6_{32K,64K,max}`. Merging these is DELIBERATE: we keep the
+ *     best score and record which variant produced it (see `variant` below).
+ *
+ *  b) GENUINELY DIFFERENT MODELS sharing a display name — `mistral-large-2407`
+ *     vs `-2411` (two releases four months apart), `gemini-3.1-pro-preview` vs
+ *     `-customtools` (a different harness, and a SEPARATE model in our own
+ *     catalogue). Merging these is a BUG: `best` keeps the highest score per
+ *     benchmark, so the record ends up with one snapshot's GPQA welded to
+ *     another's SWE-bench — a model that never existed. Same class as the
+ *     fake-7D bug: a number that looks authoritative and is not real.
+ *
+ * `versionBase()` strips (a) so only (b) survives as a difference.
+ */
+const EFFORT_SUFFIX = /_(?:none|minimal|low|medium|high|xhigh|max|promax|\d+K)$/;
+
+function versionBase(v: string): string {
+  return (v || '').replace(EFFORT_SUFFIX, '');
+}
+
+/**
+ * Epoch model name → the ONE base version we accept, for names whose rows span
+ * more than one. Explicit, like MODEL_MAP — a name with several base versions
+ * and no pin here is DROPPED and reported in `ambiguous`, never merged.
+ *
+ * Each choice below is deliberate:
+ *  • dated aliases pin to the NEWEST snapshot, because that is what OpenRouter's
+ *    undated id (`openai/gpt-4o`) actually serves today;
+ *  • 'Gemini 3.1 Pro' pins to the plain preview — the -customtools rows are a
+ *    different OpenRouter model (google/gemini-3.1-pro-preview-customtools), so
+ *    its SWE-bench score is not ours to attribute here;
+ *  • 'Mistral Large 2' pins to 2407, matching our mistralai/mistral-large-2407;
+ *  • 'DeepSeek-V3.2' pins to deepseek-chat because our deepseek/deepseek-v3.2
+ *    carries isReasoning:false — deepseek-reasoner is the thinking mode.
+ */
+const VERSION_PIN: Record<string, string> = {
+  'GPT-4o': 'gpt-4o-2024-11-20',
+  'GPT-3.5 Turbo': 'gpt-3.5-turbo-0125',
+  'Gemini 2.5 Flash': 'gemini-2.5-flash-preview-05-20',
+  'Gemini 3.1 Pro': 'gemini-3.1-pro-preview',
+  'Mistral Large 2': 'mistral-large-2407',
+  'DeepSeek-V3.2': 'deepseek-chat',
+  'Kimi K2.5': 'kimi-k2.5',            // vs fireworks/kimi-k2p5 — same weights, third-party host
+  'GPT-5.5': 'gpt-5.5',                // vs gpt-5.5-pre-release
+  'GPT-5.5 Pro': 'gpt-5.5-pro',        // vs gpt-5.5-pro-pre-release
+};
+
 // ── CSV parsing ───────────────────────────────────────────────────────────────
 
 /**
@@ -264,10 +319,44 @@ export async function fetchBenchmarks(): Promise<BenchmarksPayload> {
   const iMean = col('mean_score');
   const iStderr = col('stderr');
   const iStarted = col('started_at');
+  const iVersion = col('id_model_version');
 
   if (iModel < 0 || iBest < 0) throw new Error('Epoch CSV: unexpected schema (missing Model/best_score)');
 
   const taskById = new Map(SURFACED.map((b) => [b.epochTask, b]));
+
+  // PASS 1 — which mapped names span more than one base model version? Has to
+  // run before any score is kept: whether a row is usable depends on rows that
+  // may appear later in the file. Skipped entirely when Epoch drops the column,
+  // which degrades to the old name-only join rather than discarding everything.
+  const versionsByName = new Map<string, Set<string>>();
+  if (iVersion >= 0) {
+    for (let r = 1; r < rows.length; r++) {
+      const row = rows[r];
+      if (row.length <= iModel) continue;
+      const taskName = (iTask >= 0 ? row[iTask] : '') || (iTaskFallback >= 0 ? row[iTaskFallback] : '');
+      if (!taskById.has(taskName)) continue;
+      const epochModel = row[iModel]?.trim();
+      if (!epochModel || !MODEL_MAP[epochModel]) continue;
+      const base = versionBase(row[iVersion]);
+      if (!base) continue;
+      let set = versionsByName.get(epochModel);
+      if (!set) { set = new Set(); versionsByName.set(epochModel, set); }
+      set.add(base);
+    }
+  }
+
+  // A name is usable if it has one base version, or a VERSION_PIN naming which
+  // one to take. Anything else is dropped — see the `ambiguous` note on the type.
+  const ambiguous: { model: string; versions: string[] }[] = [];
+  const acceptedVersion = new Map<string, string>();
+  for (const [name, set] of versionsByName) {
+    if (set.size <= 1) continue;
+    const pin = VERSION_PIN[name];
+    if (pin && set.has(pin)) acceptedVersion.set(name, pin);
+    else ambiguous.push({ model: name, versions: [...set].sort() });
+  }
+  const dropped = new Set(ambiguous.map((a) => a.model));
 
   // (modelId, benchmarkId) → best row seen. Epoch runs several effort variants
   // per model ("Claude Opus 5 (max)"); we keep the highest score and record which
@@ -288,6 +377,11 @@ export async function fetchBenchmarks(): Promise<BenchmarksPayload> {
 
     const modelId = MODEL_MAP[epochModel];
     if (!modelId) { unmapped.add(epochModel); continue; }
+
+    // Version gate — see versionBase / VERSION_PIN above.
+    if (dropped.has(epochModel)) continue;
+    const pinned = acceptedVersion.get(epochModel);
+    if (pinned && versionBase(row[iVersion]) !== pinned) continue;
 
     const raw = row[iBest] || (iMean >= 0 ? row[iMean] : '');
     const score = Number.parseFloat(raw);
@@ -334,6 +428,7 @@ export async function fetchBenchmarks(): Promise<BenchmarksPayload> {
     models: [...byModel.values()].sort((a, b) => a.modelId.localeCompare(b.modelId)),
     benchmarks: SURFACED.map(({ id, label, blurb }) => ({ id, label, blurb })),
     unmapped: [...unmapped].sort(),
+    ambiguous: ambiguous.sort((a, b) => a.model.localeCompare(b.model)),
     attribution: ATTRIBUTION,
     fetchedAt: new Date().toISOString(),
   };

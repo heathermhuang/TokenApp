@@ -2362,7 +2362,11 @@ function getProviderUrl(providerId) {
 
 function safeUrl(url) {
   // Reject anything that isn't https:// — guards against javascript: or data: injection
-  // from supply-chain-compromised upstream data (e.g. OpenRouter API poisoning)
+  // from supply-chain-compromised upstream data (e.g. OpenRouter API poisoning).
+  // NOTE: a prefix check does NOT make the value safe to interpolate raw into an
+  // href — a poisoned huggingFaceId carrying a double-quote plus a tag still
+  // starts with https:// and breaks out of the attribute. Every caller must also
+  // escape() at the attribute boundary.
   return (url && String(url).indexOf('https://') === 0) ? url : null;
 }
 
@@ -2503,7 +2507,7 @@ function renderTable() {
             <span class="model-name">\${escape(m.name)}</span>
             <span class="model-id">\${escape(m.slug || m.id)}</span>
           </a>
-          <a href="\${modelUrl}" target="_blank" rel="noopener" class="model-out" title="Open \${escape(m.name)} on the vendor's site" aria-label="Open \${escape(m.name)} on the vendor's site">\${OUT_ICON}</a>
+          <a href="\${escape(modelUrl)}" target="_blank" rel="noopener" class="model-out" title="Open \${escape(m.name)} on the vendor's site" aria-label="Open \${escape(m.name)} on the vendor's site">\${OUT_ICON}</a>
         </div>
         \${mobileMeta}
       </td>
