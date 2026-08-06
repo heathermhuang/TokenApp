@@ -5,6 +5,7 @@ import { KV_KEYS } from './types';
 import { getProvider } from './providers';
 import { SUBSCRIPTIONS } from './subscriptions';
 import { fetchShareSeries, fetchAppsBoards, fetchModelBoard, fetchTaskSpend } from './openrouter-json';
+import { fetchBenchmarks } from './benchmarks';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/models';
 
@@ -90,14 +91,20 @@ export function normalizeModel(raw: OpenRouterModel): NormalizedModel {
     slug.includes('r1') ||
     nameLC.includes('qwq');
 
-  // Open-source heuristics
-  const openSourceProviders = ['meta-llama', 'mistralai', 'qwen', 'deepseek', '01-ai', 'google', 'cohere'];
-  const isOpenSource =
-    openSourceProviders.some((p) => providerId?.startsWith(p)) ||
-    nameLC.includes('llama') ||
-    nameLC.includes('mistral') ||
-    nameLC.includes('gemma') ||
-    nameLC.includes('qwen');
+  // Open weights = OpenRouter published a Hugging Face repo for this model.
+  //
+  // This REPLACES a provider/name heuristic that was wrong in both directions
+  // (found 2026-08-05 when the homepage superlative strip surfaced "best open
+  // weights → Gemini 3.6 Flash"). The old list treated whole authors as open —
+  // 'google' and 'qwen' included — so every proprietary Gemini and Qwen-Max was
+  // flagged open, while GLM-5.2, Kimi K3 and gpt-oss-120b (all with public
+  // weights on HF) were flagged proprietary.
+  //
+  // `hugging_face_id` is first-party, per-model and verifiable, which no name
+  // match can be. Caveat accepted knowingly: a few HF repos are gated or carry
+  // non-commercial terms, so this means "weights published" rather than "OSI
+  // licensed" — still far closer to the truth than the heuristic it replaces.
+  const isOpenSource = Boolean(raw.hugging_face_id);
 
   // Tool use heuristic - most frontier models support it
   const hasToolUse =
@@ -578,7 +585,12 @@ async function attachTrends(
 export async function refreshAllData(
   env: Env,
   opts: { includeCategories?: boolean } = {},
-): Promise<{ models: number; rankings?: string; rankingsError?: string; categories?: string; categoriesError?: string }> {
+): Promise<{
+  models: number;
+  rankings?: string; rankingsError?: string;
+  categories?: string; categoriesError?: string;
+  benchmarks?: string; benchmarksError?: string;
+}> {
   const models = await fetchModelsFromOpenRouter();
 
   await env.TOKEN_APP_KV.put(KV_KEYS.MODELS, JSON.stringify(models), {
@@ -651,6 +663,26 @@ export async function refreshAllData(
     rankingsError = String(err);
   }
 
+  // ── Benchmarks (Epoch AI, CC BY). Non-fatal and empty-guarded, same contract as
+  //    task-spend: a benchmark outage must never block the primary models/rankings
+  //    refresh, and must never overwrite good KV with an empty set. Epoch updates
+  //    daily-ish, so re-fetching hourly is cheap (2.5MB, cf-cached 30min).
+  let benchmarksStatus: string | undefined;
+  let benchmarksError: string | undefined;
+  try {
+    const bench = await fetchBenchmarks();
+    if (bench.models.length === 0) {
+      benchmarksStatus = 'empty — KV left unchanged';
+    } else {
+      await env.TOKEN_APP_KV.put(KV_KEYS.BENCHMARKS, JSON.stringify(bench));
+      const scored = bench.models.reduce((n, m) => n + m.scores.length, 0);
+      benchmarksStatus = `${bench.models.length} models, ${scored} scores, ${bench.unmapped.length} unmapped`;
+    }
+  } catch (err) {
+    console.error('Benchmark fetch failed (non-fatal):', err);
+    benchmarksError = String(err);
+  }
+
   // ── Categories: scrape AT MOST once per calendar day. Long-running (~2-3 min,
   //    up to 15 Browser Rendering pages), so it ONLY runs when the caller has the
   //    wall-clock budget — the hourly scheduled handler (15-min cron limit) passes
@@ -683,7 +715,12 @@ export async function refreshAllData(
     categoriesStatus = 'skipped (cron-only)';
   }
 
-  return { models: models.length, rankings: rankingsStatus, rankingsError, categories: categoriesStatus, categoriesError };
+  return {
+    models: models.length,
+    rankings: rankingsStatus, rankingsError,
+    categories: categoriesStatus, categoriesError,
+    benchmarks: benchmarksStatus, benchmarksError,
+  };
 }
 
 // ── Read from KV (with stale-while-revalidate fallback) ──────────────────────
