@@ -100,6 +100,7 @@ const MODEL_MAP: Record<string, string> = {
   'GPT-5 Pro': 'openai/gpt-5-pro',
   'GPT-5 mini': 'openai/gpt-5-mini',
   'GPT-5 nano': 'openai/gpt-5-nano',
+  'GPT-4 Turbo (Apr 2024)': 'openai/gpt-4-turbo',   // = gpt-4-turbo-2024-04-09, the GA snapshot
   'GPT-4.1': 'openai/gpt-4.1',
   'GPT-4.1 mini': 'openai/gpt-4.1-mini',
   'GPT-4.1 nano': 'openai/gpt-4.1-nano',
@@ -114,8 +115,14 @@ const MODEL_MAP: Record<string, string> = {
   // Google
   'Gemini 3.6 Flash': 'google/gemini-3.6-flash',
   'Gemini 3.5 Flash': 'google/gemini-3.5-flash',
+  // Our catalogue carries only the preview of these two exact versions — there is
+  // no GA entry to confuse them with, so the mapping is unambiguous.
+  'Gemini 3.1 Pro': 'google/gemini-3.1-pro-preview',   // NOT ...-preview-customtools
+  'Gemini 3 Flash': 'google/gemini-3-flash-preview',
   'Gemini 2.5 Flash': 'google/gemini-2.5-flash',
   'Gemma 4 31B IT': 'google/gemma-4-31b-it',
+  'Gemma 3 27B': 'google/gemma-3-27b-it',
+  'Gemma 2 27B': 'google/gemma-2-27b-it',
   // Moonshot
   'Kimi K3': 'moonshotai/kimi-k3',
   'Kimi K2.7 Code': 'moonshotai/kimi-k2.7-code',
@@ -124,6 +131,7 @@ const MODEL_MAP: Record<string, string> = {
   'Kimi K2 Thinking': 'moonshotai/kimi-k2-thinking',
   // xAI
   'Grok 4.5': 'x-ai/grok-4.5',
+  'Grok 4.3 Beta': 'x-ai/grok-4.3',   // only 4.3 entry we carry; no GA/beta split to confuse
   'Grok 4.20': 'x-ai/grok-4.20',
   // DeepSeek
   'DeepSeek V4 Flash 0731': 'deepseek/deepseek-v4-flash-0731',
@@ -141,20 +149,59 @@ const MODEL_MAP: Record<string, string> = {
   'Qwen 3.6 Max (Preview)': 'qwen/qwen3.6-max-preview',
   'Qwen 3.6 Flash': 'qwen/qwen3.6-flash',
   'Qwen 3.6 Plus': 'qwen/qwen3.6-plus',
+  'Qwen 3.8 Max': 'qwen/qwen3.8-max',
   'Qwen3-Max': 'qwen/qwen3-max',
   'Qwen3-235B-A22B': 'qwen/qwen3-235b-a22b',
+  'Qwen2.5-72B': 'qwen/qwen-2.5-72b-instruct',   // NOT qwen2.5-vl-72b (vision variant)
   'Qwen Plus': 'qwen/qwen-plus',
   // Meta
   'Llama 4 Maverick': 'meta-llama/llama-4-maverick',
   'Llama 4 Scout': 'meta-llama/llama-4-scout',
+  'Llama 3.3 70B': 'meta-llama/llama-3.3-70b-instruct',
+  // Base Meta releases only. Epoch's "Llama 3.1-405B" has no Meta entry in our
+  // catalogue — only nousresearch/hermes-3-llama-3.1-405b, a third-party
+  // fine-tune — so it stays unmapped rather than borrowing someone else's scores.
+  'Llama 3.1-70B': 'meta-llama/llama-3.1-70b-instruct',
+  'Llama 3.1-8B': 'meta-llama/llama-3.1-8b-instruct',
   // Mistral
   'Mistral Large': 'mistralai/mistral-large',
+  'Mistral Large 2': 'mistralai/mistral-large-2407',   // 2407 IS Large 2; 2512 is Large *3*
   'Mistral Medium 3': 'mistralai/mistral-medium-3',
+  'Mistral Small 3': 'mistralai/mistral-small-24b-instruct-2501',   // display name is literally "Mistral Small 3"
+  'Mistral Small 3.1': 'mistralai/mistral-small-3.1-24b-instruct',
+  'Mixtral 8x22B': 'mistralai/mixtral-8x22b-instruct',
   'Mistral NeMo': 'mistralai/mistral-nemo',
   // Microsoft
   'Phi-4': 'microsoft/phi-4',
   'WizardLM-2 8x22B': 'microsoft/wizardlm-2-8x22b',
 };
+
+/**
+ * DELIBERATELY LEFT UNMAPPED — checked 2026-08-06 against the live catalogue, do
+ * not "fix" these without re-checking. They fall into three buckets:
+ *
+ *  1. NOT IN OUR CATALOGUE AT ALL (~59 names). Retired before OpenRouter's current
+ *     listing: Claude 2 / 3 Opus / 3.5 Sonnet / 3.7 Sonnet, GPT-4.5, o1-mini,
+ *     o1-preview, Gemini 1.0–2.0, Grok 2 / 3, Llama 2-70B and Llama 3-*, Mixtral
+ *     8x7B, Mistral 7B, Qwen1.5-* / Qwen2-72B / Qwen-Turbo / QWQ-Plus, Yi-*, DBRX,
+ *     phi-3-medium, Tulu 3, Magistral Small 1.0. Nothing to join to.
+ *
+ *  2. NEAR-NEIGHBOUR TRAPS — a same-family entry exists but is a DIFFERENT model:
+ *       'Muse Spark'      vs meta/muse-spark-1.2                (the original trap)
+ *       'Ministral 3B/8B' vs mistralai/ministral-{3b,8b}-2512   → "Ministral 3", Dec 2025
+ *       'DeepSeek-V3'     vs deepseek/deepseek-v3.1/v3.2
+ *       'Grok 4'          vs x-ai/grok-4.3 / 4.5 / 4.20
+ *       'Llama 3.1-405B'  vs nousresearch/hermes-3-... (third-party fine-tune)
+ *       'Qwen2.5-32B'     vs qwen/qwen-2.5-coder-32b (coder variant)
+ *       'Gemini 3 Pro'    vs google/gemini-3-pro-image (image variant)
+ *
+ *  3. AMBIGUOUS SNAPSHOTS — the catalogue id is a moving alias, so two Epoch rows
+ *     would collide on one id and `best` would silently keep the higher score:
+ *     'GPT-4 (Mar 2023)' + 'GPT-4 (Jun 2023)' → openai/gpt-4;
+ *     'GPT-4 Turbo (Nov 2023)' → openai/gpt-4-turbo-preview;
+ *     'Gemini 2.5 Pro (Mar/May/Jun 2025)'; 'DeepSeek-R1 (May 2025)';
+ *     'Claude 3.5 Sonnet (October 2024)'; 'Qwen3-235B-A22B (Jul 2025)'.
+ */
 
 // ── CSV parsing ───────────────────────────────────────────────────────────────
 

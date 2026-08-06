@@ -749,6 +749,26 @@ export function getHtml(params: {
     /* ── Clickable links ────────────────────────────────────────────────── */
     a.model-link { text-decoration: none; color: inherit; }
     a.model-link:hover .model-name { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+
+    /* The model name is the primary link and goes to OUR /model/{slug} page —
+       339 of those pages existed for a week reachable only from the 4 superlative
+       cards, because this cell linked straight off-site. The vendor/HF link is
+       still one click away, demoted to the icon. */
+    .model-cell-head { display: flex; align-items: center; gap: 5px; min-width: 0; }
+    .model-cell-head .model-link { min-width: 0; flex: 1 1 auto; }
+    a.model-out {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      color: var(--text3);
+      opacity: 0;
+      transition: opacity 0.12s ease, color 0.12s ease;
+    }
+    a.model-out svg { width: 11px; height: 11px; display: block; }
+    tr.model-row:hover a.model-out, a.model-out:focus-visible { opacity: 1; }
+    a.model-out:hover { color: var(--accent); }
+    /* Touch devices get no hover, so never hide it there. */
+    @media (hover: none) { a.model-out { opacity: 0.55; } }
     a.provider-link { text-decoration: none; }
     a.provider-link:hover .provider-chip { opacity: 0.82; }
     a.provider-link:hover .sub-provider-chip { opacity: 0.82; }
@@ -2346,6 +2366,14 @@ function safeUrl(url) {
   return (url && String(url).indexOf('https://') === 0) ? url : null;
 }
 
+// Off-site indicator on the model cell. Inline so it needs no network request and
+// inherits currentColor in both themes.
+var OUT_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M9 4h11v11"/><path d="M20 4L7.5 16.5"/><path d="M16 20H4V8"/></svg>';
+
+// NOTE: this returns the VENDOR/Hugging Face URL, not our own page. Our
+// /model/{slug} page is linked from the model name; this feeds the small
+// external-link icon beside it.
 function getModelUrl(m) {
   var url;
   // Prefer Hugging Face model card when OpenRouter advertises one — canonical for
@@ -2470,10 +2498,13 @@ function renderTable() {
 
     return \`<tr class="model-row\${depClass}">
       <td class="model-cell">
-        <a href="\${modelUrl}" target="_blank" rel="noopener" class="model-link">
-          <span class="model-name">\${escape(m.name)}</span>
-          <span class="model-id">\${escape(m.slug || m.id)}</span>
-        </a>
+        <div class="model-cell-head">
+          <a href="/model/\${encodeURIComponent(m.slug || m.id)}" class="model-link">
+            <span class="model-name">\${escape(m.name)}</span>
+            <span class="model-id">\${escape(m.slug || m.id)}</span>
+          </a>
+          <a href="\${modelUrl}" target="_blank" rel="noopener" class="model-out" title="Open \${escape(m.name)} on the vendor's site" aria-label="Open \${escape(m.name)} on the vendor's site">\${OUT_ICON}</a>
+        </div>
         \${mobileMeta}
       </td>
       <td>
@@ -4325,7 +4356,7 @@ export function getProviderHtml(params: {
     if (m.isDeprecated) mods.push('Deprecated');
 
     return `<tr${m.isDeprecated ? ' class="deprecated-row"' : ''}>
-      <td><span class="model-name">${escape(m.name)}</span></td>
+      <td><a href="/model/${encodeURIComponent(m.slug || m.id)}" class="model-name-link"><span class="model-name">${escape(m.name)}</span></a></td>
       <td style="font-size:11px;color:var(--text3);">${fmtDate(m.createdAt)}</td>
       <td style="font-size:12px;">${fmtCtx(m.contextWindow)}</td>
       <td class="${m.inputPer1M === 0 ? 'price-free' : m.inputPer1M && m.inputPer1M < 0.5 ? 'price-cheap' : m.inputPer1M && m.inputPer1M < 3 ? 'price-mid' : ''}">${fmtP(m.inputPer1M)}</td>
@@ -4404,6 +4435,8 @@ export function getProviderHtml(params: {
     tbody tr:hover { background: var(--surface2); }
     tbody td { padding: 10px 12px; }
     .model-name { font-weight: 500; color: var(--text); }
+    a.model-name-link { text-decoration: none; }
+    a.model-name-link:hover .model-name { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
     .price-free { color: #22c55e; font-weight: 600; }
     .price-cheap { color: #4ade80; }
     .price-mid { color: var(--text); }
