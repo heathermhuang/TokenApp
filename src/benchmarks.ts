@@ -299,6 +299,21 @@ function parseCsv(text: string): string[][] {
   return rows;
 }
 
+/**
+ * Is this row's score usable? Shared by both passes so they can never disagree
+ * about which rows count — a row that votes in the collision check but cannot
+ * produce a score (or vice versa) is how a junk row suppresses a good model.
+ */
+function parseScore(row: string[], iBest: number, iMean: number): number | null {
+  const raw = row[iBest] || (iMean >= 0 ? row[iMean] : '');
+  const score = Number.parseFloat(raw);
+  return Number.isFinite(score) && score >= 0 && score <= 1 ? score : null;
+}
+
+function hasUsableScore(row: string[], iBest: number, iMean: number): boolean {
+  return parseScore(row, iBest, iMean) !== null;
+}
+
 // ── Fetch + normalize ─────────────────────────────────────────────────────────
 
 export async function fetchBenchmarks(): Promise<BenchmarksPayload> {
@@ -344,6 +359,11 @@ export async function fetchBenchmarks(): Promise<BenchmarksPayload> {
     if (!taskById.has(taskName)) continue;
     const epochModel = row[iModel]?.trim();
     if (!epochModel || !MODEL_MAP[epochModel]) continue;
+    // A row that carries no usable score is not evidence of anything. Letting it
+    // vote here means one junk row under a second version manufactures a
+    // collision and suppresses a model that had a perfectly good score — failing
+    // closed in the wrong direction. Same predicate as the scoring pass.
+    if (!hasUsableScore(row, iBest, iMean)) continue;
     const base = versionBase(row[iVersion]);
     // A blank version is skipped HERE and rejected again in the scoring pass.
     // Skipping in only one pass is the fail-open bug: pass 1 would ignore the row
@@ -410,6 +430,11 @@ export async function fetchBenchmarks(): Promise<BenchmarksPayload> {
     const pinned = acceptedVersion.get(epochModel);
     if (pinned && rowBase !== pinned) continue;
 
+    // Score is validated BEFORE the version is recorded, so `versions[]` only
+    // ever lists ids that actually contributed a number.
+    const score = parseScore(row, iBest, iMean);
+    if (score === null) continue;
+
     // Record EVERY raw version that clears the gate, not just the ones that go
     // on to win their benchmark. Recording only winners defeats the purpose:
     // if two genuinely different models collapsed to one base, the loser is
@@ -417,10 +442,6 @@ export async function fetchBenchmarks(): Promise<BenchmarksPayload> {
     let seen = versionsSeen.get(modelId);
     if (!seen) { seen = new Set(); versionsSeen.set(modelId, seen); }
     seen.add(rawVersion.trim());
-
-    const raw = row[iBest] || (iMean >= 0 ? row[iMean] : '');
-    const score = Number.parseFloat(raw);
-    if (!Number.isFinite(score) || score < 0 || score > 1) continue;
 
     const stderrRaw = iStderr >= 0 ? Number.parseFloat(row[iStderr]) : NaN;
     const unique = iUnique >= 0 ? row[iUnique] : '';

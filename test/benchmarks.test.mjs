@@ -203,6 +203,30 @@ test('a missing id_model_version COLUMN throws rather than joining on name', asy
   await assert.rejects(() => run(noVersionCol), /missing id_model_version/);
 });
 
+// ── Unscoreable rows must not vote ───────────────────────────────────────────
+
+test('a junk-score row under a second version cannot suppress a good model', async () => {
+  // Failing closed is right, but only on real evidence. If an unparseable row
+  // gets to vote in the collision check, one bad cell manufactures ambiguity
+  // and deletes a model that had a perfectly good score.
+  const p = await run(csv([
+    row({ model: 'Kimi K2.6', version: 'kimi-k2.6-0711', best: '0.40' }),
+    row({ model: 'Kimi K2.6', version: 'kimi-k2.6-0930', best: 'N/A' }),
+  ]));
+  assert.equal(scoreOf(p, 'moonshotai/kimi-k2.6'), 0.40, 'the good row survives');
+  assert.equal(p.ambiguous.length, 0, 'a scoreless row is not a real collision');
+  assert.deepEqual(p.models[0].versions, ['kimi-k2.6-0711'], 'and it is not listed as a contributor');
+});
+
+test('an out-of-range score is treated the same as an unparseable one', async () => {
+  const p = await run(csv([
+    row({ model: 'Kimi K2.6', version: 'kimi-k2.6-0711', best: '0.40' }),
+    row({ model: 'Kimi K2.6', version: 'kimi-k2.6-0930', best: '42' }),
+  ]));
+  assert.equal(scoreOf(p, 'moonshotai/kimi-k2.6'), 0.40);
+  assert.equal(p.ambiguous.length, 0);
+});
+
 // ── Ordering ─────────────────────────────────────────────────────────────────
 
 test('a collision appearing LATE in the file still gates earlier rows', async () => {
