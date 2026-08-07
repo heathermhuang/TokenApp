@@ -322,6 +322,12 @@ export async function fetchBenchmarks(): Promise<BenchmarksPayload> {
   const iVersion = col('id_model_version');
 
   if (iModel < 0 || iBest < 0) throw new Error('Epoch CSV: unexpected schema (missing Model/best_score)');
+  // REQUIRED, not optional. Without it two different snapshots sharing a display
+  // name are indistinguishable and the join silently re-creates the chimeras this
+  // whole section exists to prevent. Throwing is the safe failure: refreshAllData
+  // catches benchmark errors non-fatally, so KV keeps its last good payload and
+  // `benchmarksError` surfaces the schema change instead of poisoning the data.
+  if (iVersion < 0) throw new Error('Epoch CSV: unexpected schema (missing id_model_version)');
 
   const taskById = new Map(SURFACED.map((b) => [b.epochTask, b]));
 
@@ -329,20 +335,22 @@ export async function fetchBenchmarks(): Promise<BenchmarksPayload> {
   // before any score is kept: whether a row is usable depends on rows that may
   // appear later in the file.
   const versionsByName = new Map<string, Set<string>>();
-  if (iVersion >= 0) {
-    for (let r = 1; r < rows.length; r++) {
-      const row = rows[r];
-      if (row.length <= iModel) continue;
-      const taskName = (iTask >= 0 ? row[iTask] : '') || (iTaskFallback >= 0 ? row[iTaskFallback] : '');
-      if (!taskById.has(taskName)) continue;
-      const epochModel = row[iModel]?.trim();
-      if (!epochModel || !MODEL_MAP[epochModel]) continue;
-      const base = versionBase(row[iVersion]);
-      if (!base) continue;
-      let set = versionsByName.get(epochModel);
-      if (!set) { set = new Set(); versionsByName.set(epochModel, set); }
-      set.add(base);
-    }
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r];
+    if (row.length <= iModel) continue;
+    const taskName = (iTask >= 0 ? row[iTask] : '') || (iTaskFallback >= 0 ? row[iTaskFallback] : '');
+    if (!taskById.has(taskName)) continue;
+    const epochModel = row[iModel]?.trim();
+    if (!epochModel || !MODEL_MAP[epochModel]) continue;
+    const base = versionBase(row[iVersion]);
+    // A blank version is skipped HERE and rejected again in the scoring pass.
+    // Skipping in only one pass is the fail-open bug: pass 1 would ignore the row
+    // while pass 2 happily accepted it, letting an unidentifiable row through the
+    // very gate it should never clear.
+    if (!base) continue;
+    let set = versionsByName.get(epochModel);
+    if (!set) { set = new Set(); versionsByName.set(epochModel, set); }
+    set.add(base);
   }
 
   const ambiguous: { model: string; versions: string[] }[] = [];
@@ -353,21 +361,12 @@ export async function fetchBenchmarks(): Promise<BenchmarksPayload> {
   // silent hole: if Epoch drops the older snapshot, `Mistral Large 2` stops
   // colliding and its 2411 rows would sail in under the 2407 id. If the pinned
   // version is gone, the name is dropped, not re-pointed.
-  if (iVersion >= 0) {
-    for (const [name, pin] of Object.entries(VERSION_PIN)) {
-      if (!MODEL_MAP[name]) continue;
-      const set = versionsByName.get(name);
-      if (!set) continue;                     // name absent from this export — nothing to gate
-      if (set.has(pin)) acceptedVersion.set(name, pin);
-      else ambiguous.push({ model: name, versions: [...set].sort() });
-    }
-  } else {
-    // No `id_model_version` column: snapshots are indistinguishable, so every
-    // name that needed a pin is dropped rather than silently re-merged. Unpinned
-    // names still join on name alone, as they always did.
-    for (const name of Object.keys(VERSION_PIN)) {
-      if (MODEL_MAP[name]) ambiguous.push({ model: name, versions: ['(id_model_version column absent)'] });
-    }
+  for (const [name, pin] of Object.entries(VERSION_PIN)) {
+    if (!MODEL_MAP[name]) continue;
+    const set = versionsByName.get(name);
+    if (!set) continue;                     // name absent from this export — nothing to gate
+    if (set.has(pin)) acceptedVersion.set(name, pin);
+    else ambiguous.push({ model: name, versions: [...set].sort() });
   }
 
   // UNPINNED names are gated only when they actually collide — that is the
@@ -382,7 +381,7 @@ export async function fetchBenchmarks(): Promise<BenchmarksPayload> {
   // (modelId, benchmarkId) → best row seen. Epoch runs several effort variants
   // per model ("Claude Opus 5 (max)"); we keep the highest score and record which
   // variant produced it, so the number is never quietly averaged across configs.
-  const best = new Map<string, BenchmarkScore & { _model: string; _epoch: string }>();
+  const best = new Map<string, BenchmarkScore & { _model: string; _epoch: string; _version: string }>();
   const unmapped = new Set<string>();
 
   for (let r = 1; r < rows.length; r++) {
@@ -401,8 +400,11 @@ export async function fetchBenchmarks(): Promise<BenchmarksPayload> {
 
     // Version gate — see versionBase / VERSION_PIN above.
     if (dropped.has(epochModel)) continue;
+    const rawVersion = row[iVersion] || '';
+    const rowBase = versionBase(rawVersion);
+    if (!rowBase) continue;                   // unidentifiable row — never scores
     const pinned = acceptedVersion.get(epochModel);
-    if (pinned && versionBase(row[iVersion]) !== pinned) continue;
+    if (pinned && rowBase !== pinned) continue;
 
     const raw = row[iBest] || (iMean >= 0 ? row[iMean] : '');
     const score = Number.parseFloat(raw);
@@ -421,6 +423,7 @@ export async function fetchBenchmarks(): Promise<BenchmarksPayload> {
     best.set(key, {
       _model: modelId,
       _epoch: epochModel,
+      _version: rawVersion,
       benchmark: meta.label,
       benchmarkId: meta.id,
       score,
@@ -436,13 +439,15 @@ export async function fetchBenchmarks(): Promise<BenchmarksPayload> {
   const byModel = new Map<string, ModelBenchmarks>();
   const order = new Map(SURFACED.map((b, i) => [b.id, i]));
   for (const entry of best.values()) {
-    const { _model, _epoch, ...score } = entry;
+    const { _model, _epoch, _version, ...score } = entry;
     let m = byModel.get(_model);
-    if (!m) { m = { modelId: _model, epochModel: _epoch, scores: [] }; byModel.set(_model, m); }
+    if (!m) { m = { modelId: _model, epochModel: _epoch, scores: [], versions: [] }; byModel.set(_model, m); }
     m.scores.push(score);
+    if (_version && !m.versions.includes(_version)) m.versions.push(_version);
   }
   for (const m of byModel.values()) {
     m.scores.sort((a, b) => (order.get(a.benchmarkId) ?? 99) - (order.get(b.benchmarkId) ?? 99));
+    m.versions.sort();
   }
 
   return {
