@@ -65,7 +65,31 @@ test('effort variants of one model merge, keeping the best score', async () => {
   ]));
   assert.equal(scoreOf(p, 'openai/gpt-5.4'), 0.8, 'keeps the best effort');
   assert.equal(p.ambiguous.length, 0, 'effort variants are not ambiguous');
-  assert.equal(p.models[0].versions.length, 1, 'only the winning row is recorded');
+  // EVERY contributing raw version is recorded, not just the winner. An earlier
+  // version of this test asserted `versions.length === 1` and so codified the
+  // exact blind spot `versions[]` exists to remove: if two genuinely different
+  // models ever collapse to one base, the LOSER is the evidence, and recording
+  // only winners throws that evidence away.
+  assert.deepEqual(p.models[0].versions, [
+    'gpt-5.4-2026-03-05_high', 'gpt-5.4-2026-03-05_low', 'gpt-5.4-2026-03-05_xhigh',
+  ], 'losers are recorded too');
+});
+
+test('a suffix collision merges but is VISIBLE in versions[]', async () => {
+  // versionBase() infers "effort variant" from a suffix, so an Epoch id that
+  // genuinely ended in _high would collapse into its stem. Epoch publishes no
+  // metadata that would let us tell those apart, so this is a known, bounded
+  // limitation rather than something the join can decide. What it must NOT do
+  // is hide the merge — both raw ids have to remain auditable.
+  const p = await run(csv([
+    row({ model: 'GPT-5.4', version: 'gpt-5.4-release', best: '0.40' }),
+    row({ model: 'GPT-5.4', version: 'gpt-5.4-release_high', best: '0.90' }),
+  ]));
+  assert.equal(scoreOf(p, 'openai/gpt-5.4'), 0.9, 'still merges — documented limitation');
+  assert.deepEqual(
+    p.models[0].versions, ['gpt-5.4-release', 'gpt-5.4-release_high'],
+    'but BOTH raw ids are recorded, so the merge is detectable',
+  );
 });
 
 test('context-window variants (_32K, _64K) also merge', async () => {
@@ -94,13 +118,22 @@ test('an UNPINNED name spanning two real versions is dropped, not merged', async
   );
 });
 
-test('a PINNED name takes only its pinned version, across benchmarks', async () => {
-  // The original chimera: GPQA from 2411, OTIS from 2407, welded into one record.
+test('a PINNED name takes only its pinned version, across DIFFERENT benchmarks', async () => {
+  // The original chimera, reproduced exactly: 2411 wins GPQA, 2407 wins the
+  // other benchmark, and merging by name welds them into a record that never
+  // existed. Both benchmark slots are asserted — an earlier version of this
+  // test used the same task for both rows, which only proved that one
+  // (model, benchmark) key picks a winner, not that snapshots stay separate.
   const p = await run(csv([
-    row({ model: 'Mistral Large 2', version: 'mistral-large-2411', best: '0.5133' }),
-    row({ model: 'Mistral Large 2', version: 'mistral-large-2407', best: '0.4902' }),
+    row({ task: TASK, model: 'Mistral Large 2', version: 'mistral-large-2411', best: '0.5133' }),
+    row({ task: TASK, model: 'Mistral Large 2', version: 'mistral-large-2407', best: '0.4902' }),
+    row({ task: TASK2, model: 'Mistral Large 2', version: 'mistral-large-2411', best: '0.1000' }),
+    row({ task: TASK2, model: 'Mistral Large 2', version: 'mistral-large-2407', best: '0.8000' }),
   ]));
-  assert.equal(scoreOf(p, 'mistralai/mistral-large-2407'), 0.4902, 'takes 2407 despite 2411 scoring higher');
+  const id = 'mistralai/mistral-large-2407';
+  assert.equal(scoreOf(p, id), 0.4902, 'GPQA: takes 2407 even though 2411 scores higher');
+  assert.equal(scoreOf(p, id, 'swe_bench_verified'), 0.8, 'other benchmark: also 2407');
+  assert.deepEqual(p.models[0].versions, ['mistral-large-2407'], '2411 never contributed');
   assert.equal(p.ambiguous.length, 0);
 });
 
@@ -137,6 +170,20 @@ test('a blank id_model_version never scores, in either pass', async () => {
     row({ model: 'Kimi K2.6', version: '', best: '0.99' }),
   ]));
   assert.equal(scoreOf(p, 'moonshotai/kimi-k2.6'), undefined, 'unidentifiable row must not score');
+});
+
+test('a WHITESPACE-ONLY id_model_version never scores either', async () => {
+  // "   " is truthy, so without a trim it normalizes to itself and clears both
+  // gates — the empty-string test alone does not catch this.
+  for (const blank of ['   ', '\t', ' \t ']) {
+    const p = await run(csv([
+      row({ model: 'Kimi K2.6', version: blank, best: '0.99' }),
+    ]));
+    assert.equal(
+      scoreOf(p, 'moonshotai/kimi-k2.6'), undefined,
+      `version ${JSON.stringify(blank)} must not score`,
+    );
+  }
 });
 
 test('a blank version cannot sneak past alongside a good row', async () => {

@@ -228,7 +228,9 @@ const MODEL_MAP: Record<string, string> = {
 const EFFORT_SUFFIX = /_(?:none|minimal|low|medium|high|xhigh|max|promax|\d+K)$/;
 
 function versionBase(v: string): string {
-  return (v || '').replace(EFFORT_SUFFIX, '');
+  // Trim FIRST. Without it a whitespace-only version normalizes to itself,
+  // which is truthy, so an unidentifiable row sails through both gates.
+  return (v || '').trim().replace(EFFORT_SUFFIX, '');
 }
 
 /**
@@ -381,7 +383,9 @@ export async function fetchBenchmarks(): Promise<BenchmarksPayload> {
   // (modelId, benchmarkId) → best row seen. Epoch runs several effort variants
   // per model ("Claude Opus 5 (max)"); we keep the highest score and record which
   // variant produced it, so the number is never quietly averaged across configs.
-  const best = new Map<string, BenchmarkScore & { _model: string; _epoch: string; _version: string }>();
+  const best = new Map<string, BenchmarkScore & { _model: string; _epoch: string }>();
+  // modelId → every raw id_model_version that contributed, winners and losers.
+  const versionsSeen = new Map<string, Set<string>>();
   const unmapped = new Set<string>();
 
   for (let r = 1; r < rows.length; r++) {
@@ -406,6 +410,14 @@ export async function fetchBenchmarks(): Promise<BenchmarksPayload> {
     const pinned = acceptedVersion.get(epochModel);
     if (pinned && rowBase !== pinned) continue;
 
+    // Record EVERY raw version that clears the gate, not just the ones that go
+    // on to win their benchmark. Recording only winners defeats the purpose:
+    // if two genuinely different models collapsed to one base, the loser is
+    // exactly the evidence of the bad merge, and it would be the row dropped.
+    let seen = versionsSeen.get(modelId);
+    if (!seen) { seen = new Set(); versionsSeen.set(modelId, seen); }
+    seen.add(rawVersion.trim());
+
     const raw = row[iBest] || (iMean >= 0 ? row[iMean] : '');
     const score = Number.parseFloat(raw);
     if (!Number.isFinite(score) || score < 0 || score > 1) continue;
@@ -423,7 +435,6 @@ export async function fetchBenchmarks(): Promise<BenchmarksPayload> {
     best.set(key, {
       _model: modelId,
       _epoch: epochModel,
-      _version: rawVersion,
       benchmark: meta.label,
       benchmarkId: meta.id,
       score,
@@ -439,15 +450,14 @@ export async function fetchBenchmarks(): Promise<BenchmarksPayload> {
   const byModel = new Map<string, ModelBenchmarks>();
   const order = new Map(SURFACED.map((b, i) => [b.id, i]));
   for (const entry of best.values()) {
-    const { _model, _epoch, _version, ...score } = entry;
+    const { _model, _epoch, ...score } = entry;
     let m = byModel.get(_model);
     if (!m) { m = { modelId: _model, epochModel: _epoch, scores: [], versions: [] }; byModel.set(_model, m); }
     m.scores.push(score);
-    if (_version && !m.versions.includes(_version)) m.versions.push(_version);
   }
   for (const m of byModel.values()) {
     m.scores.sort((a, b) => (order.get(a.benchmarkId) ?? 99) - (order.get(b.benchmarkId) ?? 99));
-    m.versions.sort();
+    m.versions = [...(versionsSeen.get(m.modelId) ?? [])].sort();
   }
 
   return {
