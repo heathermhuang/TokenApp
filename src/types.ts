@@ -223,6 +223,13 @@ export interface ModelBenchmarks {
   modelId: string;          // OpenRouter model id — the join key
   epochModel: string;       // Epoch's display name, kept for auditability
   scores: BenchmarkScore[];
+  // Every raw `id_model_version` that contributed a score here. Effort variants
+  // of one model are merged on purpose, so this list is normally several rows of
+  // the same base — but it is the ONLY place a bad merge becomes visible, since
+  // `versionBase()` infers "effort variant" from a suffix and a future Epoch id
+  // that genuinely ends in one of those words would collapse silently. Audit
+  // this when coverage changes unexpectedly.
+  versions: string[];
 }
 
 export interface BenchmarksPayload {
