@@ -52,6 +52,29 @@ AI model pricing tracker and comparison tool built on Cloudflare Workers with Ho
 - **Per-host endpoints are fetched LAZILY, per model page** (`src/endpoints.ts`, 2026-08-05): 338 calls per cron is unaffordable and you can't know which models have many hosts without asking. Read-through KV (6h TTL), 4s timeout, failures return null → panel omitted, never a blocked render; **empty results are deliberately NOT cached** or one blip persists as "no hosts" for 6h. Labels come from `tag` (service tier / region), **never a counter** — numbering duplicates "#1 #2" discards the only interesting part. Headline counts providers separately from options: GPT-5.6 Sol's 4× spread is entirely across OpenAI's own flex/standard/priority tiers, and calling that "6 hosts" implies competition that isn't there. **`latency_last_30m`/`throughput_last_30m` are null on every endpoint of every model probed — do not build a speed feature on them.**
 - **Don't `/api/refresh` straight after `wrangler deploy`** (hit twice, 2026-08-05): the refresh can execute on the **pre-deploy** Worker — it wrote old-normalization models to KV, and new routes 404'd at some PoPs. Wait for propagation, then refresh, then verify.
 
+## Skill routing
+
+When a request clearly matches one of these, invoke it via the Skill tool rather than improvising the same work by hand.
+
+| Request | Skill |
+|---|---|
+| Product ideas / brainstorming | `/office-hours` |
+| Strategy, scope | `/plan-ceo-review` |
+| Architecture | `/plan-eng-review` |
+| Design system, plan review | `/design-consultation`, `/plan-design-review` |
+| Bugs, errors, "why is this happening" | `/investigate` |
+| QA / testing site behaviour | `/qa`, `/qa-only` |
+| Code review, diff check | `/review` |
+| Cross-model second opinion | `/codex` |
+| Visual polish | `/design-review` |
+| Save / resume working context | `/context-save`, `/context-restore` |
+| Backlog-ready spec or issue | `/spec` |
+
+Two deviations from the stock gstack routing block, both deliberate:
+
+1. **Shipping does NOT route to `/ship` or `/land-and-deploy`.** This repo has a standing workflow the user set explicitly: **branch → commit → push → PR → `/codex` review → merge → `wrangler deploy` → refresh → verify live**. Follow that. Don't fire `/api/refresh` straight after a deploy (see gotchas) — wait for `wrangler deployments status` to read 100%.
+2. **"When in doubt, invoke the skill" does not apply here.** The global config in `~/.claude/CLAUDE.md` treats subagents and broad skill runs as expensive and asks for direct `Grep`/`Glob`/`Read` when those suffice. Route to a skill when the request *clearly* matches; otherwise just do the work. `/autoplan` is omitted for the same reason — it chains four full reviews.
+
 ## Current Work
 - **Last updated**: 2026-08-06 — **audit of the llm-stats plan against live prod found two gaps; both fixed, shipped, verified.** Prod Version `11dd5aa3`.
 - **Shipped** ([PR #8](https://github.com/heathermhuang/TokenApp/pull/8), merged `bd80e05`): `5bb92c1` table rows link to `/model/{slug}` + 15 new `MODEL_MAP` entries · `9bac296` Codex-review fixes — `escape()` the vendor `href`, join benchmarks by `id_model_version`, new `ambiguous[]` payload field.
