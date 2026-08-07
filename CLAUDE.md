@@ -19,6 +19,7 @@ AI model pricing tracker and comparison tool built on Cloudflare Workers with Ho
 
 ## Dev
 - `npx wrangler dev --port 8799` — local dev server
+- `npm test` — `node:test` suite over the Epoch benchmark version join (`test/benchmarks.test.mjs`). No framework; bundles the TS module with esbuild and stubs `fetch`, so it touches no network. Run it before touching `src/benchmarks.ts`.
 - `npx wrangler deploy` — deploy to production
 - Cron runs hourly (`0 * * * *`) to refresh model + rankings data
 - Manual refresh: `POST /api/refresh` with `Authorization: Bearer <REFRESH_SECRET>`
@@ -76,18 +77,23 @@ Two deviations from the stock gstack routing block, both deliberate:
 2. **"When in doubt, invoke the skill" does not apply here.** The global config in `~/.claude/CLAUDE.md` treats subagents and broad skill runs as expensive and asks for direct `Grep`/`Glob`/`Read` when those suffice. Route to a skill when the request *clearly* matches; otherwise just do the work. `/autoplan` is omitted for the same reason — it chains four full reviews.
 
 ## Current Work
-- **Last updated**: 2026-08-06 — **audit of the llm-stats plan against live prod found two gaps; both fixed, shipped, verified.** Prod Version `11dd5aa3`.
-- **Shipped** ([PR #8](https://github.com/heathermhuang/TokenApp/pull/8), merged `bd80e05`): `5bb92c1` table rows link to `/model/{slug}` + 15 new `MODEL_MAP` entries · `9bac296` Codex-review fixes — `escape()` the vendor `href`, join benchmarks by `id_model_version`, new `ambiguous[]` payload field.
-- **Live proof** (at ship time; Epoch drifts, see the gotcha): `/api/benchmarks` = 90 models / 314 scores / 0 ambiguous · Gemini 3.1 Pro no longer carries the `-customtools` SWE-bench score · `mistral-large-2407` GPQA 0.4902 (was 0.5133 from 2411) · `x-ai/grok-4.3` correctly unmapped · 340/340 rows link internally, `/anthropic` 17 links · 4 newly-mapped model pages 200 with scores · tsc 0 errors · verify.mjs 0 syntax errors.
-- **Process**: user set a standing rule — **every change goes branch → PR → Codex review → merge → deploy**. Codex found 4 P1s here (3 real, incl. the version-join bug); run it before merge, not after.
-- **Uncommitted**: pre-existing untracked `AGENTS.md` and a stray `src/endpoints 2.ts` (unreferenced near-copy, one revision behind — delete it).
+- **Last updated**: 2026-08-07 — audited the llm-stats plan against live prod, found two gaps, then spent the rest of the session on what Codex review turned up. Prod Version `4301b8fd`.
+- **Shipped — 4 PRs, all Codex-reviewed before merge** (`6eaa404..3e650ad`):
+  - [#8](https://github.com/heathermhuang/TokenApp/pull/8) table rows link to `/model/{slug}` (339 pages existed, ~4 were reachable) + 15 `MODEL_MAP` entries + `escape()` the vendor `href` + join benchmarks by `id_model_version`
+  - [#9](https://github.com/heathermhuang/TokenApp/pull/9) gotchas recorded; `VERSION_PIN` enforced unconditionally
+  - [#10](https://github.com/heathermhuang/TokenApp/pull/10) `## Skill routing` added (adapted, not the stock block — see the section itself)
+  - [#11](https://github.com/heathermhuang/TokenApp/pull/11) fail closed on missing/blank version metadata + **`npm test`, 15 tests** (`test/benchmarks.test.mjs`, `node:test`, no framework)
+- **Live proof**: `/api/benchmarks` 90 models / 318 scores / 68 unmapped / **0 ambiguous**, `versions[]` on every model (36 draw on >1 raw version) · Gemini 3.1 Pro carries no `-customtools` SWE-bench · `mistral-large-2407` GPQA 0.4902 not 0.5133 · 400/400 table rows link internally, incl. the 75 colon slugs (`:batch`, `:free`) · tsc 0 · 15/15 tests.
+- **Process — the lesson of this session**: 14 Codex findings, 12 real. The first review's *fixes* were merged unreviewed, and reviewing them found 7 more — including that my `versions[]` fix recorded only best-score **winners**, i.e. it hid the exact merge it existed to expose, with a test that codified the blind spot. **Review the fixes, not just the original diff.** Mutation-test every claim: one mutation silently failed to apply and produced a false "caught" result.
+- **Uncommitted**: untracked `AGENTS.md` and stray `src/endpoints 2.ts` (unreferenced, one revision behind — delete). Beware `git add src/`, it swept the stray file into a commit twice; use explicit paths.
 - **Next steps — all small, independent, none blocked:**
   1. **Two subscription price flags awaiting your call** (open since 07-11): Cursor Pro+ `annualMonthlyPrice` 60 → live **$48/mo** billed yearly; GitHub Copilot has a new **Max tier** ($100/mo, $200 credits) missing from our entry.
   2. **Re-verify batch now due** — ERNIE / Z.ai / Le Chat / ChatGPT still stamped 07-07.
   3. `underlyingModels` stale — only 7/28 subs have it, none list `claude-opus-5`, so model pages under-report "subscriptions that include this model".
   4. Unmapped Epoch model names (see `unmapped[]` in `/api/benchmarks`) — extend `MODEL_MAP` in a data-only PR, **never fuzzily** and **always checking `id_model_version`**. Roughly nine in ten are retired models absent from our catalogue, so the realistic ceiling is ~27% coverage, not 100%.
   5. Model-page usage sparkline (D1) not wired; benchmark-filter chips deferred.
-  6. **Phase-4 subscription automation still unapproved** — `docs/proposals/2026-07-11-monthly-pricing-verify.md` (local scheduled `claude -p`, branch+report, no deploy). Nothing scheduled.
+  6. Untested at the deployment boundary (Codex P2, accepted): `refreshAllData` preserving benchmark KV when `fetchBenchmarks` throws, and legacy KV payloads lacking `versions`. Both verified safe by reading the code — the KV write only happens after a successful fetch and no consumer reads `versions` — but mocking the Workers env was judged larger than the risk.
+  7. **Phase-4 subscription automation still unapproved** — `docs/proposals/2026-07-11-monthly-pricing-verify.md` (local scheduled `claude -p`, branch+report, no deploy). Nothing scheduled.
 - **OMITTED chase list** (proof-of-absence recorded, revisit if published): Dola premium $, Kimi annual ¥, Manus free-tier numbers, Kling free credits, Hailuo "Ultra" FAQ ghost.
 - **REFRESH_SECRET** — gitignored **`.dev.vars`**. `curl -X POST https://token.app/api/refresh -H "Authorization: Bearer $(grep '^REFRESH_SECRET=' .dev.vars | cut -d= -f2)"`.
 - **Verify (gitignored `scratchpad/`)**: `verify.mjs` (inline-script syntax) · `serve-subs.cjs` :8797 `subs-preview` · `serve-bench.cjs` :8796 `bench-preview` (homepage, real prod models + real Epoch CSV via `_preview-bench.mjs`) · `serve-pages.cjs` :8795 `pages-preview` (model/compare pages via `_preview-pages.mjs`; `_test-endpoints.mjs` caches real endpoint payloads). playwright = `~/.browser-use-env/bin/python` (subs tab needs `.main-tab[data-view="subscriptions"]` click; tier names render UPPERCASE via CSS).
