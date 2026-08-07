@@ -8,3 +8,8 @@ dist/
 wrangler.toml
 .DS_Store
 scratchpad/
+
+# Auto-generated per session by claude-mem (its SessionStart hook rewrites the
+# timestamp every run). Carries no durable project content — ignoring it keeps
+# git status clean and stops it being swept up by a stray `git add -A`.
+/AGENTS.md
