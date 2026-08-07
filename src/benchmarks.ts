@@ -325,10 +325,9 @@ export async function fetchBenchmarks(): Promise<BenchmarksPayload> {
 
   const taskById = new Map(SURFACED.map((b) => [b.epochTask, b]));
 
-  // PASS 1 — which mapped names span more than one base model version? Has to
-  // run before any score is kept: whether a row is usable depends on rows that
-  // may appear later in the file. Skipped entirely when Epoch drops the column,
-  // which degrades to the old name-only join rather than discarding everything.
+  // PASS 1 — which base model versions does each mapped name span? Has to run
+  // before any score is kept: whether a row is usable depends on rows that may
+  // appear later in the file.
   const versionsByName = new Map<string, Set<string>>();
   if (iVersion >= 0) {
     for (let r = 1; r < rows.length; r++) {
@@ -346,16 +345,38 @@ export async function fetchBenchmarks(): Promise<BenchmarksPayload> {
     }
   }
 
-  // A name is usable if it has one base version, or a VERSION_PIN naming which
-  // one to take. Anything else is dropped — see the `ambiguous` note on the type.
   const ambiguous: { model: string; versions: string[] }[] = [];
   const acceptedVersion = new Map<string, string>();
-  for (const [name, set] of versionsByName) {
-    if (set.size <= 1) continue;
-    const pin = VERSION_PIN[name];
-    if (pin && set.has(pin)) acceptedVersion.set(name, pin);
-    else ambiguous.push({ model: name, versions: [...set].sort() });
+
+  // A PINNED name is gated on its pin ALWAYS — not merely when several versions
+  // happen to appear in today's export. Gating only on a live collision leaves a
+  // silent hole: if Epoch drops the older snapshot, `Mistral Large 2` stops
+  // colliding and its 2411 rows would sail in under the 2407 id. If the pinned
+  // version is gone, the name is dropped, not re-pointed.
+  if (iVersion >= 0) {
+    for (const [name, pin] of Object.entries(VERSION_PIN)) {
+      if (!MODEL_MAP[name]) continue;
+      const set = versionsByName.get(name);
+      if (!set) continue;                     // name absent from this export — nothing to gate
+      if (set.has(pin)) acceptedVersion.set(name, pin);
+      else ambiguous.push({ model: name, versions: [...set].sort() });
+    }
+  } else {
+    // No `id_model_version` column: snapshots are indistinguishable, so every
+    // name that needed a pin is dropped rather than silently re-merged. Unpinned
+    // names still join on name alone, as they always did.
+    for (const name of Object.keys(VERSION_PIN)) {
+      if (MODEL_MAP[name]) ambiguous.push({ model: name, versions: ['(id_model_version column absent)'] });
+    }
   }
+
+  // UNPINNED names are gated only when they actually collide — that is the
+  // signal a pin is now needed, and it surfaces in `ambiguous` for the next PR.
+  for (const [name, set] of versionsByName) {
+    if (set.size <= 1 || VERSION_PIN[name]) continue;
+    ambiguous.push({ model: name, versions: [...set].sort() });
+  }
+
   const dropped = new Set(ambiguous.map((a) => a.model));
 
   // (modelId, benchmarkId) → best row seen. Epoch runs several effort variants
