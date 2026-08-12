@@ -3,7 +3,7 @@ import { cors } from 'hono/cors';
 import { cache } from 'hono/cache';
 import type { Env, Subscription } from './types';
 import { KV_KEYS } from './types';
-import { getModels, getSubscriptions, getRankings, refreshAllData } from './fetchers';
+import { getModels, getSubscriptions, getRankings, refreshAllData, readModelUsage } from './fetchers';
 import { readBenchmarks } from './benchmarks';
 import { getModelHtml, getSubCompareHtml, getModelCompareHtml } from './pages';
 import { PROVIDER_PAGE_SLUGS } from './providers';
@@ -437,8 +437,15 @@ app.get('/model/:slug', async (c) => {
     // can't afford 338 endpoint calls per cron. getModelEndpoints() already
     // swallows its own failures and returns null → the panel is simply omitted,
     // so a slow upstream can't block the page.
-    const endpoints = await getModelEndpoints(c.env, model.id);
-    return c.html(getModelHtml({ model, all: models, benchmarks, subscriptions: subs, endpoints }), 200, {
+    // Usage history comes from our own accumulated D1 snapshots. Like the
+    // endpoints call it swallows its own failures and returns null → the panel is
+    // omitted, so neither a D1 blip nor a model that has never charted can break
+    // the page. Both are independent of each other, so they run together.
+    const [endpoints, usage] = await Promise.all([
+      getModelEndpoints(c.env, model.id),
+      readModelUsage(c.env, model.id),
+    ]);
+    return c.html(getModelHtml({ model, all: models, benchmarks, subscriptions: subs, endpoints, usage }), 200, {
       'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400',
     });
   } catch (err) {

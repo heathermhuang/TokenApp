@@ -585,6 +585,18 @@ export function getHtml(params: {
     .cat-tab:hover { border-color: var(--border2); color: var(--text); }
     .cat-tab.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
 
+    .filter-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text3);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    /* Coverage count. Epoch runs some evals on 70 models and some on a dozen, and
+       that gap decides whether a filter is useful — so it is on the chip, not in a
+       tooltip nobody opens. */
+    .bench-n { opacity: 0.6; font-variant-numeric: tabular-nums; }
+
     /* ── Table ─────────────────────────────────────────────────────────────── */
     .table-wrap {
       max-width: 1200px;
@@ -1674,6 +1686,14 @@ export function getHtml(params: {
         <button class="cat-tab" data-cat="deprecated">Deprecated</button>
       </div>
     </div>
+    <!-- Benchmark chips. Injected, not authored: which evals are worth offering
+         depends on how many models Epoch has actually scored, which we only know
+         once /api/benchmarks lands. Hidden until then, and hidden for good if
+         nothing clears the coverage floor. -->
+    <div class="filter-row" id="bench-filters" style="display:none;">
+      <span class="filter-label">Benchmark</span>
+      <div class="cat-tabs" id="bench-chips"></div>
+    </div>
     <div class="filter-row" id="provider-filters">
       <!-- provider pills injected by JS -->
     </div>
@@ -1968,6 +1988,7 @@ const state = {
   benchmarks: null,  // BenchmarksPayload from Epoch AI (CC BY)
   benchIndex: {},    // modelId -> { benchmarkId: BenchmarkScore }
   benchPrimary: 'gpqa_diamond', // benchmark driving the Quality column + chart
+  benchFilter: null, // benchmarkId → show only models scored on it; null = all
 };
 
 // ── Derived pricing/quality fields ─────────────────────────────────────────────
@@ -1993,6 +2014,35 @@ function attachDerived() {
     var s = row ? row[state.benchPrimary] : null;
     m.quality = s ? s.score * 100 : null;
     m.qualityScore = s || null;
+  }
+}
+
+// Benchmarks with enough scored models to be worth putting on screen, with the
+// count. ONE definition, shared by the chart's toggle and the filter chips, so the
+// two controls cannot drift into offering different sets of evals. Coverage is
+// counted rather than assumed: Epoch runs GPQA on ~70 of our models and SWE-bench
+// on ~27, and a chip that filters the table down to three rows is a dead end.
+var BENCH_MIN_COVERAGE = 5;
+function availableBenchmarks() {
+  if (!state.benchmarks || !state.benchmarks.benchmarks) return [];
+  return state.benchmarks.benchmarks.map(function (b) {
+    var n = 0;
+    for (var id in state.benchIndex) if (state.benchIndex[id][b.id]) n++;
+    return { b: b, n: n };
+  }).filter(function (x) { return x.n >= BENCH_MIN_COVERAGE; });
+}
+
+// The only place benchPrimary moves. The Quality column, the frontier chart and
+// the chips all read it, so routing every change through here is what stops the
+// header naming one eval while the cells show another.
+function setBenchPrimary(id) {
+  if (!id || state.benchPrimary === id) return;
+  state.benchPrimary = id;
+  attachDerived();
+  var head = document.getElementById('quality-col-head');
+  if (head && state.benchmarks) {
+    var b = state.benchmarks.benchmarks.find(function (x) { return x.id === id; });
+    if (b) head.title = b.label + ' — ' + b.blurb + ' (independently run by Epoch AI)';
   }
 }
 
@@ -2424,6 +2474,29 @@ function providerLogoImg(providerId) {
   return \`<img src="\${src}" class="provider-logo" alt="" loading="lazy" onerror="this.style.display='none'">\`;
 }
 
+// Benchmark filter chips. Each one narrows the table to the models Epoch has
+// actually scored on that eval, and makes it the Quality column — filtering by
+// SWE-bench while the column still showed GPQA would leave every surviving row
+// looking blank.
+function renderBenchChips() {
+  var row = document.getElementById('bench-filters');
+  var host = document.getElementById('bench-chips');
+  if (!row || !host) return;
+  var avail = availableBenchmarks();
+  if (!avail.length) { row.style.display = 'none'; return; }
+  row.style.display = '';
+
+  var html = '<button class="cat-tab' + (state.benchFilter ? '' : ' active') +
+    '" data-benchfilter="" title="Every model in the catalogue, scored or not">All</button>';
+  html += avail.map(function (x) {
+    return '<button class="cat-tab' + (state.benchFilter === x.b.id ? ' active' : '') +
+      '" data-benchfilter="' + escape(x.b.id) + '" title="' + escape(x.b.label) + ' — ' +
+      escape(x.b.blurb) + ' Independently run by Epoch AI; ' + x.n + ' of our models have a score.">' +
+      escape(x.b.label) + ' <span class="bench-n">' + x.n + '</span></button>';
+  }).join('');
+  host.innerHTML = html;
+}
+
 // ── Filter & Sort ─────────────────────────────────────────────────────────────
 function filterModels() {
   let list = state.models;
@@ -2454,6 +2527,16 @@ function filterModels() {
 
   if (state.providers.size > 0) {
     list = list.filter(m => state.providers.has(m.providerId));
+  }
+
+  // Benchmark filter: keep only models carrying a verified score on the chosen
+  // eval. Unscored models are removed rather than sorted last — an absent score
+  // is not a low score, and the point of the chip is to compare like with like.
+  if (state.benchFilter) {
+    list = list.filter(m => {
+      const row = state.benchIndex[m.id];
+      return !!(row && row[state.benchFilter]);
+    });
   }
 
   // Sort
@@ -2796,11 +2879,7 @@ function renderPareto() {
   // Benchmark toggle — only offer benchmarks that actually have coverage, so a
   // sparsely-run eval can't present as an empty chart.
   var toggle = document.getElementById('pareto-bench-toggle');
-  var avail = state.benchmarks.benchmarks.filter(function (b) {
-    var n = 0;
-    for (var id in state.benchIndex) if (state.benchIndex[id][b.id]) n++;
-    return n >= 5;
-  });
+  var avail = availableBenchmarks().map(function (x) { return x.b; });
   if (avail.length && toggle) {
     toggle.innerHTML = avail.map(function (b) {
       return '<button class="period-btn' + (b.id === state.benchPrimary ? ' active' : '') +
@@ -2958,7 +3037,7 @@ function attachParetoHover(pts, onFront) {
 }
 
 async function loadBenchmarks() {
-  if (state.benchmarks) { renderPareto(); renderSuperlatives(); return; }
+  if (state.benchmarks) { renderBenchChips(); renderPareto(); renderSuperlatives(); return; }
   try {
     // Slow-moving (Epoch re-runs daily at most) → no cache bust, same policy as
     // /api/subscriptions. See the caching block atop index.ts.
@@ -2966,6 +3045,7 @@ async function loadBenchmarks() {
     var data = await res.json();
     if (data && !data.error && data.models) {
       indexBenchmarks(data);
+      renderBenchChips();
       renderTable();
       renderPareto();
       renderSuperlatives();
@@ -3618,6 +3698,7 @@ async function init() {
     if (initialBenchmarks) indexBenchmarks(initialBenchmarks); else attachDerived();
     updateStats();
     renderProviderFilters();
+    renderBenchChips();   // SSR-embedded benchmarks skip loadBenchmarks() entirely
     renderTable();
     renderPareto();
     renderSuperlatives();
@@ -3706,13 +3787,30 @@ document.addEventListener('DOMContentLoaded', () => {
     paretoToggle.addEventListener('click', e => {
       const btn = e.target.closest('[data-bench]');
       if (!btn || btn.dataset.bench === state.benchPrimary) return;
-      state.benchPrimary = btn.dataset.bench;
-      attachDerived();          // Quality column follows the chart's benchmark
-      const head = document.getElementById('quality-col-head');
-      if (head && state.benchmarks) {
-        const b = state.benchmarks.benchmarks.find(x => x.id === state.benchPrimary);
-        if (b) head.title = b.label + ' — ' + b.blurb + ' (independently run by Epoch AI)';
-      }
+      setBenchPrimary(btn.dataset.bench);   // Quality column follows the chart
+      // If the table is filtered to a benchmark, that filter follows too —
+      // otherwise the chart would show one eval while the rows were chosen by
+      // another, and the visible row count would stop matching the chip.
+      if (state.benchFilter) state.benchFilter = state.benchPrimary;
+      renderBenchChips();
+      renderTable();
+      renderPareto();
+      renderSuperlatives();
+    });
+  }
+
+  // Benchmark filter chips. Delegated for the same reason: injected once we know
+  // which evals have coverage.
+  var benchChips = document.getElementById('bench-chips');
+  if (benchChips) {
+    benchChips.addEventListener('click', e => {
+      const btn = e.target.closest('[data-benchfilter]');
+      if (!btn) return;
+      const id = btn.dataset.benchfilter || null;
+      if (id === state.benchFilter) return;
+      state.benchFilter = id;
+      if (id) setBenchPrimary(id);
+      renderBenchChips();
       renderTable();
       renderPareto();
       renderSuperlatives();
