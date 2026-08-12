@@ -120,8 +120,11 @@ const MODEL_MAP: Record<string, string> = {
   // no GA entry to confuse them with, so the mapping is unambiguous.
   'Gemini 3.1 Pro': 'google/gemini-3.1-pro-preview',   // see VERSION_PIN — Epoch's rows also cover -customtools
   'Gemini 3 Flash': 'google/gemini-3-flash-preview',
-  'Gemini 3.5 Flash-Lite': 'google/gemini-3.5-flash-lite',
-  'Gemini 3.1 Flash-Lite': 'google/gemini-3.1-flash-lite',
+  'Gemini 3.5 Flash-Lite': 'google/gemini-3.5-flash-lite',   // Epoch 2026-07-21 = catalogue 2026-07-21, no preview entry exists
+  // Epoch's rows are dated 2026-03-03, which is the PREVIEW's creation date to
+  // the day; GA `google/gemini-3.1-flash-lite` is 2026-05-07, two months later.
+  // Mapping to GA would attribute preview scores to a different release.
+  'Gemini 3.1 Flash-Lite': 'google/gemini-3.1-flash-lite-preview',
   'Gemini 2.5 Flash': 'google/gemini-2.5-flash',
   'Gemma 4 31B IT': 'google/gemma-4-31b-it',
   'Gemma 3 27B': 'google/gemma-3-27b-it',
