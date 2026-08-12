@@ -107,6 +107,7 @@ const MODEL_MAP: Record<string, string> = {
   'GPT-4o': 'openai/gpt-4o',
   'GPT-4o mini': 'openai/gpt-4o-mini',
   'GPT-3.5 Turbo': 'openai/gpt-3.5-turbo',
+  'gpt-oss-20b': 'openai/gpt-oss-20b',
   'gpt-oss-120b': 'openai/gpt-oss-120b',
   o1: 'openai/o1',
   o3: 'openai/o3',
@@ -119,6 +120,8 @@ const MODEL_MAP: Record<string, string> = {
   // no GA entry to confuse them with, so the mapping is unambiguous.
   'Gemini 3.1 Pro': 'google/gemini-3.1-pro-preview',   // see VERSION_PIN — Epoch's rows also cover -customtools
   'Gemini 3 Flash': 'google/gemini-3-flash-preview',
+  'Gemini 3.5 Flash-Lite': 'google/gemini-3.5-flash-lite',
+  'Gemini 3.1 Flash-Lite': 'google/gemini-3.1-flash-lite',
   'Gemini 2.5 Flash': 'google/gemini-2.5-flash',
   'Gemma 4 31B IT': 'google/gemma-4-31b-it',
   'Gemma 3 27B': 'google/gemma-3-27b-it',
@@ -152,10 +155,17 @@ const MODEL_MAP: Record<string, string> = {
   'Qwen 3.6 Flash': 'qwen/qwen3.6-flash',
   'Qwen 3.6 Plus': 'qwen/qwen3.6-plus',
   'Qwen 3.8 Max': 'qwen/qwen3.8-max',
+  'Qwen3.7-Plus': 'qwen/qwen3.7-plus',
+  'Qwen3.7 Flash': 'qwen/qwen3.7-flash',
+  'Qwen3.6 27B': 'qwen/qwen3.6-27b',
+  'Qwen 3.6 35B-A3B': 'qwen/qwen3.6-35b-a3b',
+  'Qwen3.5 397B-A17B': 'qwen/qwen3.5-397b-a17b',
   'Qwen3-Max': 'qwen/qwen3-max',
   'Qwen3-235B-A22B': 'qwen/qwen3-235b-a22b',
   'Qwen2.5-72B': 'qwen/qwen-2.5-72b-instruct',   // NOT qwen2.5-vl-72b (vision variant)
   'Qwen Plus': 'qwen/qwen-plus',
+  // MiniMax
+  'MiniMax-M3': 'minimax/minimax-m3',
   // Meta
   'Llama 4 Maverick': 'meta-llama/llama-4-maverick',
   'Llama 4 Scout': 'meta-llama/llama-4-scout',
