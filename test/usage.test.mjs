@@ -102,30 +102,54 @@ function db(allRows) {
         // SELECT. A plain non-greedy `\)` stops at MAX(snapshot_at)'s paren and
         // silently reports the CTE as unscoped.
         const cte = (sql.match(/WITH latest AS \(([\s\S]*?)\)\s*SELECT/) || [])[1] || '';
-        const boardScopedKind = cte.includes("kind = 'model'");
-        const boardScopedPeriod = cte.includes("period = 'week'");
-        const boardScopedCategory = cte.includes('category IS NULL');
+        // The board query carries THREE independent WHERE clauses — the anchor
+        // CTE, the COUNT, and the rank lookup. Reading one and reusing it for all
+        // three would miss a scope dropped from just one of them, and losing it on
+        // the COUNT is the one users would see: model and app rows share a
+        // fetchedAt, so boardSize would jump from "of 15" to "of 35".
+        const countSub = (sql.match(/SELECT COUNT\(\*\)[\s\S]*?(?=\) AS n)/) || [''])[0];
+        const rankSub = (sql.match(/SELECT s\.rank[\s\S]*?(?=\) AS rank)/) || [''])[0];
+        const scopeOf = (text) => ({
+          kind: text.includes("kind = 'model'"),
+          period: text.includes("period = 'week'"),
+          category: text.includes('category IS NULL'),
+          snapshot: text.includes('snapshot_at = latest.at'),
+          identifier: text.includes('identifier = ?'),
+        });
+        const anchorScope = scopeOf(cte);
+        const countScope = scopeOf(countSub);
+        const rankScope = scopeOf(rankSub);
+
         const pinsCategoryNull = sql.includes('category IS NULL');
         const pinsKind = sql.includes('kind = ?');
         const pinsPeriod = sql.includes('period = ?');
+        const pinsCutoff = sql.includes('snapshot_at >= ?');
+        const pinsIdentifiers = sql.includes('identifier IN (');
         let binds = [];
         return {
           bind(...args) { binds = args; return this; },
 
           async first() {
             if (!isBoard) return null;
-            // The board CTE scopes to kind='model' AND period='week' — it does NOT
-            // take the table's global latest row. Modelling that matters: app and
-            // category rows share this table and are often newer.
-            const board = allRows.filter((r) =>
-              (!boardScopedKind || r.kind === 'model') &&
-              (!boardScopedPeriod || r.period === 'week') &&
-              (!boardScopedCategory || r.category == null));
+            // Each clause evaluated against its OWN scope. The anchor CTE scopes
+            // to the model board — it does NOT take the table's global latest row.
+            const inScope = (r, sc) =>
+              (!sc.kind || r.kind === 'model') &&
+              (!sc.period || r.period === 'week') &&
+              (!sc.category || r.category == null);
+
+            const board = allRows.filter((r) => inScope(r, anchorScope));
             if (board.length === 0) return { at: null, n: 0, rank: null };
             const at = board.reduce((m, r) => (r.snapshot_at > m ? r.snapshot_at : m), board[0].snapshot_at);
-            const atRows = board.filter((r) => r.snapshot_at === at);
-            const mine = atRows.find((r) => r.identifier === binds[0]);
-            return { at, n: atRows.length, rank: mine ? mine.rank : null };
+
+            const counted = allRows.filter((r) =>
+              inScope(r, countScope) && (!countScope.snapshot || r.snapshot_at === at));
+            const ranked = allRows.filter((r) =>
+              inScope(r, rankScope) &&
+              (!rankScope.snapshot || r.snapshot_at === at) &&
+              (!rankScope.identifier || r.identifier === binds[0]));
+
+            return { at, n: counted.length, rank: ranked.length ? ranked[0].rank : null };
           },
 
           async all() {
@@ -137,8 +161,8 @@ function db(allRows) {
               (!pinsKind || r.kind === kind) &&
               (!pinsPeriod || r.period === period) &&
               (!pinsCategoryNull || r.category == null) &&
-              ids.includes(r.identifier) &&
-              r.snapshot_at >= cutoff &&
+              (!pinsIdentifiers || ids.includes(r.identifier)) &&
+              (!pinsCutoff || r.snapshot_at >= cutoff) &&
               (upper === null || r.snapshot_at <= upper));
             // ROW_NUMBER() OVER (PARTITION BY identifier, snapshot_day ORDER BY snapshot_at DESC) = 1
             const lastPerDay = new Map();
@@ -283,6 +307,24 @@ test('boardSize counts the models in the latest snapshot', async () => {
   const all = [...rows(ME, TODAY, 4), ...rows(OTHER, TODAY, 4), ...rows('z/third', TODAY, 4)];
   const u = await readModelUsage(db(all), ME);
   assert.equal(u.boardSize, 3);
+});
+
+test('boardSize ignores app rows written at the SAME instant as the models', async () => {
+  // writeJsonSnapshots writes the model board and the app board in one batch on a
+  // single fetchedAt, so app rows share the anchor timestamp exactly. Scoping the
+  // COUNT is the only thing separating them, and getting it wrong is visible on
+  // the page: "#3 of 15" silently becomes "#3 of 35".
+  const at = TODAY + 'T09:00:00.000Z';
+  const all = [
+    ...rows(ME, TODAY, 4), ...rows(OTHER, TODAY, 4),
+    row('app/one', at, { tokens: 1e6, rank: 1, kind: 'app', period: 'day' }),
+    row('app/two', at, { tokens: 2e6, rank: 2, kind: 'app', period: 'day' }),
+    row('app/three', at, { tokens: 3e6, rank: 3, kind: 'app', period: 'day' }),
+  ];
+  const u = await readModelUsage(db(all), ME);
+  assert.ok(u, 'the model must still resolve');
+  assert.equal(u.boardSize, 2, 'apps sharing the timestamp must not inflate the board');
+  assert.equal(u.latestRank, 3, 'and must not displace the rank lookup');
 });
 
 test('the 7-day delta compares against a point ~7 days back', async () => {
