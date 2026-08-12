@@ -1,6 +1,6 @@
 import puppeteer from '@cloudflare/puppeteer';
 import { APP_CATEGORIES, CATEGORY_SCRAPE_CAP, categoryUrl } from './categories';
-import type { Env, NormalizedModel, OpenRouterModel, OpenRouterResponse, RankingsData, ModelRanking, AppRanking, RankingPeriod, RankDelta, TaskSpend } from './types';
+import type { Env, NormalizedModel, OpenRouterModel, OpenRouterResponse, RankingsData, ModelRanking, AppRanking, RankingPeriod, RankDelta, TaskSpend, ModelUsage } from './types';
 import { KV_KEYS } from './types';
 import { getProvider } from './providers';
 import { SUBSCRIPTIONS } from './subscriptions';
@@ -572,6 +572,69 @@ async function attachTrends(
   for (const row of rows) {
     const s = series.get(row.identifier) ?? [];
     row.set(s.length >= 2 ? s.map((p) => p.tokens) : undefined, deltaFromSeries(s, periodDays));
+  }
+}
+
+// ── Per-model usage history (model detail pages) ──────────────────────────────
+//
+// Joins on the catalogue `id`, exactly — no fuzzy fallback. That is deliberately
+// PARTIAL: D1 only ever holds OpenRouter's top-15 board, so of a 406-model
+// catalogue just 31 identifiers have any history, and 5 of those are keyed under
+// an OpenRouter permaslug the catalogue never uses (`anthropic/claude-4.7-opus`
+// against the catalogue's `anthropic/claude-opus-4.7`). Bridging those by
+// similarity would staple one model's usage onto another — the MODEL_MAP lesson —
+// so an unmatched model simply gets no usage panel. Widening coverage is a
+// data-only change: an explicit alias map, each entry date-checked.
+//
+// FRESHNESS GATE. A model that falls off the top 15 stops accumulating rows, so
+// its newest point can be weeks stale (measured: `poolside/laguna-m.1` stops at
+// 2026-07-22). Drawing that as a current trend is the fake-7D bug in new clothes.
+// So the series' last day is compared against the BOARD's own latest day — not
+// wall-clock, because a stalled cron must not make every model read as stale —
+// and a model that isn't on the current board returns null.
+//
+// We do NOT say "fell out of the top 15 on <date>" in that case. Absence from a
+// top-15 cut is not evidence of decline (a model sitting at #16 all along never
+// appears), and it can equally be the permaslug rename above. Silence is the only
+// claim the data supports.
+const USAGE_STALE_DAYS = 2;   // absorbs a cron outage without inventing freshness
+
+export async function readModelUsage(
+  env: Env, modelId: string, days = 30,
+): Promise<ModelUsage | null> {
+  try {
+    // Board anchor + size in one query: the newest model snapshot, and how many
+    // models it carried (so the page can say "#3 of 15" instead of hardcoding a
+    // board size that has changed before).
+    const board = await env.RANKINGS_DB
+      .prepare(`SELECT MAX(snapshot_at) AS at,
+          (SELECT COUNT(*) FROM rankings_snapshots
+            WHERE kind = 'model' AND period = 'week'
+              AND snapshot_at = (SELECT MAX(snapshot_at) FROM rankings_snapshots
+                                  WHERE kind = 'model' AND period = 'week')) AS n
+        FROM rankings_snapshots WHERE kind = 'model' AND period = 'week'`)
+      .first<{ at: string | null; n: number }>();
+    if (!board?.at) return null;
+
+    const series = (await readSeries(env, 'model', 'week', [modelId], days)).get(modelId) ?? [];
+    if (series.length < 2) return null;          // one point is not a trend
+
+    const latest = series[series.length - 1];
+    if (latest.day < isoDayMinus(board.at.slice(0, 10), USAGE_STALE_DAYS)) return null;
+
+    return {
+      points: series,
+      latestDay: latest.day,
+      latestRank: latest.rank,
+      latestTokens: latest.tokens,
+      boardSize: Number(board.n) || series.length,
+      delta: deltaFromSeries(series, 7),
+    };
+  } catch (err) {
+    // Same contract as getModelEndpoints: a D1 blip omits one panel, never 500s
+    // the page.
+    console.error(`usage history failed for ${modelId} (non-fatal):`, err);
+    return null;
   }
 }
 

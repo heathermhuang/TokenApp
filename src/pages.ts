@@ -13,7 +13,7 @@
  * run benchmark (Epoch AI, CC BY, cited). No number renders without provenance.
  */
 
-import type { NormalizedModel, Subscription, SubscriptionTier, BenchmarksPayload, ModelBenchmarks, ModelEndpoints } from './types';
+import type { NormalizedModel, Subscription, SubscriptionTier, BenchmarksPayload, ModelBenchmarks, ModelEndpoints, ModelUsage } from './types';
 import { getProvider, PROVIDER_PAGE_SET } from './providers';
 
 // ── Shared formatting ─────────────────────────────────────────────────────────
@@ -138,11 +138,20 @@ const SHELL_CSS = `
     footer a { color:var(--text3); text-decoration:none; }
     footer a:hover { color:var(--text2); }
     .tbl-wrap { overflow-x:auto; }
+    .usage-stats { display:flex; gap:26px; flex-wrap:wrap; margin-bottom:16px; }
+    .usage-stat .k { font-size:11px; color:var(--text3); text-transform:uppercase; letter-spacing:0.04em; }
+    .usage-stat .v { font-size:19px; font-weight:650; font-variant-numeric:tabular-nums; margin-top:2px; }
+    .usage-chart { width:100%; height:auto; display:block; }
+    .usage-axis { display:flex; justify-content:space-between; font-size:11px; color:var(--text3); margin-top:5px; font-variant-numeric:tabular-nums; }
+    .up { color:var(--green); }
+    .down { color:var(--red); }
     @media (max-width:700px) {
       main { padding:20px 16px 40px; }
       h1 { font-size:21px; }
       .grid2 { grid-template-columns:1fr; }
       table { font-size:12px; }
+      .usage-stats { gap:18px; }
+      .usage-stat .v { font-size:17px; }
     }
 `;
 
@@ -237,8 +246,9 @@ export function getModelHtml(params: {
   benchmarks: BenchmarksPayload | null;
   subscriptions: Subscription[];
   endpoints: ModelEndpoints | null;
+  usage?: ModelUsage | null;
 }): string {
-  const { model: m, all, benchmarks, subscriptions, endpoints } = params;
+  const { model: m, all, benchmarks, subscriptions, endpoints, usage = null } = params;
   const prov = getProvider(m.providerId);
   const bl = blended(m);
   const mb = benchOf(benchmarks, m.id);
@@ -349,6 +359,8 @@ export function getModelHtml(params: {
     </div>
   </div>
 
+  ${usagePanel(usage, disp)}
+
   ${benchRows ? `<div class="panel">
     <div class="panel-head">
       <div class="panel-title">Benchmarks</div>
@@ -440,6 +452,96 @@ export function getModelHtml(params: {
     })],
     body,
   });
+}
+
+function fmtTokens(n: number): string {
+  if (!n || n <= 0) return '0';
+  if (n >= 1e12) return (n / 1e12).toFixed(1) + 'T';
+  if (n >= 1e9) return (n / 1e9).toFixed(1) + 'B';
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+  return String(Math.round(n));
+}
+
+/**
+ * "Usage on OpenRouter" — the axis a pure benchmark site structurally cannot show:
+ * not how good a model tests, but how much of it people actually run. Accumulated
+ * by our own hourly cron into D1, so it is ours rather than a re-publication.
+ *
+ * Every point is a TRAILING-WEEK token total as of its day — that is the series
+ * OpenRouter's model board publishes. The caption says so, because read as daily
+ * volume these numbers are ~7x too large.
+ *
+ * Only ever rendered for a model currently ON that board: `readModelUsage` returns
+ * null for a stale series rather than letting a chart that stops three weeks ago
+ * read as current. So this panel is absent from most pages by design.
+ */
+function usagePanel(u: ModelUsage | null, disp: string): string {
+  if (!u || u.points.length < 2) return '';
+
+  const W = 680, H = 128, PAD_T = 10, PAD_B = 6;
+  const vals = u.points.map((p) => p.tokens);
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const span = (max - min) || 1;            // a dead-flat series still needs an axis
+  const n = vals.length;
+  const plotH = H - PAD_T - PAD_B;
+  const xy = vals.map((v, i) => [
+    (i / (n - 1)) * W,
+    PAD_T + (1 - (v - min) / span) * plotH,
+  ] as const);
+  const pt = ([x, y]: readonly [number, number]) => `${x.toFixed(1)},${y.toFixed(1)}`;
+  const line = xy.map(pt).join(' ');
+  const area = `M0,${H} L${xy.map(pt).join(' L')} L${W},${H} Z`;
+
+  const pct = u.delta?.pctChange ?? null;
+  const rankMove = u.delta?.rankChange ?? null;
+  const first = u.points[0], last = u.points[n - 1];
+  const dir = pct === null ? '' : pct >= 0 ? 'up' : 'down';
+
+  // The aria-label carries the same facts as the chart — a screen reader gets the
+  // trend, not "chart".
+  const aria = `${disp} weekly token usage from ${first.day} to ${last.day}: ` +
+    `${fmtTokens(first.tokens)} to ${fmtTokens(last.tokens)} tokens.`;
+
+  return `<div class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Usage on OpenRouter</div>
+      <div class="panel-sub">How much ${esc(disp)} is actually being run — not how it benchmarks</div>
+    </div>
+    <div class="panel-body">
+      <div class="usage-stats">
+        <div class="usage-stat">
+          <div class="k">Board rank</div>
+          <div class="v">#${u.latestRank} <span class="muted" style="font-size:13px;font-weight:400">of ${u.boardSize}</span></div>
+        </div>
+        <div class="usage-stat">
+          <div class="k">Tokens, trailing week</div>
+          <div class="v">${esc(fmtTokens(u.latestTokens))}</div>
+        </div>
+        ${pct !== null ? `<div class="usage-stat">
+          <div class="k">Change vs 7 days earlier</div>
+          <div class="v ${dir}">${pct >= 0 ? '+' : ''}${(pct * 100).toFixed(1)}%</div>
+        </div>` : ''}
+        ${rankMove !== null && rankMove !== 0 ? `<div class="usage-stat">
+          <div class="k">Rank move</div>
+          <div class="v ${rankMove > 0 ? 'up' : 'down'}">${rankMove > 0 ? '▲' : '▼'} ${Math.abs(rankMove)}</div>
+        </div>` : ''}
+      </div>
+      <svg class="usage-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"
+           role="img" aria-label="${esc(aria)}" style="height:128px">
+        <path d="${area}" fill="var(--accent)" opacity="0.13"/>
+        <polyline points="${line}" fill="none" stroke="var(--accent)" stroke-width="2"
+          vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/>
+      </svg>
+      <div class="usage-axis"><span>${esc(first.day)}</span><span>${esc(last.day)}</span></div>
+    </div>
+    <div class="cite">
+      Each point is the <strong>trailing seven-day</strong> token total as of that day, which is what
+      OpenRouter's model leaderboard publishes — not that day's usage on its own. Sampled hourly by
+      token.app and stored since ${esc(first.day)}; only the models currently on OpenRouter's board
+      appear here, so a missing panel means we have no current data, not zero usage.
+    </div>
+  </div>`;
 }
 
 /**

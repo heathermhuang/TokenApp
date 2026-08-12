@@ -127,6 +127,21 @@ export interface AppRanking {
   delta?: RankDelta | null;// null when insufficient history (apps: only on the 24H board)
 }
 
+// Per-model usage history for the /model/{slug} pages, read back out of the D1
+// rankings snapshots the cron accumulates.
+//
+// Every `tokens` value is a TRAILING-WEEK total as of its day — that is what
+// OpenRouter's model board publishes, and it is NOT that day's usage. The panel
+// labels it as such; calling it "tokens per day" would overstate by ~7x.
+export interface ModelUsage {
+  points: { day: string; tokens: number; rank: number }[];  // ascending by day
+  latestDay: string;
+  latestRank: number;      // position on OpenRouter's top-15 model board
+  latestTokens: number;
+  boardSize: number;       // how many models the board carried on latestDay
+  delta: RankDelta | null; // vs ~7 days back; null when history is too short
+}
+
 export type RankingPeriod = 'day' | 'week' | 'month';
 
 export interface RankingsData {
