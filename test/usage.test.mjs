@@ -57,13 +57,28 @@ const iso = (ms) => new Date(ms).toISOString();
  * Raw snapshot rows, one per day, ending on `lastDay` at `hour`. This is the
  * table's real shape — snapshot_at carries a time, which is the whole reason a
  * day-granularity freshness check was not enough.
+ *
+ * kind/period/category default to the model board, but are settable: one table
+ * holds model rows, app rows and category rows together, and the cron writes the
+ * category scrape on its own later schedule, so "a row newer than every model
+ * row" is an ordinary state of the real table, not a contrivance.
  */
-function rows(identifier, lastDay, n, { rank = 3, from = 100, step = 10, hour = 'T09:00:00.000Z' } = {}) {
+function rows(identifier, lastDay, n, opts = {}) {
+  const { rank = 3, from = 100, step = 10, hour = 'T09:00:00.000Z',
+          kind = 'model', period = 'week', category = null } = opts;
   const end = new Date(lastDay + 'T00:00:00Z').getTime();
   return Array.from({ length: n }, (_, i) => {
     const day = iso(end - (n - 1 - i) * DAY).slice(0, 10);
-    return { identifier, snapshot_at: day + hour, snapshot_day: day, tokens: from + i * step, rank };
+    return {
+      identifier, snapshot_at: day + hour, snapshot_day: day,
+      tokens: from + i * step, rank, kind, period, category,
+    };
   });
+}
+
+/** One extra row at a specific time, carrying the same defaults as rows(). */
+function row(identifier, at, { tokens, rank, kind = 'model', period = 'week', category = null }) {
+  return { identifier, snapshot_at: at, snapshot_day: at.slice(0, 10), tokens, rank, kind, period, category };
 }
 
 /**
@@ -77,24 +92,51 @@ function db(allRows) {
       prepare(sql) {
         const isBoard = sql.includes('WITH latest');
         const hasUpper = sql.includes('snapshot_at <= ?');
+        // Every predicate below is DERIVED FROM THE SQL, never hardcoded to the
+        // behaviour we want. That distinction is the whole value of the stub: a
+        // first attempt asserted the intended filtering directly, so deleting
+        // `category IS NULL` from the real query changed nothing here and the
+        // suite still passed. Reading the query means a dropped predicate shows
+        // up as a failing test instead of a silent regression.
+        // Close on the paren that ends the CTE — the one followed by the outer
+        // SELECT. A plain non-greedy `\)` stops at MAX(snapshot_at)'s paren and
+        // silently reports the CTE as unscoped.
+        const cte = (sql.match(/WITH latest AS \(([\s\S]*?)\)\s*SELECT/) || [])[1] || '';
+        const boardScopedKind = cte.includes("kind = 'model'");
+        const boardScopedPeriod = cte.includes("period = 'week'");
+        const boardScopedCategory = cte.includes('category IS NULL');
+        const pinsCategoryNull = sql.includes('category IS NULL');
+        const pinsKind = sql.includes('kind = ?');
+        const pinsPeriod = sql.includes('period = ?');
         let binds = [];
         return {
           bind(...args) { binds = args; return this; },
 
           async first() {
-            if (!isBoard || allRows.length === 0) return isBoard ? { at: null, n: 0, rank: null } : null;
-            const at = allRows.reduce((m, r) => (r.snapshot_at > m ? r.snapshot_at : m), allRows[0].snapshot_at);
-            const atRows = allRows.filter((r) => r.snapshot_at === at);
+            if (!isBoard) return null;
+            // The board CTE scopes to kind='model' AND period='week' — it does NOT
+            // take the table's global latest row. Modelling that matters: app and
+            // category rows share this table and are often newer.
+            const board = allRows.filter((r) =>
+              (!boardScopedKind || r.kind === 'model') &&
+              (!boardScopedPeriod || r.period === 'week') &&
+              (!boardScopedCategory || r.category == null));
+            if (board.length === 0) return { at: null, n: 0, rank: null };
+            const at = board.reduce((m, r) => (r.snapshot_at > m ? r.snapshot_at : m), board[0].snapshot_at);
+            const atRows = board.filter((r) => r.snapshot_at === at);
             const mine = atRows.find((r) => r.identifier === binds[0]);
             return { at, n: atRows.length, rank: mine ? mine.rank : null };
           },
 
           async all() {
             // readSeries binds [kind, period, cutoff, (upper), ...identifiers].
-            const cutoff = binds[2];
+            const [kind, period, cutoff] = binds;
             const upper = hasUpper ? binds[3] : null;
             const ids = binds.slice(hasUpper ? 4 : 3);
             const kept = allRows.filter((r) =>
+              (!pinsKind || r.kind === kind) &&
+              (!pinsPeriod || r.period === period) &&
+              (!pinsCategoryNull || r.category == null) &&
               ids.includes(r.identifier) &&
               r.snapshot_at >= cutoff &&
               (upper === null || r.snapshot_at <= upper));
@@ -143,7 +185,7 @@ test('a model that charted this morning but is off the LATEST snapshot is droppe
   const all = [
     ...rows(ME, TODAY, 8, { hour: 'T09:00:00.000Z' }),
     ...rows(OTHER, TODAY, 8, { hour: 'T09:00:00.000Z' }),
-    { identifier: OTHER, snapshot_at: TODAY + 'T10:00:00.000Z', snapshot_day: TODAY, tokens: 999, rank: 1 },
+    row(OTHER, TODAY + 'T10:00:00.000Z', { tokens: 999, rank: 1 }),
   ];
   assert.equal(await readModelUsage(db(all), ME), null,
     'same-day is not the same as still-ranked');
@@ -156,7 +198,7 @@ test('the model still on the latest snapshot renders in that same situation', as
   const all = [
     ...rows(ME, TODAY, 8, { hour: 'T09:00:00.000Z' }),
     ...rows(OTHER, TODAY, 8, { hour: 'T09:00:00.000Z' }),
-    { identifier: OTHER, snapshot_at: TODAY + 'T10:00:00.000Z', snapshot_day: TODAY, tokens: 999, rank: 1 },
+    row(OTHER, TODAY + 'T10:00:00.000Z', { tokens: 999, rank: 1 }),
   ];
   const u = await readModelUsage(db(all), OTHER);
   assert.ok(u, 'the still-ranked model must render');
@@ -181,6 +223,41 @@ test('the window still bounds history when the board is current', async () => {
   assert.ok(u);
   assert.ok(u.points.length <= 31, `window not applied: got ${u.points.length} points`);
   assert.equal(u.points[u.points.length - 1].day, TODAY);
+});
+
+test('app and category rows never become the board anchor or a data point', async () => {
+  // One table holds all three kinds, and the category scrape runs on its own
+  // schedule — so rows NEWER than every model row are normal. If the queries
+  // stopped pinning kind/period/category, the newest app row would become the
+  // board anchor, the model would read as absent from it, and every usage panel
+  // on the site would vanish at once. Same identifier on purpose: only the
+  // predicates can tell these apart.
+  const all = [
+    ...rows(ME, TODAY, 10),
+    ...rows(ME, TODAY, 3, { kind: 'app', period: 'day', hour: 'T23:00:00.000Z', from: 5e6, rank: 1 }),
+    ...rows(ME, TODAY, 3, { kind: 'app', period: 'day', category: 'coding', hour: 'T23:30:00.000Z', from: 9e6, rank: 1 }),
+    // Category-scoped rows on the MODEL board. No writer produces this shape
+    // today — every category row the cron writes is kind='app' — so without them
+    // `category IS NULL` is an equivalent mutant here and the predicate rests on
+    // nothing. readSeries is shared with the app path, where the shape is real.
+    //
+    // Two placements, because they test different clauses. The T23:45 rows sit
+    // AFTER the board anchor, so only the board query's own pin can exclude them.
+    // The T10:00 row sits on an earlier day, after that day's model row but
+    // before the anchor — inside the window, and the later row for its day, so it
+    // wins last-per-day and corrupts a historical point unless the series pins
+    // category too.
+    ...rows(ME, TODAY, 3, { category: 'coding', hour: 'T23:45:00.000Z', from: 7e6, rank: 1 }),
+    row(ME, '2026-08-08T10:00:00.000Z', { tokens: 8e6, rank: 1, category: 'coding' }),
+  ];
+  const u = await readModelUsage(db(all), ME);
+  assert.ok(u, 'model history must survive newer app/category rows');
+  assert.equal(u.points.length, 10, 'app rows must not add points');
+  assert.equal(u.boardSize, 1, 'board size counts model/week rows only');
+  assert.equal(u.latestTokens, 190, 'the 5e6/9e6 app totals must not leak in');
+  assert.equal(u.latestRank, 3);
+  assert.ok(u.points.every((p) => p.tokens <= 190),
+    `a non-model row corrupted a historical point: ${JSON.stringify(u.points.filter((p) => p.tokens > 190))}`);
 });
 
 test('a single point is not a trend', async () => {

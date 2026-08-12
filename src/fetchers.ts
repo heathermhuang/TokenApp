@@ -616,16 +616,23 @@ export async function readModelUsage(
     // board size that has changed before), and this model's rank IN that
     // snapshot — which is null exactly when the model is off the current board.
     const board = await env.RANKINGS_DB
+      // `category IS NULL` matches readSeries. Every category row written today is
+      // kind='app', so on current data the clause selects nothing extra — it is
+      // here so the two queries cannot disagree about what "the model board" is.
+      // Without it, a category-scoped model row would move the anchor here while
+      // still being excluded from the series, and the panel would read one row's
+      // rank against another row's history.
       .prepare(`WITH latest AS (
           SELECT MAX(snapshot_at) AS at FROM rankings_snapshots
-            WHERE kind = 'model' AND period = 'week'
+            WHERE kind = 'model' AND period = 'week' AND category IS NULL
         )
         SELECT latest.at AS at,
           (SELECT COUNT(*) FROM rankings_snapshots s
-            WHERE s.kind = 'model' AND s.period = 'week' AND s.snapshot_at = latest.at) AS n,
+            WHERE s.kind = 'model' AND s.period = 'week' AND s.category IS NULL
+              AND s.snapshot_at = latest.at) AS n,
           (SELECT s.rank FROM rankings_snapshots s
-            WHERE s.kind = 'model' AND s.period = 'week' AND s.snapshot_at = latest.at
-              AND s.identifier = ?) AS rank
+            WHERE s.kind = 'model' AND s.period = 'week' AND s.category IS NULL
+              AND s.snapshot_at = latest.at AND s.identifier = ?) AS rank
         FROM latest`)
       .bind(modelId)
       .first<{ at: string | null; n: number; rank: number | null }>();
