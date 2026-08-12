@@ -589,43 +589,59 @@ async function attachTrends(
 // FRESHNESS GATE. A model that falls off the top 15 stops accumulating rows, so
 // its newest point can be weeks stale (measured: `poolside/laguna-m.1` stops at
 // 2026-07-22). Drawing that as a current trend is the fake-7D bug in new clothes.
-// So the series' last day is compared against the BOARD's own latest day — not
-// wall-clock, because a stalled cron must not make every model read as stale —
-// and a model that isn't on the current board returns null.
 //
-// We do NOT say "fell out of the top 15 on <date>" in that case. Absence from a
-// top-15 cut is not evidence of decline (a model sitting at #16 all along never
-// appears), and it can equally be the permaslug rename above. Silence is the only
-// claim the data supports.
-const USAGE_STALE_DAYS = 2;   // absorbs a cron outage without inventing freshness
-
+// The gate is MEMBERSHIP IN THE LATEST SNAPSHOT, not an age window. An age window
+// was the first attempt and it leaked: the board is scraped hourly, so a model
+// that charted at 09:00 and dropped at 10:00 still has a row dated today, and any
+// day-granularity check waves it through with a rank it no longer holds. Asking
+// "is it in the newest snapshot" answers the question the panel actually poses,
+// and needs no slack constant to tune.
+//
+// Everything anchors on the board's own newest snapshot rather than wall-clock,
+// so a stalled cron does not make every model read as stale — including the
+// series window below, which must be passed that anchor explicitly or its SQL
+// cutoff is computed from `Date.now()` and silently excludes every row once the
+// cron has been down longer than `days`.
+//
+// We do NOT say "fell out of the top 15 on <date>" for a model that fails the
+// gate. Absence from a top-15 cut is not evidence of decline (a model sitting at
+// #16 all along never appears), and it can equally be the permaslug rename above.
+// Silence is the only claim the data supports.
 export async function readModelUsage(
   env: Env, modelId: string, days = 30,
 ): Promise<ModelUsage | null> {
   try {
-    // Board anchor + size in one query: the newest model snapshot, and how many
-    // models it carried (so the page can say "#3 of 15" instead of hardcoding a
-    // board size that has changed before).
+    // One round trip for all three board facts: the newest snapshot, how many
+    // models it carried (so the page says "#3 of 15" rather than hardcoding a
+    // board size that has changed before), and this model's rank IN that
+    // snapshot — which is null exactly when the model is off the current board.
     const board = await env.RANKINGS_DB
-      .prepare(`SELECT MAX(snapshot_at) AS at,
-          (SELECT COUNT(*) FROM rankings_snapshots
+      .prepare(`WITH latest AS (
+          SELECT MAX(snapshot_at) AS at FROM rankings_snapshots
             WHERE kind = 'model' AND period = 'week'
-              AND snapshot_at = (SELECT MAX(snapshot_at) FROM rankings_snapshots
-                                  WHERE kind = 'model' AND period = 'week')) AS n
-        FROM rankings_snapshots WHERE kind = 'model' AND period = 'week'`)
-      .first<{ at: string | null; n: number }>();
+        )
+        SELECT latest.at AS at,
+          (SELECT COUNT(*) FROM rankings_snapshots s
+            WHERE s.kind = 'model' AND s.period = 'week' AND s.snapshot_at = latest.at) AS n,
+          (SELECT s.rank FROM rankings_snapshots s
+            WHERE s.kind = 'model' AND s.period = 'week' AND s.snapshot_at = latest.at
+              AND s.identifier = ?) AS rank
+        FROM latest`)
+      .bind(modelId)
+      .first<{ at: string | null; n: number; rank: number | null }>();
     if (!board?.at) return null;
+    if (board.rank == null) return null;   // not on the current board — say nothing
 
-    const series = (await readSeries(env, 'model', 'week', [modelId], days)).get(modelId) ?? [];
+    // board.at as the upper anchor: bounds the window relative to the board, and
+    // excludes nothing, since it is the newest model snapshot there is.
+    const series = (await readSeries(env, 'model', 'week', [modelId], days, board.at)).get(modelId) ?? [];
     if (series.length < 2) return null;          // one point is not a trend
 
     const latest = series[series.length - 1];
-    if (latest.day < isoDayMinus(board.at.slice(0, 10), USAGE_STALE_DAYS)) return null;
-
     return {
       points: series,
       latestDay: latest.day,
-      latestRank: latest.rank,
+      latestRank: board.rank,        // authoritative: read from the current snapshot
       latestTokens: latest.tokens,
       boardSize: Number(board.n) || series.length,
       delta: deltaFromSeries(series, 7),
