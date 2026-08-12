@@ -2733,27 +2733,45 @@ function benchLeader(benchId) {
   // benchmark changed sides, but FrontierMath T4 read 0.94 where the honest
   // figure is 0.62 — one good run from being crowned on noise, which is the exact
   // failure this gate exists to prevent.
-  var err = Math.sqrt(rows[0].stderr * rows[0].stderr + rows[1].stderr * rows[1].stderr);
+  // BOTH sides must publish a usable stderr. Combining in quadrature treats a
+  // missing one as exactly zero — perfect certainty — so a model with no
+  // published error could be crowned on the strength of its RUNNER-UP's error
+  // bar alone (null vs 0.01 across a 0.02 gap reads as 2σ). 3 of 337 Epoch scores
+  // currently carry no usable stderr, so this is reachable, not theoretical.
+  // Unknown uncertainty means unproven, which is a tie.
+  var e1 = rows[0].stderr, e2 = rows[1].stderr;
+  var err = (e1 > 0 && e2 > 0) ? Math.sqrt(e1 * e1 + e2 * e2) : 0;
   return {
     m: rows[0].m,
     score: rows[0].score,
     runnerUp: rows[1].m,
     gap: gap,
-    // No published stderr on either side → treat any gap as unproven rather than
-    // infinitely significant. Erring toward "tie" is the safe direction here.
     sigma: err > 0 ? gap / err : 0,
   };
 }
 
 // The surfaced benchmark that best separates its leader. Returns null when none
 // of them do — in which case the strip simply omits the card.
+// How separated a leader must be before the strip will call it best at anything.
+//
+// Raised from 1σ once the card started saying "most factually accurate" out loud.
+// 1σ is ~68% for a SINGLE comparison, and this is not one: it takes the largest
+// gap across six benchmarks and reports that, so the winner is selected precisely
+// for looking good — the multiple-comparisons problem, which inflates the false
+// positive rate well past the nominal figure. A plain-English superlative has to
+// be backed by more than the weakest threshold that produced it.
+//
+// Costs nothing on current data (SimpleQA leads at 2.9σ) and the card simply
+// disappears if nothing qualifies, which is the designed behaviour, not a gap.
+var BENCH_LEAD_SIGMA = 2;
+
 function leadingBenchmark() {
   if (!state.benchmarks) return null;
   var best = null;
   for (var i = 0; i < state.benchmarks.benchmarks.length; i++) {
     var b = state.benchmarks.benchmarks[i];
     var l = benchLeader(b.id);
-    if (!l || l.sigma < 1) continue;             // inside the error bar → no claim
+    if (!l || l.sigma < BENCH_LEAD_SIGMA) continue;   // inside the error bars → no claim
     if (!best || l.sigma > best.sigma) { best = l; best.label = b.label; best.id = b.id; }
   }
   return best;
@@ -2824,13 +2842,19 @@ function renderSuperlatives() {
   // gloss is worse than a dry one.
   var lead = leadingBenchmark();
   if (lead) {
-    var outcome = BENCH_OUTCOME[lead.id] || ('top score · ' + lead.label);
+    // Own-property check: a plain object inherits constructor, toString and
+    // friends, so a benchmark id colliding with one would resolve to a FUNCTION
+    // and get stringified into the card instead of taking the fallback.
+    var outcome = Object.prototype.hasOwnProperty.call(BENCH_OUTCOME, lead.id)
+      ? BENCH_OUTCOME[lead.id]
+      : ('top score · ' + lead.label);
     // The margin is the point of the 1σ gate, and it is invisible on the card
     // unless we say it. Hover carries the full claim: who is second, by how much,
     // and how many error bars clear — so the superlative is checkable, not asserted.
     var why = 'Leads ' + lead.label + ' by ' + (lead.gap * 100).toFixed(1) + 'pp over ' +
       shortModelName(lead.runnerUp) + ' — ' + lead.sigma.toFixed(1) +
-      '× the error bar. Benchmarks whose top models are statistically tied are never used for this card.';
+      '× the combined error bars. A benchmark is only used here when its leader clears ' +
+      BENCH_LEAD_SIGMA + '×; where the top models overlap, we show no winner at all.';
     add(outcome, lead.m,
         (lead.score * 100).toFixed(1) + '% ' + lead.label + ' · ' + fmtPrice(blendedPrice(lead.m)) + '/1M',
         why);
