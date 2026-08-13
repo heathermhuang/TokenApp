@@ -16,40 +16,58 @@
  * So this does not pretend to fix it. It converts a confusing failure into an
  * actionable one, and writes a snapshot so the NEXT occurrence is diagnosable
  * instead of being cleared away by the `npm ci` reflex.
+ *
+ * Wired into `deploy` itself, not just `predeploy`: npm skips pre/post hooks
+ * entirely under ignore-scripts, which would silently un-guard the command.
  */
 import { existsSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const problems = [];
-const snapshot = {};
+const snapshot = { node: process.version };
 
-// 1. undici — the failure actually seen. Importing it is the same thing wrangler
-//    does on startup, so this reproduces the break before the upload begins.
+// 1. The module graph wrangler actually walks. Importing bare `undici` would
+//    test whichever copy npm happens to have hoisted to the root, which is only
+//    the same thing by coincidence of the current tree; wrangler eagerly loads
+//    miniflare, and miniflare resolves undici from its own position. Going
+//    through miniflare keeps the probe honest if that ever nests. ~175ms.
 try {
-  await import('undici');
-  snapshot.undici = require('undici/package.json').version;
+  await import('miniflare');
+  snapshot.miniflare = require('miniflare/package.json').version;
+  // Record WHICH undici that path resolved, not just a version — a version alone
+  // is thin evidence for a file-level corruption, which is what this is.
+  try {
+    const fromMiniflare = createRequire(require.resolve('miniflare'));
+    snapshot.undiciPath = fromMiniflare.resolve('undici');
+    snapshot.undici = fromMiniflare('undici/package.json').version;
+  } catch { /* the import already succeeded; provenance is a bonus, not a gate */ }
 } catch (err) {
-  snapshot.undiciError = String(err && err.message);
+  snapshot.loadError = String(err && err.message);
+  try { snapshot.undiciPath = require.resolve('undici'); } catch { /* ignore */ }
   problems.push(
-    'undici failed to load — this is the failure that has killed two deploys.\n' +
+    'miniflare/undici failed to load — this is the failure that has killed two deploys.\n' +
     '    ' + String(err && err.message) + '\n' +
     '    Fix: npm ci'
   );
 }
 
-// 2. workerd's binary. npm 11 blocks install scripts by default (it warns
-//    "allow-scripts ... workerd postinstall"), so a fresh clone can end up with
-//    the package present and the binary missing — a different failure that also
-//    surfaces late and unhelpfully.
+// 2. workerd, by RUNNING it. The node_modules/.bin/workerd shim is created from
+//    the package's `bin` field whether or not the platform binary behind it is
+//    usable, so its mere existence proves nothing — a missing platform package,
+//    a non-executable file, or a node_modules copied between machines all leave
+//    the shim in place. Executing it is the only check that means anything.
 try {
-  const wd = require.resolve('workerd/package.json');
-  snapshot.workerd = require(wd).version;
-  if (!existsSync(new URL('../node_modules/.bin/workerd', import.meta.url))) {
-    problems.push('workerd binary missing from node_modules/.bin — its postinstall may have been blocked.\n    Fix: npm ci, then npm approve-scripts workerd if it persists');
-  }
-} catch {
-  problems.push('workerd is not installed.\n    Fix: npm ci');
+  const bin = require('workerd').default;
+  snapshot.workerdBin = bin;
+  snapshot.workerd = execFileSync(bin, ['--version'], { encoding: 'utf8', timeout: 20_000 }).trim();
+} catch (err) {
+  problems.push(
+    'workerd is present but will not run — wrangler cannot build without it.\n' +
+    '    ' + String(err && err.message) + '\n' +
+    '    Fix: npm ci'
+  );
 }
 
 // 3. wrangler.toml is gitignored (it carries KV/D1 ids), so a fresh clone has
@@ -59,19 +77,26 @@ if (!existsSync(new URL('../wrangler.toml', import.meta.url))) {
 }
 
 if (problems.length === 0) {
-  console.log(`preflight ok — undici ${snapshot.undici}, workerd ${snapshot.workerd}`);
+  console.log(`preflight ok — undici ${snapshot.undici ?? '?'}, ${snapshot.workerd ?? 'workerd ?'}`);
   process.exit(0);
 }
 
 // Evidence for next time. The npm ci reflex destroys the broken tree, which is
 // why two occurrences produced no diagnosis; capture it before that happens.
 snapshot.when = new Date().toISOString();
-snapshot.node = process.version;
+const out = new URL('../preflight-failure.json', import.meta.url);
+let wrote = null;
 try {
-  writeFileSync(new URL('../preflight-failure.json', import.meta.url), JSON.stringify(snapshot, null, 2));
-} catch { /* diagnostics are best-effort — never block on them */ }
+  writeFileSync(out, JSON.stringify(snapshot, null, 2));
+  wrote = out.pathname;
+} catch (err) {
+  wrote = null;
+  snapshot.snapshotWriteError = String(err && err.message);
+}
 
 console.error('\nDeploy preflight FAILED — not deploying.\n');
 for (const p of problems) console.error('  • ' + p + '\n');
-console.error('  Snapshot written to preflight-failure.json (gitignored). Attach it if this recurs.\n');
+console.error(wrote
+  ? `  Snapshot written to ${wrote} (gitignored). Keep it — attach it if this recurs.\n`
+  : `  Could not write the snapshot (${snapshot.snapshotWriteError}). Copy the above by hand before running npm ci.\n`);
 process.exit(1);
