@@ -13,3 +13,7 @@ scratchpad/
 # timestamp every run). Carries no durable project content — ignoring it keeps
 # git status clean and stops it being swept up by a stray `git add -A`.
 /AGENTS.md
+
+# Diagnostic snapshot written by scripts/preflight-deploy.mjs when a deploy is
+# blocked. Local evidence for a not-yet-root-caused toolchain break; never content.
+preflight-failure.json

@@ -4,9 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "deploy": "node scripts/preflight-deploy.mjs && wrangler deploy",
     "cf-typegen": "wrangler types",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "preflight": "node scripts/preflight-deploy.mjs"
   },
   "dependencies": {
     "@cloudflare/puppeteer": "^1.1.0",
