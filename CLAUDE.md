@@ -20,7 +20,7 @@ AI model pricing tracker and comparison tool built on Cloudflare Workers with Ho
 ## Dev
 - `npx wrangler dev --port 8799` — local dev server
 - `npm test` — `node:test` suite over the Epoch benchmark version join (`test/benchmarks.test.mjs`). No framework; bundles the TS module with esbuild and stubs `fetch`, so it touches no network. Run it before touching `src/benchmarks.ts`.
-- `npm run deploy` — deploy to production. **Use this, not `npx wrangler deploy`**: it runs `predeploy` (`scripts/preflight-deploy.mjs`) first, which catches the undici breakage below before the upload starts rather than twenty lines into a stack trace. `npm run preflight` runs the check alone.
+- `npm run deploy` — deploy to production. **Use this, not `npx wrangler deploy`**: the script is `node scripts/preflight-deploy.mjs && wrangler deploy`, so the check runs inline (not as a `predeploy` hook, which `ignore-scripts` would skip) and catches the undici breakage below before the upload starts rather than twenty lines into a stack trace. `npm run preflight` runs the check alone. Calling `wrangler deploy` directly still bypasses it — no package script can prevent that.
 - Cron runs hourly (`0 * * * *`) to refresh model + rankings data
 - Manual refresh: `POST /api/refresh` with `Authorization: Bearer <REFRESH_SECRET>`
 - `wrangler.toml` is gitignored (contains KV namespace IDs)

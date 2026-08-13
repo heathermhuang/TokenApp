@@ -33,19 +33,28 @@ const snapshot = { node: process.version };
 //    the same thing by coincidence of the current tree; wrangler eagerly loads
 //    miniflare, and miniflare resolves undici from its own position. Going
 //    through miniflare keeps the probe honest if that ever nests. ~175ms.
+// Resolve miniflare's own require BEFORE importing it. resolve() only locates
+// the file, so it works even when the module's code is the thing that is broken —
+// and the failure path is exactly when this provenance matters. Building it
+// inside the try meant a failed import fell back to the ROOT undici, recording
+// the copy miniflare might not even use and defeating the point.
+let fromMiniflare = null;
+try { fromMiniflare = createRequire(require.resolve('miniflare')); } catch { /* recorded below */ }
+const resolveUndici = () => {
+  const r = fromMiniflare ?? require;
+  try {
+    snapshot.undiciPath = r.resolve('undici');
+    snapshot.undici = r('undici/package.json').version;
+  } catch { /* provenance is a bonus, never a gate */ }
+};
+
 try {
   await import('miniflare');
   snapshot.miniflare = require('miniflare/package.json').version;
-  // Record WHICH undici that path resolved, not just a version — a version alone
-  // is thin evidence for a file-level corruption, which is what this is.
-  try {
-    const fromMiniflare = createRequire(require.resolve('miniflare'));
-    snapshot.undiciPath = fromMiniflare.resolve('undici');
-    snapshot.undici = fromMiniflare('undici/package.json').version;
-  } catch { /* the import already succeeded; provenance is a bonus, not a gate */ }
+  resolveUndici();
 } catch (err) {
   snapshot.loadError = String(err && err.message);
-  try { snapshot.undiciPath = require.resolve('undici'); } catch { /* ignore */ }
+  resolveUndici();
   problems.push(
     'miniflare/undici failed to load — this is the failure that has killed two deploys.\n' +
     '    ' + String(err && err.message) + '\n' +
@@ -61,7 +70,13 @@ try {
 try {
   const bin = require('workerd').default;
   snapshot.workerdBin = bin;
-  snapshot.workerd = execFileSync(bin, ['--version'], { encoding: 'utf8', timeout: 20_000 }).trim();
+  // SIGKILL, not the default SIGTERM: execFileSync's timeout signals the child
+  // and then WAITS for it to exit, so a wedged binary that ignores TERM would
+  // hang the preflight forever — turning a guard against a broken toolchain into
+  // another way for a broken toolchain to stall a deploy.
+  snapshot.workerd = execFileSync(bin, ['--version'], {
+    encoding: 'utf8', timeout: 20_000, killSignal: 'SIGKILL',
+  }).trim();
 } catch (err) {
   problems.push(
     'workerd is present but will not run — wrangler cannot build without it.\n' +
