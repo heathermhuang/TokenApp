@@ -2725,31 +2725,70 @@ function benchLeader(benchId) {
   if (rows.length < 2) return null;
   rows.sort(function (a, b) { return b.score - a.score; });
   var gap = rows[0].score - rows[1].score;
-  var err = rows[0].stderr;
+  // Standard error of the DIFFERENCE, not of the leader. Dividing by one model's
+  // stderr answers "how far is #1 from its own mean", which is not the question —
+  // both scores are measurements with error, so the comparison combines them in
+  // quadrature. The old form overstated separation by up to √2 and made the "1σ"
+  // gate behave like ~0.7σ. Measured against live data on 2026-08-12, no
+  // benchmark changed sides, but FrontierMath T4 read 0.94 where the honest
+  // figure is 0.62 — one good run from being crowned on noise, which is the exact
+  // failure this gate exists to prevent.
+  // BOTH sides must publish a usable stderr. Combining in quadrature treats a
+  // missing one as exactly zero — perfect certainty — so a model with no
+  // published error could be crowned on the strength of its RUNNER-UP's error
+  // bar alone (null vs 0.01 across a 0.02 gap reads as 2σ). 3 of 337 Epoch scores
+  // currently carry no usable stderr, so this is reachable, not theoretical.
+  // Unknown uncertainty means unproven, which is a tie.
+  var e1 = rows[0].stderr, e2 = rows[1].stderr;
+  var err = (e1 > 0 && e2 > 0) ? Math.sqrt(e1 * e1 + e2 * e2) : 0;
   return {
     m: rows[0].m,
     score: rows[0].score,
     runnerUp: rows[1].m,
     gap: gap,
-    // No published stderr → treat any gap as unproven rather than infinitely
-    // significant. Erring toward "tie" is the safe direction here.
     sigma: err > 0 ? gap / err : 0,
   };
 }
 
 // The surfaced benchmark that best separates its leader. Returns null when none
 // of them do — in which case the strip simply omits the card.
+// How separated a leader must be before the strip will call it best at anything.
+//
+// Raised from 1σ once the card started saying "most factually accurate" out loud.
+// 1σ is ~68% for a SINGLE comparison, and this is not one: it takes the largest
+// gap across six benchmarks and reports that, so the winner is selected precisely
+// for looking good — the multiple-comparisons problem, which inflates the false
+// positive rate well past the nominal figure. A plain-English superlative has to
+// be backed by more than the weakest threshold that produced it.
+//
+// Costs nothing on current data (SimpleQA leads at 2.9σ) and the card simply
+// disappears if nothing qualifies, which is the designed behaviour, not a gap.
+var BENCH_LEAD_SIGMA = 2;
+
 function leadingBenchmark() {
   if (!state.benchmarks) return null;
   var best = null;
   for (var i = 0; i < state.benchmarks.benchmarks.length; i++) {
     var b = state.benchmarks.benchmarks[i];
     var l = benchLeader(b.id);
-    if (!l || l.sigma < 1) continue;             // inside the error bar → no claim
-    if (!best || l.sigma > best.sigma) { best = l; best.label = b.label; }
+    if (!l || l.sigma < BENCH_LEAD_SIGMA) continue;   // inside the error bars → no claim
+    if (!best || l.sigma > best.sigma) { best = l; best.label = b.label; best.id = b.id; }
   }
   return best;
 }
+
+// What each benchmark actually tells a buyer. Epoch's own one-line blurbs are
+// descriptions of the eval ("Factual accuracy / hallucination"); these are the
+// same fact stated as the thing a reader is choosing between. Keyed by id, not
+// label, so a rename upstream falls back rather than silently mislabelling.
+var BENCH_OUTCOME = {
+  simpleqa_verified: 'most factually accurate',
+  swe_bench_verified: 'best at real code fixes',
+  gpqa_diamond: 'best at science reasoning',
+  frontiermath_t13: 'best at research maths',
+  frontiermath_t4: 'best at the hardest maths',
+  otis_mock_aime: 'best at competition maths',
+};
 
 // ── Superlative strip ─────────────────────────────────────────────────────────
 // llm-stats' hero pattern, re-pointed. Theirs answers "what's strongest";
@@ -2767,10 +2806,10 @@ function renderSuperlatives() {
   // resolve to the same model whenever the value leader is also the cheapest
   // capable one — which is exactly what the current data does.
   var used = {};
-  function add(key, m, meta) {
+  function add(key, m, meta, title) {
     if (!m || used[m.slug]) return;
     used[m.slug] = 1;
-    cards.push({ k: key, name: m.name, meta: meta, slug: m.slug });
+    cards.push({ k: key, name: m.name, meta: meta, slug: m.slug, title: title || '' });
   }
 
   // Best value: highest score per dollar among models scoring in the top half.
@@ -2790,10 +2829,35 @@ function renderSuperlatives() {
   // with ±1.6pp error bars. Claiming that is the same error as the fake-7D bug —
   // presenting noise as a result. We pick the benchmark with the largest lead
   // measured in standard errors, and if nothing clears 1σ we show no card at all.
+  // The other four cards name a user OUTCOME — best value, best open weights,
+  // cheapest ≥85%, largest context. This one named an artifact ("top score ·
+  // SimpleQA Verified"), which is the one card a visitor cannot act on: almost
+  // nobody knows what SimpleQA measures, so "77.3%" floats free of any meaning.
+  // The benchmark's own subject IS the useful claim, so lead with it and keep
+  // the benchmark named in the meta line, because a site that cites everything
+  // must not start asserting "most factually accurate" from nowhere.
+  //
+  // Unknown ids fall back to the old wording rather than inventing a phrase for
+  // a benchmark nobody here has read — Epoch adds evals, and a wrong plain-English
+  // gloss is worse than a dry one.
   var lead = leadingBenchmark();
   if (lead) {
-    add('top score · ' + lead.label, lead.m,
-        (lead.score * 100).toFixed(1) + '% · ' + fmtPrice(blendedPrice(lead.m)) + '/1M');
+    // Own-property check: a plain object inherits constructor, toString and
+    // friends, so a benchmark id colliding with one would resolve to a FUNCTION
+    // and get stringified into the card instead of taking the fallback.
+    var outcome = Object.prototype.hasOwnProperty.call(BENCH_OUTCOME, lead.id)
+      ? BENCH_OUTCOME[lead.id]
+      : ('top score · ' + lead.label);
+    // The margin is the point of the 1σ gate, and it is invisible on the card
+    // unless we say it. Hover carries the full claim: who is second, by how much,
+    // and how many error bars clear — so the superlative is checkable, not asserted.
+    var why = 'Leads ' + lead.label + ' by ' + (lead.gap * 100).toFixed(1) + 'pp over ' +
+      shortModelName(lead.runnerUp) + ' — ' + lead.sigma.toFixed(1) +
+      '× the combined error bars. A benchmark is only used here when its leader clears ' +
+      BENCH_LEAD_SIGMA + '×; where the top models overlap, we show no winner at all.';
+    add(outcome, lead.m,
+        (lead.score * 100).toFixed(1) + '% ' + lead.label + ' · ' + fmtPrice(blendedPrice(lead.m)) + '/1M',
+        why);
   }
 
   // Highest-scoring OPEN-WEIGHTS model. Deliberately the best, not the cheapest:
@@ -2820,7 +2884,8 @@ function renderSuperlatives() {
   }
 
   el.innerHTML = cards.slice(0, 5).map(function (c) {
-    return '<a class="sup" href="/model/' + encodeURIComponent(c.slug) + '">' +
+    return '<a class="sup" href="/model/' + encodeURIComponent(c.slug) + '"' +
+      (c.title ? ' title="' + escape(c.title) + '"' : '') + '>' +
       '<span class="sup-k">' + escape(c.k) + '</span>' +
       '<span class="sup-v">' + escape(shortModelName({ name: c.name })) + '</span>' +
       '<span class="sup-m">' + escape(c.meta) + '</span></a>';
