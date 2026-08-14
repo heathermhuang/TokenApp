@@ -132,6 +132,10 @@ const MODEL_MAP: Record<string, string> = {
   // which we carry as separate models — which is exactly what VERSION_PIN is
   // for: the pin below accepts only the GA rows, so preview scores are never
   // attributed to GA (the Flash-Lite lesson, applied before it could bite).
+  // The preview's rows are DROPPED, not re-routed: MODEL_MAP is keyed by Epoch
+  // display name and Epoch publishes both under this one name, so there is no
+  // key left to hang the preview on. google/gemini-2.5-pro-preview therefore
+  // stays unscored, which is the honest outcome rather than a gap to fill.
   'Gemini 2.5 Pro (Jun 2025)': 'google/gemini-2.5-pro',
   'Gemma 4 31B IT': 'google/gemma-4-31b-it',
   'Gemma 3 27B': 'google/gemma-3-27b-it',
@@ -313,8 +317,9 @@ const VERSION_PIN: Record<string, string> = {
   'Kimi K2.5': 'kimi-k2.5',            // vs fireworks/kimi-k2p5 — same weights, third-party host
   'GPT-5.5': 'gpt-5.5',                // vs gpt-5.5-pre-release
   'GPT-5.5 Pro': 'gpt-5.5-pro',        // vs gpt-5.5-pro-pre-release
-  // GA, not the 06-05 preview — we carry both as separate models, so the preview's
-  // scores belong to the preview's own page and must not land on GA's.
+  // GA, not the 06-05 preview. We carry both as separate models, so preview rows
+  // must not land on GA's page; they are dropped rather than re-routed (see the
+  // MODEL_MAP note — one Epoch name cannot address two catalogue ids).
   'Gemini 2.5 Pro (Jun 2025)': 'gemini-2.5-pro',
 };
 
