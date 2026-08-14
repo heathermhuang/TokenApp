@@ -126,6 +126,17 @@ const MODEL_MAP: Record<string, string> = {
   // Mapping to GA would attribute preview scores to a different release.
   'Gemini 3.1 Flash-Lite': 'google/gemini-3.1-flash-lite-preview',
   'Gemini 2.5 Flash': 'google/gemini-2.5-flash',
+  // Only the JUNE snapshot maps. Epoch's Mar (03-25 exp, 03-31 preview) and May
+  // (05-06 preview) rows have no catalogue entry at those dates at all, so they
+  // stay unmapped. June collides — GA 2025-06-17 and preview-06-05, both of
+  // which we carry as separate models — which is exactly what VERSION_PIN is
+  // for: the pin below accepts only the GA rows, so preview scores are never
+  // attributed to GA (the Flash-Lite lesson, applied before it could bite).
+  // The preview's rows are DROPPED, not re-routed: MODEL_MAP is keyed by Epoch
+  // display name and Epoch publishes both under this one name, so there is no
+  // key left to hang the preview on. google/gemini-2.5-pro-preview therefore
+  // stays unscored, which is the honest outcome rather than a gap to fill.
+  'Gemini 2.5 Pro (Jun 2025)': 'google/gemini-2.5-pro',
   'Gemma 4 31B IT': 'google/gemma-4-31b-it',
   'Gemma 3 27B': 'google/gemma-3-27b-it',
   'Gemma 2 27B': 'google/gemma-2-27b-it',
@@ -141,11 +152,20 @@ const MODEL_MAP: Record<string, string> = {
   // our x-ai/grok-4.3 entry is dated 2026-04-30. Beta and GA may or may not be
   // the same weights, and we cannot tell from either feed — so no number.
   'Grok 4.20': 'x-ai/grok-4.20',
+  'Grok 4.6': 'x-ai/grok-4.6',         // both sides 2026-08-12
   // DeepSeek
   'DeepSeek V4 Flash 0731': 'deepseek/deepseek-v4-flash-0731',
   'DeepSeek-V4-Pro': 'deepseek/deepseek-v4-pro',
   'DeepSeek-V3.2': 'deepseek/deepseek-v3.2',
   'DeepSeek-R1': 'deepseek/deepseek-r1',
+  // The two dated snapshots below were previously listed as ambiguous, and that
+  // was right for the target they were judged against: pointing them at the
+  // MOVING ids (deepseek/deepseek-r1, .../deepseek-chat) would collide with the
+  // undated names above and let `best` keep whichever score was higher. Routing
+  // them to the DATED catalogue ids removes the collision entirely — each has a
+  // single Epoch version whose release date matches `createdAt` exactly.
+  'DeepSeek-R1 (May 2025)': 'deepseek/deepseek-r1-0528',        // DeepSeek-R1-0528, both 2025-05-28
+  'DeepSeek-V3 (Mar 2025)': 'deepseek/deepseek-chat-v3-0324',   // DeepSeek-V3-0324, both 2025-03-24
   'DeepSeek-R1-Distill-Llama-70B': 'deepseek/deepseek-r1-distill-llama-70b',
   // Zhipu
   'GLM-5.2': 'z-ai/glm-5.2',
@@ -161,6 +181,12 @@ const MODEL_MAP: Record<string, string> = {
   'Qwen3.7-Plus': 'qwen/qwen3.7-plus',
   'Qwen3.7 Flash': 'qwen/qwen3.7-flash',
   'Qwen3.6 27B': 'qwen/qwen3.6-27b',
+  // Epoch appends the hosted configuration to the display name; the model is the
+  // same one. Each has a single base version (the `_none` sibling is an effort
+  // variant that EFFORT_SUFFIX already strips), and both release dates match
+  // `createdAt` to the day, so neither needs a pin.
+  'Qwen 3.5 Flash (hosted 35B-A3B)': 'qwen/qwen3.5-flash-02-23',    // both 2026-02-25
+  'Qwen 3.5 Plus (hosted 397B-A17B)': 'qwen/qwen3.5-plus-02-15',    // both 2026-02-16
   'Qwen 3.6 35B-A3B': 'qwen/qwen3.6-35b-a3b',
   'Qwen3.5 397B-A17B': 'qwen/qwen3.5-397b-a17b',
   'Qwen3-Max': 'qwen/qwen3-max',
@@ -189,6 +215,13 @@ const MODEL_MAP: Record<string, string> = {
   // Microsoft
   'Phi-4': 'microsoft/phi-4',
   'WizardLM-2 8x22B': 'microsoft/wizardlm-2-8x22b',
+  // Thinking Machines
+  // Epoch 2026-07-15 against our 2026-07-17 — a two-day listing lag, not a
+  // separate release: there is no other Inkling entry near that date, and
+  // `inkling-small` (2026-07-30) is a different, smaller model. Recorded because
+  // it is the loosest date match in this map; if a preview entry ever appears,
+  // re-judge this one first.
+  'Inkling': 'thinkingmachines/inkling',
 };
 
 /**
@@ -210,12 +243,25 @@ const MODEL_MAP: Record<string, string> = {
  *       'Qwen2.5-32B'     vs qwen/qwen-2.5-coder-32b (coder variant)
  *       'Gemini 3 Pro'    vs google/gemini-3-pro-image (image variant)
  *
- *  3. AMBIGUOUS SNAPSHOTS — the catalogue id is a moving alias, so two Epoch rows
- *     would collide on one id and `best` would silently keep the higher score:
+ *  3. AMBIGUOUS SNAPSHOTS — a dated Epoch name whose only obvious target is a
+ *     MOVING catalogue alias, so two Epoch rows would collide on one id and
+ *     `best` would silently keep the higher score:
  *     'GPT-4 (Mar 2023)' + 'GPT-4 (Jun 2023)' → openai/gpt-4;
- *     'GPT-4 Turbo (Nov 2023)' → openai/gpt-4-turbo-preview;
- *     'Gemini 2.5 Pro (Mar/May/Jun 2025)'; 'DeepSeek-R1 (May 2025)';
- *     'Claude 3.5 Sonnet (October 2024)'; 'Qwen3-235B-A22B (Jul 2025)'.
+ *     'GPT-4 Turbo (Nov 2023)' → two releases (2023-11-06, 2024-01-25) and our
+ *       gpt-4-turbo-preview is the January one, so name and target disagree;
+ *     'Gemini 2.5 Pro (Mar/May 2025)' → Epoch's 03-25/03-31/05-06 rows have no
+ *       catalogue entry at those dates (the JUNE snapshot now maps, with a pin);
+ *     'Claude 3.5 Sonnet (October 2024)' → not in the catalogue;
+ *     'Qwen3-235B-A22B (Jul 2025)' → Epoch lists ONE model under two id spellings
+ *       ('Qwen/Qwen3-235B-A22B-Thinking-2507' and the same without the vendor
+ *       prefix). versionBase() does not normalise the prefix, so they read as a
+ *       collision, and pinning either would silently keep only half the scores.
+ *
+ *     Resolved since (2026-08-13): a dated Epoch name is fine when the catalogue
+ *     has a DATED id to match it, because there is then no moving alias to
+ *     collide with — see 'DeepSeek-R1 (May 2025)' and 'DeepSeek-V3 (Mar 2025)'.
+ *     The rule is about the target being a moving alias, not about the name
+ *     carrying a date.
  */
 
 // ── Model VERSION disambiguation ──────────────────────────────────────────────
@@ -271,6 +317,10 @@ const VERSION_PIN: Record<string, string> = {
   'Kimi K2.5': 'kimi-k2.5',            // vs fireworks/kimi-k2p5 — same weights, third-party host
   'GPT-5.5': 'gpt-5.5',                // vs gpt-5.5-pre-release
   'GPT-5.5 Pro': 'gpt-5.5-pro',        // vs gpt-5.5-pro-pre-release
+  // GA, not the 06-05 preview. We carry both as separate models, so preview rows
+  // must not land on GA's page; they are dropped rather than re-routed (see the
+  // MODEL_MAP note — one Epoch name cannot address two catalogue ids).
+  'Gemini 2.5 Pro (Jun 2025)': 'gemini-2.5-pro',
 };
 
 // ── CSV parsing ───────────────────────────────────────────────────────────────
