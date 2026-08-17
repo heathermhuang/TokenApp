@@ -231,11 +231,26 @@ honest about it or to a tier with no source:
 
 | Where | Still says | Why left |
 |---|---|---|
-| grok → X Premium+ | Grok 4.3 access | An X/Twitter subscription; not on `x.ai/pricing` at all |
 | kimi → Adagio, Moderato | Kimi K2.6 | Entry is **unstamped** (`07-07`); pricing page redirects to root |
-| github-copilot → Pro+ | Opus 4.7/4.8 & Fable 5 | Prices verified, model catalogue not published on the plans page |
 | hailuo-ai → tier | Hailuo 2.3/2.0/1.0 | Entry is **unstamped** (`07-11`); plans behind auth |
-| kling / runway descriptions | Kling 3.0 series | Only **prices** were verified; Kling's page now labels models "VIDEO 2.6" / "VIDEO O1", which does not map cleanly onto the existing wording |
+| kling / runway descriptions | Kling 3.0 series | Only **prices** were verified; Kling's page now labels models "VIDEO 2.6" / "VIDEO O1", which does not map cleanly onto the existing wording. Left because the current product-line name is genuinely unknown — "3.0 series" may still be right, and replacing it would be a guess |
+
+### Version claims DROPPED rather than swapped (second Codex round)
+
+Two entries were stamped yet named a model version there is positive reason to believe
+is stale, on a tier with **no** published source. Swapping in a newer number would have
+been inventing; keeping the old one asserts something likely false. Both had the version
+removed instead, which is strictly more accurate than either alternative:
+
+- **grok → X Premium+** — `'Grok 4.3 access'` dropped. It is an X/Twitter subscription,
+  absent from `x.ai/pricing`, so what model it serves is unknown; but x.ai serves 4.6
+  everywhere it *does* publish, so 4.3 is almost certainly wrong.
+- **github-copilot → Pro+** — `'Claude Opus 4.7/4.8 & Fable 5'` → `'Claude Opus & Fable
+  models'`. GitHub does not publish a model catalogue on the plans page. The adjacent
+  `'Broad premium model catalog'` feature already carries the meaning.
+
+Codex also asked for Perplexity's list to be complete rather than a silent subset; all
+six published models are now named.
 
 Worth noting for the next pass: `lastVerified` says prices were checked, so a stamped
 entry can still carry a stale model name in `features[]`. Grepping the **rendered page**
