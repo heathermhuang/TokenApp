@@ -249,6 +249,11 @@ export function unsafeStyles(svg) {
  */
 export const UNSAFE_CONSTRUCTS = [
   ['filter (can transform the ink)', /\bfilter\s*[=:]/i],
+  // marker-start/mid/end reference a paint source that need not be an element in THIS
+  // document — url(data:image/svg+xml;…#m) draws whatever the payload says. The
+  // reference rides on a plain <path>, so neither the element allowlist nor the style
+  // check sees it, and the property is not paint so the value scan skips it too.
+  ['marker (references an outside paint source)', /\bmarker(?:-(?:start|mid|end))?\s*[=:]/i],
   ['gradient inheriting external stops', /<(?:linear|radial)Gradient[^>]*\bhref/i],
   ['SVG 2 paint fallback after url()', /url\(#[^)]*\)\s+[^\s"'>;)]/i],
   // Belt-and-braces only, and honestly labelled as such: mutation testing shows the

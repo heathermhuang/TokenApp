@@ -187,6 +187,10 @@ test('colour routes that ride on safe elements are still caught', () => {
     'SVG 2 paint fallback': '<path fill="currentColor" style="fill:url(#missing) red" d="M1 1"/>',
     'the same fallback in uppercase': '<path fill="currentColor" style="fill:URL(#missing) red" d="M1 1"/>',
     'a character entity hiding a separator': '<path fill="currentColor" d="M1 1"/><path fill="&#35;f90" d="M2 2"/>',
+    // marker-start can point at a data: URL carrying its own coloured SVG. It rides on
+    // a plain <path>, and markers are not paint, so nothing else on the path sees it.
+    'marker referencing an outside paint source': '<path fill="currentColor" marker-start="url(data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=#m)" d="M1 1"/>',
+    'the shorthand marker property': '<path fill="currentColor" style="marker:url(#m)" d="M1 1"/>',
   };
   for (const [why, inner] of Object.entries(residual)) {
     const { mono, mixed } = normalise(svg(inner), 'residual');
