@@ -14,7 +14,7 @@
  */
 
 import type { NormalizedModel, Subscription, SubscriptionTier, BenchmarksPayload, ModelBenchmarks, ModelEndpoints, ModelUsage } from './types';
-import { getProvider, PROVIDER_PAGE_SET } from './providers';
+import { getProvider, PROVIDER_PAGE_SET, canonicalProviderId } from './providers';
 
 // ── Shared formatting ─────────────────────────────────────────────────────────
 
@@ -250,6 +250,11 @@ export function getModelHtml(params: {
 }): string {
   const { model: m, all, benchmarks, subscriptions, endpoints, usage = null } = params;
   const prov = getProvider(m.providerId);
+  // Resolve the slug once, and use it for BOTH the page-set test and the href. A raw
+  // `m.providerId` here silently degrades the breadcrumb to plain text for a whole vendor
+  // during the window where KV still holds a retired spelling (see providers.ts), and
+  // `prov.displayName` rather than `m.provider` keeps the label from lagging a rename too.
+  const provSlug = canonicalProviderId(m.providerId);
   const bl = blended(m);
   const mb = benchOf(benchmarks, m.id);
   const url = `https://token.app/model/${encodeURIComponent(m.slug)}`;
@@ -320,18 +325,20 @@ export function getModelHtml(params: {
   // Popular comparison targets: same-tier rivals from other providers, most
   // recent first. Cheap internal linking, which is most of why llm-stats ranks.
   const rivals = all
-    .filter((o) => o.id !== m.id && !o.isDeprecated && o.providerId !== m.providerId && blended(o) !== null)
+    .filter((o) => o.id !== m.id && !o.isDeprecated
+      && canonicalProviderId(o.providerId) !== canonicalProviderId(m.providerId)
+      && blended(o) !== null)
     .filter((o) => scoreCell(benchOf(benchmarks, o.id), primary) !== null)
     .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
     .slice(0, 8);
 
   const body = `
-  <div class="crumb"><a href="/">token.app</a> › ${PROVIDER_PAGE_SET.has(m.providerId)
-    ? `<a href="/${esc(m.providerId)}">${esc(m.provider)}</a>`
-    : esc(m.provider)} › ${esc(disp)}</div>
+  <div class="crumb"><a href="/">token.app</a> › ${PROVIDER_PAGE_SET.has(provSlug)
+    ? `<a href="/${esc(provSlug)}">${esc(prov.displayName)}</a>`
+    : esc(prov.displayName)} › ${esc(disp)}</div>
   <h1>${esc(disp)} pricing &amp; benchmarks</h1>
   <p class="lede">
-    ${esc(disp)} is available from ${esc(prov?.displayName ?? m.provider)} at ${esc(fmtP(m.inputPer1M))} per million input tokens
+    ${esc(disp)} is available from ${esc(prov.displayName)} at ${esc(fmtP(m.inputPer1M))} per million input tokens
     and ${esc(fmtP(m.outputPer1M))} per million output tokens${bl !== null ? ` (${esc(fmtP(bl))} blended at 3:1)` : ''}.
     ${m.contextWindow ? `It accepts up to ${m.contextWindow.toLocaleString()} tokens of context.` : ''}
     ${m.description ? esc(m.description.slice(0, 240)) + (m.description.length > 240 ? '…' : '') : ''}
@@ -389,7 +396,7 @@ export function getModelHtml(params: {
           const save = bl !== null && bl > 0 ? Math.round((1 - ob / bl) * 100) : null;
           return `<tr>
           <td><a href="/model/${encodeURIComponent(o.slug)}" style="color:var(--text);text-decoration:none;font-weight:500">${esc(shortName(o.name))}</a></td>
-          <td class="muted">${esc(o.provider)}</td>
+          <td class="muted">${esc(getProvider(o.providerId).displayName)}</td>
           <td class="num win">${esc(fmtP(ob))}${save !== null && save > 0 ? ` <span class="muted">(−${save}%)</span>` : ''}</td>
           <td class="num">${(os * 100).toFixed(1)}%</td>
           <td><a href="/compare/${encodeURIComponent(m.slug)}-vs-${encodeURIComponent(o.slug)}" style="color:var(--accent);text-decoration:none">Compare →</a></td>
@@ -438,7 +445,7 @@ export function getModelHtml(params: {
       '@type': 'Product',
       name: disp,
       description: m.description?.slice(0, 300) ?? `${disp} API pricing and benchmarks`,
-      brand: { '@type': 'Brand', name: m.provider },
+      brand: { '@type': 'Brand', name: prov.displayName },
       url,
       ...(m.inputPer1M !== null ? {
         offers: {
@@ -856,7 +863,7 @@ export function getModelCompareHtml(params: {
     },
     {
       q: `Who makes ${an} and ${bn}?`,
-      a: `${an} is made by ${a.provider}. ${bn} is made by ${b.provider}.`,
+      a: `${an} is made by ${getProvider(a.providerId).displayName}. ${bn} is made by ${getProvider(b.providerId).displayName}.`,
     },
   ];
 
@@ -873,7 +880,7 @@ export function getModelCompareHtml(params: {
     <div class="tbl-wrap"><table>
       <thead><tr><th></th><th>${esc(an)}</th><th>${esc(bn)}</th></tr></thead>
       <tbody>
-        <tr><td class="stat-k">Provider</td><td>${esc(a.provider)}</td><td>${esc(b.provider)}</td></tr>
+        <tr><td class="stat-k">Provider</td><td>${esc(getProvider(a.providerId).displayName)}</td><td>${esc(getProvider(b.providerId).displayName)}</td></tr>
         <tr><td class="stat-k">Input $/1M</td><td class="num${lowerWins(a.inputPer1M, b.inputPer1M)}">${esc(fmtP(a.inputPer1M))}</td><td class="num${lowerWins(b.inputPer1M, a.inputPer1M)}">${esc(fmtP(b.inputPer1M))}</td></tr>
         <tr><td class="stat-k">Output $/1M</td><td class="num${lowerWins(a.outputPer1M, b.outputPer1M)}">${esc(fmtP(a.outputPer1M))}</td><td class="num${lowerWins(b.outputPer1M, a.outputPer1M)}">${esc(fmtP(b.outputPer1M))}</td></tr>
         <tr><td class="stat-k">Blended $/1M</td><td class="num${lowerWins(ab, bb)}">${esc(fmtP(ab))}</td><td class="num${lowerWins(bb, ab)}">${esc(fmtP(bb))}</td></tr>

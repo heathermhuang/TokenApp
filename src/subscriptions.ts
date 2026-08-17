@@ -205,12 +205,14 @@ export const SUBSCRIPTIONS: Subscription[] = [
   {
     id: 'grok',
     name: 'Grok',
-    provider: 'xAI',
-    providerId: 'x-ai',
-    description: 'xAI\'s AI with real-time X data and Search, Grok 4.6, and agentic Imagine tools.',
+    provider: 'SpaceXAI',
+    providerId: 'spacexai',
+    description: 'SpaceXAI\'s (formerly xAI) AI with real-time X data and Search, Grok 4.6, and agentic Imagine tools.',
     category: 'chat',
     url: 'https://x.ai/pricing',
     lastVerified: '2026-08-17',
+    // Model ids keep OpenRouter's `x-ai/` prefix — that is the join key for benchmarks and
+    // model pages, and renaming it would break both. Only `providerId` above is ours.
     underlyingModels: ['x-ai/grok-4.6', 'x-ai/grok-4.5'],
     tiers: [
       {

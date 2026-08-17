@@ -57,7 +57,14 @@ const ICON_MAP = {
   meta:          'meta-color',
   mistralai:     'mistral-color',
   deepseek:      'deepseek-color',
-  'x-ai':        'xai',               // the company mark, not the `grok` product mark
+  // The company mark, not the `grok` product mark. BOTH slugs are mapped on purpose:
+  // `spacexai` is the canonical providerId now, but KV keeps normalized models between a
+  // deploy and the next refresh, and clients cache `/logo/x-ai.svg?v=…` for a year under
+  // an `immutable` TTL. `logoSvg()` never 404s — an unmapped slug silently renders an
+  // initial tile — so dropping the old key would swap the real mark for an "X" square
+  // with nothing failing anywhere.
+  'x-ai':        'xai',
+  spacexai:      'xai',
   qwen:          'qwen-color',        // Alibaba's model brand, which is how the catalogue labels it
   cohere:        'cohere-color',
   perplexity:    'perplexity-color',
