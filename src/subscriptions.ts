@@ -282,6 +282,10 @@ export const SUBSCRIPTIONS: Subscription[] = [
     category: 'search',
     url: 'https://perplexity.ai/pro',
     lastVerified: '2026-08-17',
+    // perplexity.ai/pro names six models on its own model cards. "Sonar 2" is deliberately
+    // absent below: the catalogue has no such id (only sonar / sonar-pro / sonar-reasoning-pro
+    // / sonar-pro-search / sonar-deep-research) and picking one would be a fuzzy match.
+    underlyingModels: ['openai/gpt-5.6-terra', 'google/gemini-3.7-flash', 'anthropic/claude-sonnet-5', 'moonshotai/kimi-k3', 'z-ai/glm-5.2'],
     tiers: [
       {
         name: 'Free',
@@ -394,6 +398,10 @@ export const SUBSCRIPTIONS: Subscription[] = [
     category: 'chat',
     url: 'https://www.kimi.com/pricing',
     lastVerified: '2026-07-07',
+    // kimi.com titles itself "Kimi AI with K3"; the description above already carries that
+    // claim. Per-tier features still read K2.6 — the pricing page redirects to root, so which
+    // tier gets which model is unsourceable and is left alone rather than guessed.
+    underlyingModels: ['moonshotai/kimi-k3'],
     tiers: [
       {
         name: 'Adagio',
@@ -775,7 +783,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
       {
         name: 'Pro',
         monthlyPrice: 10,
-        annualMonthlyPrice: 8.33,
+        annualMonthlyPrice: 10,
         perSeat: false,
         features: ['Unlimited completions', '$15/mo in GitHub AI Credits', 'Copilot cloud agent & code review', '3rd-party agents (Claude Code, Codex)', 'Free for verified students'],
         highlight: true,
@@ -784,7 +792,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
       {
         name: 'Pro+',
         monthlyPrice: 39,
-        annualMonthlyPrice: 32.5,
+        annualMonthlyPrice: 39,
         perSeat: false,
         features: ['$70/mo in GitHub AI Credits', 'Claude Opus & Fable models', 'Broad premium model catalog', 'Copilot cloud agent & code review', 'Overage billed as AI Credits'],
         highlight: false,

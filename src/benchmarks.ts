@@ -114,6 +114,7 @@ const MODEL_MAP: Record<string, string> = {
   'o3-mini': 'openai/o3-mini',
   'o4-mini': 'openai/o4-mini',
   // Google
+  'Gemini 3.7 Flash': 'google/gemini-3.7-flash',   // both sides 2026-08-13; single base (_high effort)
   'Gemini 3.6 Flash': 'google/gemini-3.6-flash',
   'Gemini 3.5 Flash': 'google/gemini-3.5-flash',
   // Our catalogue carries only the preview of these two exact versions — there is
@@ -218,10 +219,17 @@ const MODEL_MAP: Record<string, string> = {
   // Thinking Machines
   // Epoch 2026-07-15 against our 2026-07-17 — a two-day listing lag, not a
   // separate release: there is no other Inkling entry near that date, and
-  // `inkling-small` (2026-07-30) is a different, smaller model. Recorded because
-  // it is the loosest date match in this map; if a preview entry ever appears,
-  // re-judge this one first.
+  // `inkling-small` is a different, smaller model with its own Epoch name (below).
   'Inkling': 'thinkingmachines/inkling',
+  // Epoch dates BOTH 'Inkling' and 'Inkling-Small' at 2026-07-15 — one family
+  // date, not a per-version one — so the 15-day gap to our 2026-07-30 listing
+  // cannot discriminate here, in either direction. What carries the mapping
+  // instead is that there is exactly ONE candidate on each side: a single Epoch
+  // name ('Inkling-Small', one base after _xhigh is stripped) and a single
+  // catalogue entry named "Inkling Small". No preview, no second size, nothing
+  // to confuse it with. This is now the loosest date match in the map — if a
+  // second Inkling Small release ever appears on either side, re-judge this first.
+  'Inkling-Small': 'thinkingmachines/inkling-small',
 };
 
 /**
@@ -241,7 +249,16 @@ const MODEL_MAP: Record<string, string> = {
  *       'Grok 4'          vs x-ai/grok-4.3 / 4.5 / 4.20
  *       'Llama 3.1-405B'  vs nousresearch/hermes-3-... (third-party fine-tune)
  *       'Qwen2.5-32B'     vs qwen/qwen-2.5-coder-32b (coder variant)
- *       'Gemini 3 Pro'    vs google/gemini-3-pro-image (image variant)
+ *       'Gemini 3 Pro'    vs google/gemini-3-pro-image / -image-preview — re-checked
+ *                            2026-08-17: the catalogue carries ONLY the image variants,
+ *                            there is no plain gemini-3-pro entry to map to
+ *       'Gemma 2 9B'      vs google/gemma-2-27b-it (27B ≠ 9B; no 9B entry exists)
+ *
+ *     'GPT-5.5 Instant' (Epoch 2026-05-05, base `gpt-5.5-instant`) belongs here too,
+ *     and is the sharpest case: there is no openai/gpt-5.5-instant in the catalogue,
+ *     and the tempting target — openai/gpt-5.5 — is ALREADY mapped from 'GPT-5.5'.
+ *     Pointing both Epoch names at one id is not a near-miss but a collision, and
+ *     `best` would keep whichever score was higher per benchmark: the chimera bug.
  *
  *  3. AMBIGUOUS SNAPSHOTS — a dated Epoch name whose only obvious target is a
  *     MOVING catalogue alias, so two Epoch rows would collide on one id and
@@ -512,7 +529,7 @@ export async function fetchBenchmarks(): Promise<BenchmarksPayload> {
     const variantMatch = unique && unique !== epochModel ? /\(([^)]+)\)\s*$/.exec(unique) : null;
     const started = iStarted >= 0 ? row[iStarted] : '';
 
-    const key = `${modelId} ${meta.id}`;
+    const key = `${modelId}\u0000${meta.id}`;
     const prev = best.get(key);
     if (prev && prev.score >= score) continue;
 
