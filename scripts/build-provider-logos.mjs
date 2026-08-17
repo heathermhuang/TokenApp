@@ -168,34 +168,69 @@ export const MIXED_INK = '#8a8f98';
 export const MONO_SAFE_PAINT = /^(currentcolor|none|transparent|inherit|black|#0{3}[0-9a-f]?|#0{6}(?:[0-9a-f]{2})?|rgb\(0,0,0\)|rgba\(0,0,0,1?\.?0*\)|url\(#[^)]*\))$/;
 
 /**
- * Constructs that can put colour on the canvas by a route this scanner cannot follow.
- * Any of them present means the mark is never inverted, whatever the paint scan says.
+ * The ONLY elements a mark may contain and still be considered for inverting.
  *
- * This exists because scanning for paint VALUES can only fail open: syntax the regex
- * does not match yields no value at all, so "every value found was safe" is vacuously
- * true for a document whose colour is hidden — inside a CSS comment, behind a
- * character entity, in a SMIL `<animate>`, in an SVG 2 paint fallback, or painted by a
- * filter primitive. Enumerating hostile syntax is a losing game; refusing to classify
- * documents that contain the constructs is not. Of the 25 invertible marks in the
- * current corpus exactly one (poolside) references anything here — a `<mask>`, which
- * is deliberately absent from this list because a mask changes coverage, not colour.
+ * This is an allowlist, and that is the whole point. Four review rounds went into a
+ * denylist of things that can smuggle colour past a paint scan — `<pattern>` wrapping
+ * a raster, `<filter>` with an feFlood, SMIL `<animate>`, `<foreignObject>` rendering
+ * HTML, a namespace prefix (`<s:animate>`) defeating every tag pattern at once — and
+ * each round found another one. Enumerating hostile syntax against arbitrary SVG is a
+ * race you lose quietly, because the failure is invisible: an unmatched construct
+ * yields no paint value, so "every value was safe" comes out vacuously true.
+ *
+ * Naming the handful of elements the marks actually use inverts that. Anything not on
+ * this list — including any element this file's author never imagined, and including
+ * any prefixed spelling of one that is — is simply not classified. Drawn from the
+ * corpus: the 25 invertible marks use svg/title/path/g/defs/linearGradient/
+ * radialGradient/stop/mask/clipPath and nothing else. The extra primitive shapes are
+ * listed because they are geometry, not because anything needs them today.
+ *
+ * `mask` and `clipPath` are here deliberately: they modulate coverage, never inject
+ * their own colour into the composited result. Poolside is the one mark relying on it.
+ */
+export const SAFE_ELEMENTS = new Set([
+  'svg', 'title', 'desc', 'metadata', 'defs', 'g',
+  'path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon',
+  'lineargradient', 'radialgradient', 'stop', 'mask', 'clippath',
+]);
+
+/** Every element name in the document, lowercased, prefix included if it has one. */
+export function elementNames(svg) {
+  return [...new Set([...svg.matchAll(/<\/?([a-zA-Z_][\w.:-]*)/g)].map(m => m[1].toLowerCase()))];
+}
+
+/**
+ * Colour routes that survive the element allowlist, because they ride on elements that
+ * are themselves fine.
+ *
+ * Kept deliberately short — this is the residue after the allowlist does the work, not
+ * the primary defence. `filter` as a CSS property or presentation attribute can
+ * transform the baked ink on a plain `<path>`; a gradient can inherit its stops from
+ * elsewhere via href; and SVG 2 paint fallback (`fill:url(#missing) red`) hides a real
+ * colour behind a reference the paint scan accepts.
  */
 export const UNSAFE_CONSTRUCTS = [
-  ['<style> block', /<style[\s>]/i],
-  ['<pattern> (may wrap a raster)', /<pattern[\s>]/i],
-  ['<image> (raster of unknown colour)', /<image[\s>]/i],
-  ['<use> (may reference elsewhere)', /<use[\s>]/i],
-  ['<filter> (feFlood/feImage paint)', /<filter[\s>]/i],
-  ['SMIL animation of paint', /<(?:animate|set)[\s>]/i],
+  ['filter (can transform the ink)', /\bfilter\s*[=:]/i],
   ['gradient inheriting external stops', /<(?:linear|radial)Gradient[^>]*\bhref/i],
+  ['SVG 2 paint fallback after url()', /url\(#[^)]*\)\s+[^\s"'>;)]/i],
+  // Belt-and-braces only, and honestly labelled as such: mutation testing shows the
+  // suite still passes with this line deleted. Entity-hidden colour used to need it
+  // when <style> was scanned rather than refused; now the allowlist closes that route
+  // and the paint scan reads `&#35;f90` as an unrecognised value anyway. Kept because
+  // it is free and entities are a general escaping trick, not because it is load-bearing.
   ['character entity', /&#/],
-  ['CSS comment', /\/\*/],
-  ['SVG 2 paint fallback after url()', /url\(#[^)]*\)\s+[^\s"'>;)]/],
 ];
 
-/** Names the constructs that make a document unclassifiable, for the build report. */
+/**
+ * Names everything that makes a document unclassifiable, for the build report — the
+ * elements that are not on the allowlist, plus the residual constructs above.
+ */
 export function unsafeConstructs(svg) {
-  return UNSAFE_CONSTRUCTS.filter(([, re]) => re.test(svg)).map(([name]) => name);
+  const strangers = elementNames(svg).filter(n => !SAFE_ELEMENTS.has(n));
+  return [
+    ...strangers.map(n => `<${n}> (not on the safe-element list)`),
+    ...UNSAFE_CONSTRUCTS.filter(([, re]) => re.test(svg)).map(([name]) => name),
+  ];
 }
 
 /**
@@ -489,4 +524,14 @@ if (RUN_DIRECTLY) {
   console.log(`  asset version ${version}`);
   console.log(`  ${(out.length / 1024).toFixed(1)} KB generated`);
 
+}
+
+// A --check that exits 0 without having checked anything is worse than no check: the
+// deploy preflight would read it as a pass. RUN_DIRECTLY can only be false here if the
+// entry-point comparison failed (an unresolvable symlink, a permissions change), so say
+// so loudly rather than inheriting a silent success.
+if (CHECK_ONLY && !RUN_DIRECTLY) {
+  console.error('--check was requested but this file did not recognise itself as the entry point,');
+  console.error('so nothing was verified. Refusing to report success.');
+  process.exit(2);
 }
