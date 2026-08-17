@@ -338,7 +338,7 @@ export function getModelHtml(params: {
     : esc(prov.displayName)} › ${esc(disp)}</div>
   <h1>${esc(disp)} pricing &amp; benchmarks</h1>
   <p class="lede">
-    ${esc(disp)} is available from ${esc(prov?.displayName ?? m.provider)} at ${esc(fmtP(m.inputPer1M))} per million input tokens
+    ${esc(disp)} is available from ${esc(prov.displayName)} at ${esc(fmtP(m.inputPer1M))} per million input tokens
     and ${esc(fmtP(m.outputPer1M))} per million output tokens${bl !== null ? ` (${esc(fmtP(bl))} blended at 3:1)` : ''}.
     ${m.contextWindow ? `It accepts up to ${m.contextWindow.toLocaleString()} tokens of context.` : ''}
     ${m.description ? esc(m.description.slice(0, 240)) + (m.description.length > 240 ? '…' : '') : ''}
@@ -445,7 +445,7 @@ export function getModelHtml(params: {
       '@type': 'Product',
       name: disp,
       description: m.description?.slice(0, 300) ?? `${disp} API pricing and benchmarks`,
-      brand: { '@type': 'Brand', name: m.provider },
+      brand: { '@type': 'Brand', name: prov.displayName },
       url,
       ...(m.inputPer1M !== null ? {
         offers: {
@@ -863,7 +863,7 @@ export function getModelCompareHtml(params: {
     },
     {
       q: `Who makes ${an} and ${bn}?`,
-      a: `${an} is made by ${a.provider}. ${bn} is made by ${b.provider}.`,
+      a: `${an} is made by ${getProvider(a.providerId).displayName}. ${bn} is made by ${getProvider(b.providerId).displayName}.`,
     },
   ];
 
