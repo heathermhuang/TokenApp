@@ -8,6 +8,7 @@
     "cf-typegen": "wrangler types",
     "test": "node --test test/*.test.mjs",
     "logos": "node scripts/build-provider-logos.mjs",
+    "logos:check": "node scripts/build-provider-logos.mjs --check",
     "preflight": "node scripts/preflight-deploy.mjs"
   },
   "dependencies": {

@@ -21,8 +21,12 @@
  * is honest rather than wrong. Run `npm run logos` after editing.
  */
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+/** `--check` verifies the committed file matches this generator instead of writing. */
+const CHECK_ONLY = process.argv.includes('--check');
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ICON_DIR = join(ROOT, 'node_modules/@lobehub/icons-static-svg/icons');
@@ -144,18 +148,40 @@ if (!existsSync(ICON_DIR)) {
 const available = new Set(readdirSync(ICON_DIR).filter(f => f.endsWith('.svg')).map(f => f.slice(0, -4)));
 
 /**
+ * Ink for the `currentColor` parts of an icon that ALSO carries fixed brand paint.
+ *
+ * Such an icon cannot be flipped wholesale for the dark theme — inverting the image
+ * would take AWS orange to blue — so its `currentColor` half is baked to one neutral
+ * that reads on both backgrounds instead, leaving the brand colour untouched. Slate
+ * rather than pure grey so it sits with the UI's palette.
+ */
+const MIXED_INK = '#8a8f98';
+
+/** Fixed paint that is effectively black, i.e. the tone we are already baking to. */
+const BLACKISH = /^#(0{3}|0{6}|0{8})$/i;
+
+/**
  * Normalise one icon for standalone <img> use.
  *
  * lobehub ships `width="1em" height="1em"`, which resolves against the SVG document's
  * own font-size when loaded through <img> rather than against ours. Pinning explicit
- * pixels keeps the intrinsic size predictable. `currentColor` gets baked to black for
- * the same reason — nothing inherits into that document.
+ * pixels keeps the intrinsic size predictable. `currentColor` gets baked for the same
+ * reason — nothing inherits into that document.
+ *
+ * Whether the result is `mono` decides whether CSS inverts the WHOLE image on the dark
+ * theme, so it must mean "every visible stroke is the baked ink", not merely "the file
+ * mentions currentColor". Three mapped marks (Yi, AWS, LongCat) mix `currentColor` with
+ * a fixed brand colour; treating those as mono inverted the brand colour too.
  */
 function normalise(raw, name) {
   const viewBox = /viewBox="([^"]+)"/.exec(raw);
   if (!viewBox) throw new Error(`${name}: no viewBox — cannot size it safely`);
 
-  const mono = raw.includes('currentColor');
+  const usesCurrentColor = raw.includes('currentColor');
+  const fixedPaint = [...new Set(raw.match(/#[0-9A-Fa-f]{3,8}/g) || [])].filter(c => !BLACKISH.test(c));
+  const mixed = usesCurrentColor && fixedPaint.length > 0;
+  const mono = usesCurrentColor && !mixed;
+  const ink = mixed ? MIXED_INK : '#000';
   // Rewrite the ROOT <svg> tag only. A global style/width strip would also hit inner
   // elements, and several colour marks carry their fills in an inline style there.
   const rootEnd = raw.indexOf('>');
@@ -165,7 +191,7 @@ function normalise(raw, name) {
     .replace(/\sstyle="[^"]*"/g, '')
     .replace(/<svg\b/, '<svg width="24" height="24" role="img"');
 
-  let svg = (root + raw.slice(rootEnd)).replace(/currentColor/g, '#000').trim();
+  let svg = (root + raw.slice(rootEnd)).replace(/currentColor/g, ink).trim();
 
   // Collapse the inter-tag whitespace some icons carry; these are served on every
   // page view, so the bytes are worth reclaiming.
@@ -173,7 +199,7 @@ function normalise(raw, name) {
 
   if (!/^<svg[\s>]/.test(svg)) throw new Error(`${name}: does not start with <svg`);
   if (/<script/i.test(svg)) throw new Error(`${name}: contains <script>`);
-  return { svg, mono };
+  return { svg, mono, mixed, fixedPaint };
 }
 
 /**
@@ -190,18 +216,20 @@ const monoSlugs = [];
 const unmapped = [];
 const missing = [];
 const oversized = [];
+const mixedInk = [];
 
 for (const [slug, icon] of Object.entries(ICON_MAP)) {
   if (icon === null) { unmapped.push(slug); continue; }
   if (!available.has(icon)) { missing.push(`${slug} → ${icon}`); continue; }
   const raw = readFileSync(join(ICON_DIR, `${icon}.svg`), 'utf8');
-  const { svg, mono } = normalise(raw, icon);
+  const { svg, mono, mixed, fixedPaint } = normalise(raw, icon);
   if (svg.length > MAX_ICON_BYTES) {
     oversized.push(`${slug} (${icon}, ${(svg.length / 1024).toFixed(0)}KB)`);
     continue;
   }
   assets[slug] = { svg, mono, icon };
   if (mono) monoSlugs.push(slug);
+  if (mixed) mixedInk.push(`${slug} (${icon}, keeps ${fixedPaint.join(' ')})`);
 }
 
 if (missing.length) {
@@ -215,6 +243,22 @@ const body = slugs.map(s => {
   const a = assets[s];
   return `  ${JSON.stringify(s)}: { mono: ${a.mono}, svg: ${JSON.stringify(a.svg)} },`;
 }).join('\n');
+
+/**
+ * Cache-busting token for the asset URLs.
+ *
+ * `/logo/{slug}.svg` is addressed by provider, not by content, so an `immutable`
+ * year-long TTL would otherwise pin a returning visitor to the old mark for a year
+ * after a logo changes — or after an initial tile is upgraded to a real logo. The
+ * token turns the provider-addressed URL into a content-addressed one, which is what
+ * makes `immutable` honest. `providers.ts` is folded in because the initial tiles are
+ * generated from its display names and colours at request time.
+ */
+const version = createHash('sha256')
+  .update(body)
+  .update(readFileSync(join(ROOT, 'src/providers.ts')))
+  .digest('hex')
+  .slice(0, 10);
 
 const out = `/**
  * GENERATED FILE — do not edit by hand.
@@ -262,10 +306,22 @@ ${body}
 };
 
 /**
- * Slugs whose glyph is flat black and therefore needs \`filter: invert(1)\` on the
- * dark theme. Interpolated into the client bundle so the renderer can tag them.
+ * Slugs whose glyph is ENTIRELY flat black and can therefore be flipped wholesale
+ * with \`filter: invert(1)\` on the dark theme. Interpolated into the client bundle so
+ * the renderer can tag them.
+ *
+ * A mark that mixes \`currentColor\` with fixed brand paint is deliberately NOT here:
+ * inverting the image would take AWS orange to blue. Those have their
+ * \`currentColor\` half baked to a neutral that reads on either background instead.
  */
 export const MONO_LOGO_SLUGS: readonly string[] = ${JSON.stringify(monoSlugs.sort())};
+
+/**
+ * Cache-busting token, changing whenever any mark or provider colour changes. The
+ * asset URLs are keyed by provider rather than by content, so this is what lets them
+ * be served \`immutable\` without pinning returning visitors to a stale logo.
+ */
+export const LOGO_ASSET_VERSION = ${JSON.stringify(version)};
 
 /** OpenRouter namespaces some authors as \`~openai\`; the mark is the same. */
 export function canonicalLogoSlug(providerId: string): string {
@@ -305,10 +361,26 @@ export function logoSvg(providerId: string): string | null {
 }
 `;
 
+// `--check` is the drift guard: nothing in the build regenerates src/logos.ts, so an
+// ICON_MAP edit or an icon-package bump could otherwise ship a stale MONO_LOGO_SLUGS
+// literal and stale assets with nothing to notice. Wired into the deploy preflight.
+if (CHECK_ONLY) {
+  const committed = existsSync(OUT) ? readFileSync(OUT, 'utf8') : null;
+  if (committed === out) {
+    console.log(`src/logos.ts is up to date (${slugs.length} marks, version ${version}).`);
+    process.exit(0);
+  }
+  console.error('src/logos.ts is STALE — it does not match scripts/build-provider-logos.mjs.');
+  console.error(committed === null ? '  (file is missing entirely)' : '  Run `npm run logos` and commit the result.');
+  process.exit(1);
+}
+
 writeFileSync(OUT, out);
 
 console.log(`Wrote ${OUT}`);
 console.log(`  ${slugs.length} brand marks (${monoSlugs.length} monochrome, ${slugs.length - monoSlugs.length} colour)`);
 console.log(`  ${unmapped.length} deliberately unmapped → initial tile: ${unmapped.join(', ')}`);
 if (oversized.length) console.log(`  ${oversized.length} over ${MAX_ICON_BYTES / 1024}KB → initial tile: ${oversized.join(', ')}`);
+if (mixedInk.length) console.log(`  ${mixedInk.length} mixed currentColor+brand paint → neutral ink ${MIXED_INK}, never inverted: ${mixedInk.join(', ')}`);
+console.log(`  asset version ${version}`);
 console.log(`  ${(out.length / 1024).toFixed(1)} KB generated`);

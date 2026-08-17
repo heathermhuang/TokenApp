@@ -23,6 +23,7 @@
 import { existsSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
 const problems = [];
@@ -89,6 +90,23 @@ try {
 //    none and the failure is otherwise a confusing config error.
 if (!existsSync(new URL('../wrangler.toml', import.meta.url))) {
   problems.push('wrangler.toml is missing — it is gitignored.\n    Fix: copy wrangler.toml.example and fill in the KV namespace and D1 database ids');
+}
+
+// 4. src/logos.ts is generated but nothing in the build regenerates it, so an
+//    ICON_MAP edit or an icon-package bump can ship stale assets — and a stale
+//    MONO_LOGO_SLUGS, which decides which marks get inverted on the dark theme.
+//    Cheap to check here; silent and long-lived if it slips through.
+try {
+  execFileSync(process.execPath, [fileURLToPath(new URL('./build-provider-logos.mjs', import.meta.url)), '--check'], {
+    encoding: 'utf8', timeout: 60_000, stdio: 'pipe',
+  });
+} catch (err) {
+  const detail = String((err && (err.stderr || err.message)) || '').trim();
+  problems.push(
+    'src/logos.ts does not match its generator.\n' +
+    (detail ? '    ' + detail.split('\n').join('\n    ') + '\n' : '') +
+    '    Fix: npm run logos && git add src/logos.ts'
+  );
 }
 
 if (problems.length === 0) {

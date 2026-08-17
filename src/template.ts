@@ -1,4 +1,4 @@
-import { MONO_LOGO_SLUGS } from './logos';
+import { MONO_LOGO_SLUGS, LOGO_ASSET_VERSION } from './logos';
 
 export function getHtml(params: {
   initialModels?: string;
@@ -12,6 +12,7 @@ export function getHtml(params: {
   // Which vendored marks are flat black and need inverting on the dark theme. Comes
   // from the generated asset module so the list cannot drift from the assets.
   const monoLogoSlugsLiteral = JSON.stringify(MONO_LOGO_SLUGS);
+  const logoAssetVersionLiteral = JSON.stringify(LOGO_ASSET_VERSION);
 
   // Escape backticks and ${ in JSON data to avoid breaking the template literal
   function safeLiteral(s: string): string {
@@ -2281,6 +2282,7 @@ function getProviderStyle(providerId) {
 // inverting on the dark theme. Generated alongside the assets themselves so the two
 // cannot drift — see scripts/build-provider-logos.mjs.
 const MONO_LOGO_SLUGS = new Set(${monoLogoSlugsLiteral});
+const LOGO_ASSET_VERSION = ${logoAssetVersionLiteral};
 
 // ── Provider AI product pages (for provider chip links) ─────────────────────
 const PROVIDER_URLS = {
@@ -2444,8 +2446,12 @@ function getModelUrl(m) {
 // Provider marks are served from our own origin — see the /logo/:file route in
 // index.ts for why, and for what a slug we have no mark for resolves to. The route
 // answers for every provider, so there is no null case and no broken-image fallback.
+// The ?v= token is what makes the route's year-long immutable TTL honest: the path is
+// keyed by provider, not by content, so without it a changed mark — or a provider
+// graduating from an initial tile to a real logo — would stay stale in a returning
+// visitor's cache for a year.
 function getProviderLogo(providerId) {
-  return '/logo/' + encodeURIComponent(canonicalLogoSlug(providerId)) + '.svg';
+  return '/logo/' + encodeURIComponent(canonicalLogoSlug(providerId)) + '.svg?v=' + LOGO_ASSET_VERSION;
 }
 function canonicalLogoSlug(providerId) {
   return String(providerId || '').toLowerCase().replace(/^~/, '').replace(/\\s+/g, '-');
