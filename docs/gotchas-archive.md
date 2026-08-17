@@ -23,3 +23,7 @@ Moved 2026-08-17.
 Moved 2026-08-17 (subscription re-verification pass).
 
 - **`isOpenSource` = `Boolean(raw.hugging_face_id)`, never a name/provider heuristic** (fixed 2026-08-05): the old list treated whole authors as open (`'google'`, `'qwen'`), so every proprietary Gemini and Qwen-Max read as open-weight while GLM-5.2, Kimi K3 and gpt-oss-120b (public weights) read as proprietary. **125 models reclassified**, 125→152 open. Wrong for every user of the homepage "Open Source" filter until then. Caught only because the superlative strip surfaced "best open weights → Gemini 3.6 Flash".
+
+Moved 2026-08-17 (second session) — enforced by `parseCsv()` and pinned by `npm test`.
+
+- **Epoch's CSV needs a real RFC-4180 parser**: it embeds newlines AND commas inside quoted fields ("Training compute notes" runs to paragraphs) — a naive `split('\n')` yields **6541 fragments for 1107 records**. `parseCsv()` in `benchmarks.ts` is hand-rolled for this. Parse cost ~55ms CPU for 2.5MB — fine against the Worker budget.
