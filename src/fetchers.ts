@@ -2,7 +2,7 @@ import puppeteer from '@cloudflare/puppeteer';
 import { APP_CATEGORIES, CATEGORY_SCRAPE_CAP, categoryUrl } from './categories';
 import type { Env, NormalizedModel, OpenRouterModel, OpenRouterResponse, RankingsData, ModelRanking, AppRanking, RankingPeriod, RankDelta, TaskSpend, ModelUsage } from './types';
 import { KV_KEYS } from './types';
-import { getProvider } from './providers';
+import { getProvider, canonicalProviderId } from './providers';
 import { SUBSCRIPTIONS } from './subscriptions';
 import { fetchShareSeries, fetchAppsBoards, fetchModelBoard, fetchTaskSpend } from './openrouter-json';
 import { fetchBenchmarks } from './benchmarks';
@@ -61,7 +61,11 @@ function toMillion(pricePerToken: string): number | null {
 }
 
 export function normalizeModel(raw: OpenRouterModel): NormalizedModel {
-  const [providerId, ...rest] = raw.id.split('/');
+  // The model `id` keeps OpenRouter's spelling forever — it is the join key for
+  // benchmarks, D1 rankings and `underlyingModels`. Only the derived providerId is
+  // canonicalized, so a vendor rename moves the label without moving any foreign key.
+  const [rawProviderId, ...rest] = raw.id.split('/');
+  const providerId = rawProviderId ? canonicalProviderId(rawProviderId) : rawProviderId;
   const slug = rest.join('/') || raw.id;
 
   const modality = parseModality(raw.architecture?.modality ?? 'text->text');
@@ -106,10 +110,13 @@ export function normalizeModel(raw: OpenRouterModel): NormalizedModel {
   // licensed" — still far closer to the truth than the heuristic it replaces.
   const isOpenSource = Boolean(raw.hugging_face_id);
 
-  // Tool use heuristic - most frontier models support it
+  // Tool use heuristic - most frontier models support it.
+  // Keyed on the CANONICAL providerId, so this list carries the current slug
+  // ('spacexai', not 'x-ai') — a stale entry here silently drops tool-use for a
+  // whole vendor rather than failing loudly.
   const hasToolUse =
     !nameLC.includes('instruct') ||
-    ['openai', 'anthropic', 'google', 'mistralai', 'deepseek', 'x-ai', 'cohere'].includes(
+    ['openai', 'anthropic', 'google', 'mistralai', 'deepseek', 'spacexai', 'cohere'].includes(
       providerId ?? ''
     );
 

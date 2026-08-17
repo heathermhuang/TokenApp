@@ -12,7 +12,7 @@ export const PROVIDERS: Record<string, ProviderMeta> = {
   'meta-llama': { displayName: 'Meta',        color: '#818cf8', bgColor: 'rgba(129,140,248,0.12)' },
   mistralai:    { displayName: 'Mistral AI',  color: '#fb923c', bgColor: 'rgba(251,146,60,0.12)' },
   deepseek:     { displayName: 'DeepSeek',    color: '#38bdf8', bgColor: 'rgba(56,189,248,0.12)' },
-  'x-ai':       { displayName: 'xAI',         color: '#e2e8f0', bgColor: 'rgba(226,232,240,0.10)' },
+  spacexai:     { displayName: 'SpaceXAI',    color: '#e2e8f0', bgColor: 'rgba(226,232,240,0.10)' },
   cohere:       { displayName: 'Cohere',      color: '#4ade80', bgColor: 'rgba(74,222,128,0.12)' },
   perplexityai: { displayName: 'Perplexity',  color: '#a78bfa', bgColor: 'rgba(167,139,250,0.12)' },
   qwen:         { displayName: 'Alibaba',     color: '#fbbf24', bgColor: 'rgba(251,191,36,0.12)' },
@@ -57,23 +57,62 @@ export const PROVIDERS: Record<string, ProviderMeta> = {
 };
 
 /**
+ * OpenRouter's provider prefix → the slug WE key everything on.
+ *
+ * `providerId` is not an owned string: it is `raw.id.split('/')[0]` (`fetchers.ts`), so
+ * every model under `x-ai/grok-*` arrives labelled `x-ai` no matter what the company
+ * calls itself. xAI now titles its own pages "SpaceXAI" and OpenRouter has renamed all
+ * six models to "SpaceXAI: …", so the *display* identity moved while the *key* did not.
+ * This table is the one place that reconciles the two.
+ *
+ * The alias is applied in BOTH directions on purpose:
+ *  • forward, at normalization (`fetchers.ts`), so freshly-normalized models carry
+ *    `spacexai` and everything downstream is keyed consistently;
+ *  • defensively, at every lookup below, because KV holds normalized models between the
+ *    deploy and the next refresh. For that window `providerId` is still `x-ai` on disk,
+ *    and without alias resolution at lookup time all six Grok models would fall through
+ *    `getProvider()` to the grey "X ai" fallback chip. Resolving in one direction only is
+ *    what makes a rename like this look fine in review and break in production.
+ *
+ * Add an entry here when a vendor renames; never rewrite an OpenRouter model id.
+ */
+const PROVIDER_ALIASES: Record<string, string> = {
+  'x-ai': 'spacexai',
+};
+
+/** Normalize a provider id and resolve any vendor rename to the slug we key on. */
+export function canonicalProviderId(id: string): string {
+  const normalized = String(id ?? '').toLowerCase().replace(/^~/, '').replace(/\s+/g, '-');
+  return PROVIDER_ALIASES[normalized] ?? normalized;
+}
+
+/**
  * Providers that have a dedicated `/{slug}` landing page.
  *
  * Lives here so `index.ts` (which registers the routes) and `pages.ts` (which
  * decides whether a breadcrumb should be a link) cannot drift apart — linking a
  * provider without a page sends the visitor to a 302 back to the homepage.
+ *
+ * Renamed slugs list the CURRENT name only. The old URL keeps working through an
+ * explicit redirect in `index.ts` rather than a second entry here, so nothing links
+ * to the retired spelling while inbound links and the old sitemap still resolve.
  */
 export const PROVIDER_PAGE_SLUGS = [
   'openai', 'anthropic', 'google', 'meta-llama', 'mistralai',
-  'deepseek', 'x-ai', 'qwen', 'nvidia', 'cohere',
+  'deepseek', 'spacexai', 'qwen', 'nvidia', 'cohere',
 ] as const;
 
 export const PROVIDER_PAGE_SET: ReadonlySet<string> = new Set(PROVIDER_PAGE_SLUGS);
 
+/** Retired provider slug → its current page, for 301s. Keys must NOT be in the set above. */
+export const PROVIDER_SLUG_REDIRECTS: Record<string, string> = {
+  'x-ai': 'spacexai',
+};
+
 export function getProvider(id: string): ProviderMeta {
-  const normalized = id.toLowerCase().replace(/\s+/g, '-');
-  return PROVIDERS[normalized] ?? {
-    displayName: capitalize(id.replace(/-/g, ' ')),
+  const canonical = canonicalProviderId(id);
+  return PROVIDERS[canonical] ?? {
+    displayName: capitalize(canonical.replace(/-/g, ' ')),
     color: '#94a3b8',
     bgColor: 'rgba(148,163,184,0.12)',
   };

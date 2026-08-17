@@ -2195,7 +2195,10 @@ var PROVIDER_STYLE_DARK = {
     'meta-llama': { color: '#818cf8', bg: 'rgba(129,140,248,0.12)' },
     mistralai:    { color: '#fb923c', bg: 'rgba(251,146,60,0.12)' },
     deepseek:     { color: '#38bdf8', bg: 'rgba(56,189,248,0.12)' },
+    // Both slugs: spacexai is the canonical providerId, but /api/models is edge-cached
+    // up to 4h and un-busted, so clients keep receiving x-ai for hours after a refresh.
     'x-ai':       { color: '#e2e8f0', bg: 'rgba(226,232,240,0.10)' },
+    spacexai:     { color: '#e2e8f0', bg: 'rgba(226,232,240,0.10)' },
     cohere:       { color: '#4ade80', bg: 'rgba(74,222,128,0.12)' },
     perplexityai: { color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
     cursor:       { color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' },
@@ -2237,6 +2240,7 @@ var PROVIDER_STYLE_DARK = {
     mistralai:    { color: '#c2410c', bg: 'rgba(194,65,12,0.08)' },
     deepseek:     { color: '#0284c7', bg: 'rgba(2,132,199,0.08)' },
     'x-ai':       { color: '#475569', bg: 'rgba(71,85,105,0.08)' },
+    spacexai:     { color: '#475569', bg: 'rgba(71,85,105,0.08)' },
     cohere:       { color: '#15803d', bg: 'rgba(21,128,61,0.08)' },
     perplexityai: { color: '#7c3aed', bg: 'rgba(124,58,237,0.08)' },
     cursor:       { color: '#2563eb', bg: 'rgba(37,99,235,0.08)' },
@@ -2293,7 +2297,9 @@ const PROVIDER_URLS = {
   'meta-llama':         'https://ai.meta.com/models/',
   mistralai:            'https://mistral.ai/technology/',
   deepseek:             'https://www.deepseek.com/',
+  // Both slugs - see the dark-theme map above for why the retired key stays.
   'x-ai':               'https://x.ai/grok',
+  spacexai:             'https://x.ai/grok',
   cohere:               'https://cohere.com/models',
   perplexityai:         'https://www.perplexity.ai/',
   perplexity:           'https://www.perplexity.ai/',
@@ -2371,6 +2377,7 @@ const MODEL_PAGE_URLS = {
   mistralai:            'https://mistral.ai/technology/',
   deepseek:             'https://huggingface.co/deepseek-ai',
   'x-ai':               'https://x.ai/grok',
+  spacexai:             'https://x.ai/grok',
   cohere:               'https://cohere.com/models',
   perplexityai:         'https://docs.perplexity.ai/models/model-cards',
   perplexity:           'https://docs.perplexity.ai/models/model-cards',
@@ -3282,7 +3289,7 @@ var CHART_SLOT = {
   anthropic: 5, mistralai: 5, alibaba: 5, kwaipilot: 5,
   'z-ai': 6, bytedance: 6, 'bytedance-seed': 6,
   tencent: 7, nvidia: 7,
-  openrouter: 8, 'x-ai': 8, moonshotai: 8,
+  openrouter: 8, 'x-ai': 8, spacexai: 8, moonshotai: 8,
 };
 function chartPalette() { return isLightTheme() ? CHART_PALETTE_LIGHT : CHART_PALETTE_DARK; }
 function chartSlot(slug) {
@@ -4453,10 +4460,15 @@ const PROVIDER_META: Record<string, { name: string; description: string; about: 
     description: 'Real-time API token pricing for DeepSeek models including DeepSeek V3, DeepSeek R1, and DeepSeek Coder. DeepSeek offers some of the lowest prices among frontier AI models.',
     about: `DeepSeek is a Chinese AI research lab that has released highly capable models at remarkably low prices, disrupting the AI pricing landscape in 2025. DeepSeek V3 and R1 match or exceed many frontier models on benchmarks while costing a fraction of comparable OpenAI or Anthropic models. Their models are open-weight and widely available through OpenRouter and other providers.`,
   },
-  'x-ai': {
-    name: 'xAI (Grok)',
-    description: 'Real-time API token pricing for xAI Grok models including Grok 3 and Grok 2. Compare Grok input/output costs and context windows.',
-    about: `xAI is Elon Musk's AI company, best known for the Grok series of large language models. Grok models are available via the xAI API and through X (formerly Twitter) Premium subscriptions. Grok 3 is xAI's flagship reasoning model, designed to be competitive with GPT-4o and Claude 3.5 Sonnet. xAI emphasises real-time information access and integration with the X platform.`,
+  // Keyed on the canonical slug. `index.ts` canonicalizes before calling, so there is no
+  // 'x-ai' entry here — unlike the client-side maps above, this one is only ever reached
+  // with a resolved id. The company now titles its own pages "SpaceXAI" and OpenRouter
+  // labels all six models "SpaceXAI: …", but the Grok product name is unchanged, so the
+  // heading keeps it: nobody searches for the holding company.
+  spacexai: {
+    name: 'SpaceXAI (Grok)',
+    description: 'Real-time API token pricing for SpaceXAI Grok models including Grok 4.6, Grok 4.5 and Grok 4.20. Compare Grok input/output costs and context windows.',
+    about: `SpaceXAI — formerly xAI — is Elon Musk's AI company, best known for the Grok series of large language models. Grok models are available through the company's own API and through X Premium subscriptions. Grok 4.6 is the current flagship; the catalogue also carries Grok 4.5, Grok 4.3, the Grok 4.20 line including a multi-agent variant, and Grok Build. The company emphasises real-time information access and integration with the X platform.`,
   },
   qwen: {
     name: 'Qwen (Alibaba)',
@@ -4787,7 +4799,7 @@ export function getAboutHtml(): string {
     <a href="/meta-llama" class="provider-pill">Meta Llama</a>
     <a href="/mistralai" class="provider-pill">Mistral AI</a>
     <a href="/deepseek" class="provider-pill">DeepSeek</a>
-    <a href="/x-ai" class="provider-pill">xAI / Grok</a>
+    <a href="/spacexai" class="provider-pill">SpaceXAI / Grok</a>
     <a href="/qwen" class="provider-pill">Qwen</a>
     <a href="/nvidia" class="provider-pill">NVIDIA</a>
     <a href="/cohere" class="provider-pill">Cohere</a>

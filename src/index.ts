@@ -6,7 +6,7 @@ import { KV_KEYS } from './types';
 import { getModels, getSubscriptions, getRankings, refreshAllData, readModelUsage } from './fetchers';
 import { readBenchmarks } from './benchmarks';
 import { getModelHtml, getSubCompareHtml, getModelCompareHtml } from './pages';
-import { PROVIDER_PAGE_SLUGS } from './providers';
+import { PROVIDER_PAGE_SLUGS, PROVIDER_SLUG_REDIRECTS, canonicalProviderId } from './providers';
 import { logoSvg } from './logos';
 import { getModelEndpoints } from './endpoints';
 import { APP_CATEGORIES, CATEGORY_SLUGS, CATEGORY_LABELS } from './categories';
@@ -425,8 +425,13 @@ app.get('/about', (c) => {
 async function handleProviderPage(c: any, providerId: string) {
   try {
     const { models } = await getModels(c.env);
-    const filtered = models.filter((m: any) => m.providerId === providerId);
-    const html = getProviderHtml({ providerId, models: filtered });
+    // Compare CANONICAL ids on both sides. KV holds normalized models written by the
+    // previous deploy, so between a rename shipping and the next refresh a model's
+    // stored providerId is still the retired spelling; a raw `===` would render an
+    // empty provider page for the whole vendor and nothing would report an error.
+    const want = canonicalProviderId(providerId);
+    const filtered = models.filter((m: any) => canonicalProviderId(m.providerId) === want);
+    const html = getProviderHtml({ providerId: want, models: filtered });
     return c.html(html, 200, {
       'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600',
     });
@@ -438,6 +443,13 @@ async function handleProviderPage(c: any, providerId: string) {
 
 for (const slug of PROVIDER_SLUGS) {
   app.get(`/${slug}`, (c) => handleProviderPage(c, slug));
+}
+
+// Retired provider slugs keep resolving. `/x-ai` is in the live sitemap and carries
+// inbound links, so it 301s to the current page rather than 404ing or being quietly
+// dropped — the slug is OpenRouter's namespace, not something we get to revoke.
+for (const [from, to] of Object.entries(PROVIDER_SLUG_REDIRECTS)) {
+  app.get(`/${from}`, (c) => c.redirect(`/${to}`, 301));
 }
 
 // ── Model detail + comparison pages ──────────────────────────────────────────
