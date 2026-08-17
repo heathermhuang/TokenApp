@@ -94,6 +94,49 @@ signal instead of discarding it).
 
 **Cost:** step 1–3 ≈ 20 minutes. Step 4 is a login, not code.
 
+## Step 1 was BUILT, reviewed three times, and then ABANDONED — read this before retrying
+
+Approved and implemented on branch `fix/item8-canonical-true-duplicates` (pushed, **not
+merged**, 3 commits, kept for recovery). Three Codex rounds produced seven P2s and were
+still not converging, all for a benefit of **4 pages**. Recorded here as proof-of-absence
+so the next pass does not rebuild it.
+
+**Two implementations were tried and both failed:**
+
+1. **Infer duplicate-ness by comparing prices.** Collapsed
+   `qwen/qwen-plus-2025-07-28:thinking`, which is priced identically to its base but
+   carries `isReasoning: true` — a different product. The first draft even wrote this up
+   as a feature ("caught a case a suffix list would have missed"). Also treated
+   `null === null` as verified equality, so two *unpriced* models would have qualified.
+2. **Explicit `DUPLICATE_OF` allowlist + full-field comparison as a drift guard.** Fixed
+   the above and passed 71 tests including 5 killed mutants — and was still wrong.
+
+**Why the second one also fails, which is the part worth keeping:**
+
+- **Model-record equality cannot establish page equality.** The page also renders
+  benchmarks, subscriptions, host endpoints and usage history, each looked up by exact
+  `m.id`. Two records identical in every column can render different panels — measured,
+  `openai/gpt-5.6-luna` has Epoch scores and `…luna:batch` has none.
+- **The "variant ⊆ base" argument is a snapshot, not an invariant.** Endpoints and usage
+  are fetched live per model id, so an allowlisted `:batch` id could gain its own hosts or
+  usage tomorrow while its model fields stay identical, silently making the canonical
+  wrong. Fixing that means passing benchmarks/endpoints/usage into the decision — but the
+  sitemap caller does not fetch them, so the two callers would disagree again, which is the
+  exact contradiction the function existed to remove. Architectural dead end.
+- **The 4 pages are not content-free anyway.** They answer "does the batch tier cost the
+  same as standard?" — a real question with a mildly surprising answer (yes). That is the
+  same reasoning used above to KEEP the other 66, so applying it consistently keeps these
+  too.
+- A factual error in the abandoned code's own comment, for the record: it claimed
+  `createdAt` "does not change what the page says". It is rendered as **"Released"**
+  (`pages.ts:428`). The Product and Offer JSON-LD also kept the variant's self URL while
+  `rel=canonical` and `og:url` pointed at the base — inconsistent entity identity.
+
+**Revised recommendation for item 8: do nothing to the canonical tags.** Keep steps 2–4 —
+leave the 66 and the 8 alone, and get Search Console data before any broad decision. The
+duplicate-consolidation idea is not worth reviving without a content-aware decision shared
+by both callers, and the prize does not justify building that.
+
 ---
 
 # Item 10 — xAI → "SpaceXAI"
