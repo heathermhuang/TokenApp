@@ -20,7 +20,7 @@
  * wrong. Providers absent from the map fall back to a generated initial tile, which
  * is honest rather than wrong. Run `npm run logos` after editing.
  */
-import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync, realpathSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -153,27 +153,59 @@ export const MIXED_INK = '#8a8f98';
  * Paint values that are safe to invert wholesale — `currentColor` itself, nothing, or
  * black in any of the spellings SVG allows (including the alpha forms).
  *
- * `url(#…)` is allowed because gradient and pattern indirection resolves to elements
- * whose own `stop-color` values are collected by paintValues() and checked here too;
- * an all-currentColor gradient therefore stays mono, and one with a real colour in a
- * stop does not.
+ * Black hex covers all four lengths INCLUDING alpha: #000, #000a, #000000, #000000aa.
+ * Spelling out only #000/#0000/#000000/#000000ff (the first attempt) left #000f read
+ * as brand paint — harmless, since that error lands on the never-invert side, but it
+ * would have quietly stopped a legitimately monochrome mark from following the theme.
+ *
+ * `url(#…)` is accepted ONLY because UNSAFE_CONSTRUCTS below rejects every way a local
+ * reference could reach paint this scanner cannot see. On its own it would be unsound:
+ * a `<pattern>` can wrap a raster `<image>`, and a gradient can inherit its stops from
+ * elsewhere via href. With those rejected, a surviving `url(#…)` can only point at a
+ * locally-declared gradient — whose `stop-color`s paintValues() reads directly — or at
+ * a mask or clip-path, which modulate coverage rather than introducing colour.
  */
-// Black hex covers all four SVG lengths INCLUDING the alpha forms: #000, #000a,
-// #000000, #000000aa. Spelling out only #000/#0000/#000000/#000000ff (the first
-// attempt) left #000f classified as brand paint — harmless, since the error lands on
-// the never-invert side, but it would have quietly stopped a legitimately monochrome
-// mark from following the theme.
 export const MONO_SAFE_PAINT = /^(currentcolor|none|transparent|inherit|black|#0{3}[0-9a-f]?|#0{6}(?:[0-9a-f]{2})?|rgb\(0,0,0\)|rgba\(0,0,0,1?\.?0*\)|url\(#[^)]*\))$/;
+
+/**
+ * Constructs that can put colour on the canvas by a route this scanner cannot follow.
+ * Any of them present means the mark is never inverted, whatever the paint scan says.
+ *
+ * This exists because scanning for paint VALUES can only fail open: syntax the regex
+ * does not match yields no value at all, so "every value found was safe" is vacuously
+ * true for a document whose colour is hidden — inside a CSS comment, behind a
+ * character entity, in a SMIL `<animate>`, in an SVG 2 paint fallback, or painted by a
+ * filter primitive. Enumerating hostile syntax is a losing game; refusing to classify
+ * documents that contain the constructs is not. Of the 25 invertible marks in the
+ * current corpus exactly one (poolside) references anything here — a `<mask>`, which
+ * is deliberately absent from this list because a mask changes coverage, not colour.
+ */
+export const UNSAFE_CONSTRUCTS = [
+  ['<style> block', /<style[\s>]/i],
+  ['<pattern> (may wrap a raster)', /<pattern[\s>]/i],
+  ['<image> (raster of unknown colour)', /<image[\s>]/i],
+  ['<use> (may reference elsewhere)', /<use[\s>]/i],
+  ['<filter> (feFlood/feImage paint)', /<filter[\s>]/i],
+  ['SMIL animation of paint', /<(?:animate|set)[\s>]/i],
+  ['gradient inheriting external stops', /<(?:linear|radial)Gradient[^>]*\bhref/i],
+  ['character entity', /&#/],
+  ['CSS comment', /\/\*/],
+  ['SVG 2 paint fallback after url()', /url\(#[^)]*\)\s+[^\s"'>;)]/],
+];
+
+/** Names the constructs that make a document unclassifiable, for the build report. */
+export function unsafeConstructs(svg) {
+  return UNSAFE_CONSTRUCTS.filter(([, re]) => re.test(svg)).map(([name]) => name);
+}
 
 /**
  * Every paint value in the document, from attributes AND from CSS (inline `style=` or
  * a `<style>` block), normalised for comparison.
  *
- * Deliberately broad: the classification below only calls a mark invertible when EVERY
- * value here is known-safe, so a syntax this misses shows up as an unrecognised value
- * and pushes the mark to "mixed" — the harmless direction. The previous version asked
- * the opposite question (does a non-black hex appear?), which fails open: a named
- * colour or an rgb() would have been invisible to it and the brand paint inverted.
+ * Broad on purpose, and it over-collects: `id="fill:red"` is read as paint. That is
+ * accepted rather than fixed, because narrowing the match risks missing a real
+ * `style="fill:…"`, and over-collecting only ever pushes a mark to "mixed" — the side
+ * where nothing is inverted and no brand colour can be damaged.
  */
 export function paintValues(svg) {
   const out = [];
@@ -198,12 +230,14 @@ export function paintValues(svg) {
  * mentions currentColor". Three mapped marks (Yi, AWS, LongCat) mix `currentColor` with
  * a fixed brand colour; treating those as mono inverted the brand colour too.
  *
- * The test is positive proof, not absence of evidence: a mark is invertible only when
- * EVERY paint value in it is recognised and safe. Anything unrecognised — a named
- * colour, an rgb(), a CSS variable, a syntax this does not parse — makes it mixed. That
- * matters because the icon package is a pinned dependency that gets bumped: today's
- * corpus happens to use hex only, and a classifier that fails open would silently start
- * inverting brand paint the first time an upstream icon changed its colour syntax.
+ * The test is positive proof, not absence of evidence, and it has two halves because
+ * one is not enough. Scanning paint VALUES catches a named colour or an rgb() that the
+ * old hex-only check missed — but on its own it still fails open, since syntax the
+ * regex does not match produces no value and "all values were safe" is then vacuously
+ * true. So a document containing any construct that can paint by a route this scanner
+ * cannot follow is refused outright. Both matter because the icon package is pinned but
+ * gets bumped: the corpus happens to be simple today, and a classifier that fails open
+ * would start inverting brand paint on the first upstream change.
  */
 export function normalise(raw, name) {
   const viewBox = /viewBox="([^"]+)"/.exec(raw);
@@ -211,7 +245,8 @@ export function normalise(raw, name) {
 
   const usesCurrentColor = raw.includes('currentColor');
   const unsafePaint = [...new Set(paintValues(raw).filter(v => v && !MONO_SAFE_PAINT.test(v)))];
-  const mixed = usesCurrentColor && unsafePaint.length > 0;
+  const unclassifiable = unsafeConstructs(raw);
+  const mixed = usesCurrentColor && (unsafePaint.length > 0 || unclassifiable.length > 0);
   const mono = usesCurrentColor && !mixed;
   const ink = mixed ? MIXED_INK : '#000';
   // Rewrite the ROOT <svg> tag only. A global style/width strip would also hit inner
@@ -231,13 +266,22 @@ export function normalise(raw, name) {
 
   if (!/^<svg[\s>]/.test(svg)) throw new Error(`${name}: does not start with <svg`);
   if (/<script/i.test(svg)) throw new Error(`${name}: contains <script>`);
-  return { svg, mono, mixed, unsafePaint };
+  return { svg, mono, mixed, unsafePaint, unclassifiable };
 }
 
 // ── Build ─────────────────────────────────────────────────────────────────────
 // Only builds when run directly. The test suite imports this module to pin the
 // mono/mixed truth table, and that must not write src/logos.ts as a side effect.
-const RUN_DIRECTLY = process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url;
+// realpathSync on both sides: node canonicalises the ESM entry URL while argv[1] can
+// keep the symlinked path it was invoked through. Comparing them raw makes a symlinked
+// invocation silently no-op — and a CHECK that exits 0 without checking is worse than
+// no check at all.
+const RUN_DIRECTLY = (() => {
+  if (!process.argv[1]) return false;
+  const self = fileURLToPath(import.meta.url);
+  try { return realpathSync(process.argv[1]) === realpathSync(self); }
+  catch { return process.argv[1] === self; }
+})();
 if (RUN_DIRECTLY) {
 
   if (!existsSync(ICON_DIR)) {
@@ -267,14 +311,14 @@ if (RUN_DIRECTLY) {
     if (icon === null) { unmapped.push(slug); continue; }
     if (!available.has(icon)) { missing.push(`${slug} → ${icon}`); continue; }
     const raw = readFileSync(join(ICON_DIR, `${icon}.svg`), 'utf8');
-    const { svg, mono, mixed, unsafePaint } = normalise(raw, icon);
+    const { svg, mono, mixed, unsafePaint, unclassifiable } = normalise(raw, icon);
     if (svg.length > MAX_ICON_BYTES) {
       oversized.push(`${slug} (${icon}, ${(svg.length / 1024).toFixed(0)}KB)`);
       continue;
     }
     assets[slug] = { svg, mono, icon };
     if (mono) monoSlugs.push(slug);
-    if (mixed) mixedInk.push(`${slug} (${icon}, keeps ${unsafePaint.join(' ')})`);
+    if (mixed) mixedInk.push(`${slug} (${icon}, ${[...unsafePaint, ...unclassifiable].join(' ')})`);
   }
 
   if (missing.length) {
@@ -309,10 +353,14 @@ if (RUN_DIRECTLY) {
    * runtime substring would be tighter and would silently under-bust the day someone
    * changed a part the extraction did not cover.
    */
+  // Newlines are normalised before hashing: the repo carries no .gitattributes, so a
+  // CRLF checkout of the same commit would otherwise produce a different version than
+  // an LF one and bust every logo cache for no reason.
+  const lf = (p) => readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
   const version = createHash('sha256')
-    .update(body)
-    .update(readFileSync(join(ROOT, 'src/providers.ts')))
-    .update(readFileSync(fileURLToPath(import.meta.url)))
+    .update(body.replace(/\r\n/g, '\n'))
+    .update(lf(join(ROOT, 'src/providers.ts')))
+    .update(lf(fileURLToPath(import.meta.url)))
     .digest('hex')
     .slice(0, 10);
 

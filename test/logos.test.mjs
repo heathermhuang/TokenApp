@@ -14,7 +14,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalise, paintValues, MONO_SAFE_PAINT, MIXED_INK } from '../scripts/build-provider-logos.mjs';
+import { normalise, paintValues, unsafeConstructs, MONO_SAFE_PAINT, MIXED_INK } from '../scripts/build-provider-logos.mjs';
 
 const svg = (inner, attrs = '') =>
   `<svg viewBox="0 0 24 24" ${attrs} xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
@@ -147,4 +147,46 @@ test('inner style attributes survive the root-tag rewrite', () => {
   const { svg: out } = normalise(svg('<path style="fill:#F90" d="M1 1"/>', 'style="flex:none"'), 'inner-style');
   assert.match(out, /style="fill:#F90"/);
   assert.doesNotMatch(out, /flex:none/);
+});
+
+// ── Colour reachable by a route the paint scan cannot follow ─────────────────
+// Scanning for paint VALUES can only ever fail open — syntax the regex misses yields
+// no value, so "every value was safe" is vacuously true. These are the documents where
+// that happens, and each must be refused outright rather than trusted.
+
+test('colour hidden from the paint scan does not make a mark invertible', () => {
+  const hidden = {
+    'CSS comment splitting the property': '<style>.a{fill/**/:#f90}</style><path fill="currentColor" d="M1 1"/><path class="a" d="M2 2"/>',
+    'SVG 2 paint fallback after url()': '<path fill="currentColor" d="M1 1"/><path style="fill:url(#missing) red" d="M2 2"/>',
+    'SMIL animating fill': '<path fill="currentColor" d="M1 1"/><animate attributeName="fill" values="currentColor;#f90"/>',
+    'character-entity colon': '<style>.a{fill&#58;#f90}</style><path fill="currentColor" d="M1 1"/><path class="a" d="M2 2"/>',
+    'pattern wrapping a raster': '<pattern id="p"><image href="brand.png"/></pattern><path fill="currentColor" d="M1 1"/><path fill="url(#p)" d="M2 2"/>',
+    'gradient inheriting external stops': '<linearGradient id="g" href="#other"/><path fill="currentColor" d="M1 1"/><path fill="url(#g)" d="M2 2"/>',
+    'filter painting with feFlood': '<filter id="f"><feFlood flood-color="#f90"/></filter><path fill="currentColor" filter="url(#f)" d="M1 1"/>',
+    'use referencing elsewhere': '<use href="other.svg#icon"/><path fill="currentColor" d="M1 1"/>',
+  };
+  for (const [why, inner] of Object.entries(hidden)) {
+    const { mono, mixed } = normalise(svg(inner), 'hidden');
+    assert.equal(mono, false, `${why}: must not be treated as invertible`);
+    assert.equal(mixed, true, `${why}: must be classified mixed`);
+  }
+});
+
+test('a mask is coverage, not colour, so it does not disqualify a mark', () => {
+  // poolside is the one mark in the corpus that relies on this; blanket-rejecting
+  // url(#…) or <mask> would silently stop it following the theme.
+  const r = normalise(svg('<mask id="m"><rect fill="#fff" width="24" height="24"/></mask>' +
+    '<path fill="currentColor" mask="url(#m)" d="M1 1"/>'), 'masked');
+  assert.equal(r.mixed, true, 'a #fff inside the mask is still paint the scan sees');
+
+  const clip = normalise(svg('<clipPath id="c"><rect width="24" height="24"/></clipPath>' +
+    '<path fill="currentColor" clip-path="url(#c)" d="M1 1"/>'), 'clipped');
+  assert.equal(clip.mono, true, 'geometry-only clipping keeps a mark invertible');
+});
+
+test('unsafeConstructs names what it rejected, so the build can report it', () => {
+  assert.deepEqual(unsafeConstructs(svg('<path fill="currentColor"/>')), []);
+  const named = unsafeConstructs(svg('<pattern id="p"/><image href="x.png"/>'));
+  assert.ok(named.length >= 2, 'both constructs reported');
+  assert.ok(named.every(n => typeof n === 'string' && n.length > 0));
 });
