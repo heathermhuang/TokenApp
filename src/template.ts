@@ -1631,6 +1631,11 @@ export function getHtml(params: {
       .table-wrap { padding: 0 0 32px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
       table { min-width: 720px; table-layout: auto; }
       table th, table td { padding: 6px 8px; }
+      /* Sortable headers delegate their padding to the inner button, so the tighter
+         mobile cell padding has to follow it there or the header columns stay at the
+         desktop width while the body cells shrink. */
+      table thead th[data-sort] { padding: 0; }
+      table thead th .th-sort { padding: 6px 8px; }
       .model-name { font-size: 12px; }
       .model-id { font-size: 10px; }
       .provider-chip { font-size: 11px; padding: 2px 6px; gap: 3px; }
