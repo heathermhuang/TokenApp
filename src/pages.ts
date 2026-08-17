@@ -14,7 +14,7 @@
  */
 
 import type { NormalizedModel, Subscription, SubscriptionTier, BenchmarksPayload, ModelBenchmarks, ModelEndpoints, ModelUsage } from './types';
-import { getProvider, PROVIDER_PAGE_SET } from './providers';
+import { getProvider, PROVIDER_PAGE_SET, canonicalProviderId } from './providers';
 
 // ── Shared formatting ─────────────────────────────────────────────────────────
 
@@ -250,6 +250,11 @@ export function getModelHtml(params: {
 }): string {
   const { model: m, all, benchmarks, subscriptions, endpoints, usage = null } = params;
   const prov = getProvider(m.providerId);
+  // Resolve the slug once, and use it for BOTH the page-set test and the href. A raw
+  // `m.providerId` here silently degrades the breadcrumb to plain text for a whole vendor
+  // during the window where KV still holds a retired spelling (see providers.ts), and
+  // `prov.displayName` rather than `m.provider` keeps the label from lagging a rename too.
+  const provSlug = canonicalProviderId(m.providerId);
   const bl = blended(m);
   const mb = benchOf(benchmarks, m.id);
   const url = `https://token.app/model/${encodeURIComponent(m.slug)}`;
@@ -320,14 +325,16 @@ export function getModelHtml(params: {
   // Popular comparison targets: same-tier rivals from other providers, most
   // recent first. Cheap internal linking, which is most of why llm-stats ranks.
   const rivals = all
-    .filter((o) => o.id !== m.id && !o.isDeprecated && o.providerId !== m.providerId && blended(o) !== null)
+    .filter((o) => o.id !== m.id && !o.isDeprecated
+      && canonicalProviderId(o.providerId) !== canonicalProviderId(m.providerId)
+      && blended(o) !== null)
     .filter((o) => scoreCell(benchOf(benchmarks, o.id), primary) !== null)
     .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
     .slice(0, 8);
 
   const body = `
-  <div class="crumb"><a href="/">token.app</a> › ${PROVIDER_PAGE_SET.has(m.providerId)
-    ? `<a href="/${esc(m.providerId)}">${esc(m.provider)}</a>`
+  <div class="crumb"><a href="/">token.app</a> › ${PROVIDER_PAGE_SET.has(provSlug)
+    ? `<a href="/${esc(provSlug)}">${esc(prov.displayName)}</a>`
     : esc(m.provider)} › ${esc(disp)}</div>
   <h1>${esc(disp)} pricing &amp; benchmarks</h1>
   <p class="lede">

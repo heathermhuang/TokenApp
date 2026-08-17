@@ -310,7 +310,9 @@ app.get('/sitemap.xml', async (c) => {
       .slice(0, 40);
     for (let i = 0; i < recent.length; i++) {
       for (let j = i + 1; j < recent.length; j++) {
-        if (recent[i].providerId === recent[j].providerId) continue;
+        // Canonical on both sides: a mixed snapshot would otherwise pair a model
+        // labelled with a retired slug against the same vendor's renamed sibling.
+        if (canonicalProviderId(recent[i].providerId) === canonicalProviderId(recent[j].providerId)) continue;
         urls.push(u(`https://token.app/compare/${encodeURIComponent(recent[i].slug)}-vs-${encodeURIComponent(recent[j].slug)}`, 'weekly', '0.6'));
       }
     }

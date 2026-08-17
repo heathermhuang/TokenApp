@@ -131,6 +131,16 @@ test('every redirect target IS a live page', () => {
   }
 });
 
+test('a retired slug still finds its page ONCE canonicalized', () => {
+  // What the model-page breadcrumb depends on. It used to test the raw providerId
+  // against the page set, so during the stale-KV window `x-ai` missed and the
+  // breadcrumb silently degraded from a link to plain text for the whole vendor.
+  for (const from of Object.keys(PROVIDER_SLUG_REDIRECTS)) {
+    assert.equal(PROVIDER_PAGE_SET.has(from), false);                        // raw: misses
+    assert.equal(PROVIDER_PAGE_SET.has(canonicalProviderId(from)), true);    // canonical: hits
+  }
+});
+
 test('BOTH logo slugs serve the real brand mark, not a generated initial tile', () => {
   // logoSvg() never returns null for a valid slug — it falls back to a letter tile — so
   // dropping the retired key would swap the Grok mark for an "S" square with nothing
