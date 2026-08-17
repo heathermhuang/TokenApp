@@ -7,10 +7,10 @@ export const SUBSCRIPTIONS: Subscription[] = [
     name: 'ChatGPT',
     provider: 'OpenAI',
     providerId: 'openai',
-    description: 'The world\'s most popular AI assistant with GPT-5.5, image generation, and Codex agents.',
+    description: 'The world\'s most popular AI assistant with GPT-5.6, image generation, and Codex agents.',
     category: 'chat',
     url: 'https://chatgpt.com/pricing',
-    underlyingModels: ['openai/gpt-chat-latest', 'openai/gpt-5.5'],
+    underlyingModels: ['openai/gpt-chat-latest', 'openai/gpt-5.6-sol', 'openai/gpt-5.6-sol-pro', 'openai/gpt-5.6-luna'],
     lastVerified: '2026-07-07',
     tiers: [
       {
@@ -18,7 +18,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
         monthlyPrice: 0,
         annualMonthlyPrice: 0,
         perSeat: false,
-        features: ['GPT-5.5 Instant (~10 messages / 5 hrs)', 'GPT-5.5 Instant Mini fallback (unlimited)', 'Web search', 'Image generation (limited)'],
+        features: ['Unlimited text chats with GPT-5.6 Luna', 'Limited messages with uploads', 'Limited and slower image generation', 'Limited deep research', 'Limited Codex access'],
         highlight: false,
       },
       {
@@ -26,7 +26,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
         monthlyPrice: 8,
         annualMonthlyPrice: 8,
         perSeat: false,
-        features: ['GPT-5.5 (higher caps than Free)', 'Web search', 'Image generation', 'File & image uploads', 'Global rollout Jan 2026'],
+        features: ['Everything in Free, with more messages with tools', 'More uploads', 'More image creation', 'More voice chats', 'Longer memory', 'May include ads'],
         highlight: false,
       },
       {
@@ -34,7 +34,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
         monthlyPrice: 20,
         annualMonthlyPrice: 20,
         perSeat: false,
-        features: ['Full GPT-5.5 access', 'Deep research & agent mode', 'Codex coding agent', 'Memory & Projects', 'Custom GPTs'],
+        features: ['Advanced reasoning models with GPT-5.6', 'Expanded messages and uploads', 'Expanded deep research', 'Projects, scheduled tasks, and custom GPTs', 'Expanded Codex usage'],
         highlight: true,
         badge: 'Most Popular',
       },
@@ -43,7 +43,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
         monthlyPrice: 100,
         annualMonthlyPrice: 100,
         perSeat: false,
-        features: ['5× Plus usage limits', '5× Codex agent limits', 'GPT-5.5 Pro reasoning', 'Added Apr 2026 to match Claude Max'],
+        features: ['5× Plus usage limits', 'Pro reasoning with GPT-5.6 Sol Pro', 'Maximum Codex tasks', 'Unlimited and faster image creation'],
         highlight: false,
       },
       {
@@ -51,7 +51,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
         monthlyPrice: 200,
         annualMonthlyPrice: 200,
         perSeat: false,
-        features: ['20× Plus usage limits', 'Unlimited GPT-5.5 Pro', 'Maximum Codex & agent limits', 'Front-of-line for all new features'],
+        features: ['20× Plus usage limits', 'Unlimited GPT-5.6 Sol Pro', 'Maximum deep research, memory and context', 'Research preview of new features'],
         highlight: false,
         badge: 'Max Power',
       },
@@ -68,7 +68,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
         monthlyPrice: null,
         annualMonthlyPrice: null,
         perSeat: true,
-        features: ['Unlimited GPT-5.5', 'SOC 2 & SSO', 'Analytics dashboards', 'Custom data retention', '24/7 priority support'],
+        features: ['Unlimited GPT-5.6', 'SOC 2 & SSO', 'Analytics dashboards', 'Custom data retention', '24/7 priority support'],
         highlight: false,
         badge: 'Contact Sales',
       },
@@ -79,11 +79,11 @@ export const SUBSCRIPTIONS: Subscription[] = [
     name: 'Claude.ai',
     provider: 'Anthropic',
     providerId: 'anthropic',
-    description: 'Anthropic\'s AI assistant with the Opus 4.8, Sonnet 5, and Fable 5 model lineup, Claude Code, and Cowork agent delegation.',
+    description: 'Anthropic\'s AI assistant with the Opus 5, Sonnet 5, and Fable 5 model lineup, Claude Code, and Cowork agent delegation.',
     category: 'chat',
     url: 'https://claude.com/pricing',
-    lastVerified: '2026-07-11',
-    underlyingModels: ['anthropic/claude-opus-4.8', 'anthropic/claude-sonnet-5', 'anthropic/claude-fable-5'],
+    lastVerified: '2026-08-17',
+    underlyingModels: ['anthropic/claude-opus-5', 'anthropic/claude-sonnet-5', 'anthropic/claude-fable-5'],
     tiers: [
       {
         name: 'Free',
@@ -98,7 +98,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
         monthlyPrice: 20,
         annualMonthlyPrice: 17,
         perSeat: false,
-        features: ['~45 prompts / 5-hr window', 'All models incl. Opus 4.8 & Sonnet 5', 'Fable 5 via usage credits', 'Claude Code included', 'Cowork, Design & Science tools', 'Unlimited Projects'],
+        features: ['~45 prompts / 5-hr window', 'All models incl. Opus 5 & Sonnet 5', 'Fable 5 via usage credits', 'Claude Code included', 'Cowork, Design & Science tools', 'Unlimited Projects'],
         highlight: true,
         badge: 'Most Popular',
       },
@@ -152,18 +152,18 @@ export const SUBSCRIPTIONS: Subscription[] = [
     name: 'Google AI',
     provider: 'Google',
     providerId: 'google',
-    description: 'Google\'s AI suite — Gemini 3.1 Pro & 3.5 Flash, Gemini Omni video, Deep Research, NotebookLM, and Flow credits.',
+    description: 'Google\'s AI suite — Gemini 3.1 Pro & 3.6 Flash, Gemini Omni video, Deep Research, NotebookLM, and Flow credits.',
     category: 'chat',
     url: 'https://gemini.google/subscriptions/',
-    lastVerified: '2026-07-11',
-    underlyingModels: ['google/gemini-3.1-pro-preview', 'google/gemini-3.5-flash'],
+    lastVerified: '2026-08-17',
+    underlyingModels: ['google/gemini-3.1-pro-preview', 'google/gemini-3.6-flash'],
     tiers: [
       {
         name: 'Free',
         monthlyPrice: 0,
         annualMonthlyPrice: 0,
         perSeat: false,
-        features: ['Gemini 3.5 Flash + varying 3.1 Pro access', 'Basic Deep Research', 'Google integrations', 'Limited Audio Overviews'],
+        features: ['Gemini 3.6 Flash + varying 3.1 Pro access', 'Basic Deep Research', 'Google integrations', 'Limited Audio Overviews'],
         highlight: false,
       },
       {
@@ -207,18 +207,18 @@ export const SUBSCRIPTIONS: Subscription[] = [
     name: 'Grok',
     provider: 'xAI',
     providerId: 'x-ai',
-    description: 'xAI\'s AI with real-time X data and Search, Grok 4.3 & 4.5, and agentic Imagine tools.',
+    description: 'xAI\'s AI with real-time X data and Search, Grok 4.6, and agentic Imagine tools.',
     category: 'chat',
     url: 'https://x.ai/pricing',
-    lastVerified: '2026-07-11',
-    underlyingModels: ['x-ai/grok-4.5', 'x-ai/grok-4.3'],
+    lastVerified: '2026-08-17',
+    underlyingModels: ['x-ai/grok-4.6', 'x-ai/grok-4.5'],
     tiers: [
       {
         name: 'Free',
         monthlyPrice: 0,
         annualMonthlyPrice: 0,
         perSeat: false,
-        features: ['Grok 4.3 (limited)', 'Basic Imagine image gen', 'grok.com access'],
+        features: ['Real-time web and X search', 'Voice mode', 'Connectors', 'SOC 2 compliance (Type I & II)'],
         highlight: false,
       },
       {
@@ -250,9 +250,17 @@ export const SUBSCRIPTIONS: Subscription[] = [
         monthlyPrice: 30,
         annualMonthlyPrice: 25,
         perSeat: false,
-        features: ['Grok 4.3 full access', 'Search & Multi-agent mode', '128K token memory', 'Premium Imagine image model', 'Agents & Companions'],
+        features: ['Grok 4.6 model access', 'Search & Multi-agent mode', 'Higher rate limits across all features', 'Image and video generation', 'Connectors'],
         highlight: true,
         badge: 'Most Popular',
+      },
+      {
+        name: 'SuperGrok Plus',
+        monthlyPrice: 100,
+        annualMonthlyPrice: 100,
+        perSeat: false,
+        features: ['Everything in SuperGrok', 'Create 1080p videos', 'Significantly higher usage across Chat, Imagine, Voice & Build', 'Priority access at peak times', 'Early access to new features'],
+        highlight: false,
       },
       {
         name: 'SuperGrok Heavy',
@@ -273,7 +281,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     description: 'AI-powered answer engine with real-time web search, citations, and Create (files & apps) tools.',
     category: 'search',
     url: 'https://perplexity.ai/pro',
-    lastVerified: '2026-07-11',
+    lastVerified: '2026-08-17',
     tiers: [
       {
         name: 'Free',
@@ -286,7 +294,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
       {
         name: 'Pro',
         monthlyPrice: 20,
-        annualMonthlyPrice: 16.67,
+        annualMonthlyPrice: 17,
         perSeat: false,
         features: ['300+ Pro searches/day', 'Frontier models (GPT-5.2, Claude 4.6, Gemini 3.1 Pro)', 'Unlimited file uploads', 'Image generation', '$5/mo API credits', 'Standard Create access'],
         highlight: true,
@@ -295,7 +303,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
       {
         name: 'Max',
         monthlyPrice: 200,
-        annualMonthlyPrice: 166.67,
+        annualMonthlyPrice: 167,
         perSeat: false,
         features: ['Unlimited Create (dashboards, apps, spreadsheets)', 'Model Council (3 frontier models in parallel)', 'Computer (background & scheduled tasks)', '10,000 Computer credits/mo', 'Veo 3.1 video generation', 'Priority support'],
         highlight: false,
@@ -328,7 +336,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     description: 'Mistral\'s AI assistant — rebranded "Vibe" in 2026 — with frontier models, deep research, extended thinking, and No Telemetry Mode.',
     category: 'chat',
     url: 'https://mistral.ai/pricing',
-    lastVerified: '2026-07-07',
+    lastVerified: '2026-08-17',
     tiers: [
       {
         name: 'Free',
@@ -382,7 +390,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     name: 'Kimi',
     provider: 'Moonshot AI',
     providerId: 'moonshotai',
-    description: '月之暗面 (Moonshot AI) — long-context assistant powered by Kimi K2.6, with Deep Research and agentic tasks. Tiers shown are international (USD); domestic China is a separate, cheaper ¥ ladder (Andante ¥49 to Allegro ¥699/mo).',
+    description: '月之暗面 (Moonshot AI) — long-context assistant powered by Kimi K3, with Deep Research and agentic tasks. Tiers shown are international (USD); domestic China is a separate, cheaper ¥ ladder (Andante ¥49 to Allegro ¥699/mo).',
     category: 'chat',
     url: 'https://www.kimi.com/pricing',
     lastVerified: '2026-07-07',
@@ -507,10 +515,10 @@ export const SUBSCRIPTIONS: Subscription[] = [
     name: 'Z.ai (GLM)',
     provider: 'Zhipu AI',
     providerId: 'zhipuai',
-    description: '智谱清言 — Zhipu AI\'s assistant powered by GLM-5.2. Consumer chat is free on open-source GLM-4.7; the paid GLM Coding Plan is the flagship offering (hiked $3 → $10 → $18 across 2026).',
+    description: '智谱清言 — Zhipu AI\'s assistant powered by GLM-5.3. Consumer chat is free on open-source GLM-4.7; the paid GLM Coding Plan is the flagship offering. List prices shown — a standing promo runs ~30% lower.',
     category: 'chat',
     url: 'https://z.ai/subscribe',
-    lastVerified: '2026-07-07',
+    lastVerified: '2026-08-17',
     tiers: [
       {
         name: 'Free',
@@ -532,8 +540,8 @@ export const SUBSCRIPTIONS: Subscription[] = [
       },
       {
         name: 'Coding Pro',
-        monthlyPrice: 72,
-        annualMonthlyPrice: 72,
+        monthlyPrice: 80,
+        annualMonthlyPrice: 80,
         cnMonthlyPrice: 149,
         perSeat: false,
         features: ['~400 prompts / 5 hrs', '1,000 MCP calls/mo', 'All GLM coding models', 'Priority access'],
@@ -542,8 +550,8 @@ export const SUBSCRIPTIONS: Subscription[] = [
       },
       {
         name: 'Coding Max',
-        monthlyPrice: 160,
-        annualMonthlyPrice: 160,
+        monthlyPrice: 168,
+        annualMonthlyPrice: 168,
         cnMonthlyPrice: 469,
         perSeat: false,
         features: ['~1,600 prompts / 5 hrs', '4,000 MCP calls/mo', 'Maximum quotas', 'For heavy agentic coding'],
@@ -623,10 +631,10 @@ export const SUBSCRIPTIONS: Subscription[] = [
     name: 'Manus',
     provider: 'Manus',
     providerId: 'manus',
-    description: 'General AI agent (research, coding, websites, slides, browser automation) on Manus 1.6 — operating under Meta since Dec 2025. Credit-based ladder; the $40 tier scales up to 20,000 credits.',
+    description: 'General AI agent (research, coding, websites, slides, browser automation) on Manus 1.6 — announced Aug 2026 that it will resume operating as an independent company. Credit-based ladder; the $40 tier scales up to 20,000 credits.',
     category: 'chat',
     url: 'https://manus.im/pricing',
-    lastVerified: '2026-07-11',
+    lastVerified: '2026-08-17',
     tiers: [
       {
         name: 'Free',
@@ -683,7 +691,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     description: 'AI-first code editor with Tab completions, Agent mode, Cloud Agents, MCPs & hooks, and Bugbot code review on frontier models.',
     category: 'coding',
     url: 'https://cursor.com/pricing',
-    lastVerified: '2026-07-11',
+    lastVerified: '2026-08-17',
     tiers: [
       {
         name: 'Hobby',
@@ -705,7 +713,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
       {
         name: 'Pro+',
         monthlyPrice: 60,
-        annualMonthlyPrice: 60,
+        annualMonthlyPrice: 48,
         perSeat: false,
         features: ['All Pro features', '3× Pro limits on Agent', 'Ideal for heavy usage'],
         highlight: false,
@@ -713,18 +721,26 @@ export const SUBSCRIPTIONS: Subscription[] = [
       {
         name: 'Ultra',
         monthlyPrice: 200,
-        annualMonthlyPrice: 200,
+        annualMonthlyPrice: 160,
         perSeat: false,
         features: ['20× Pro limits on Agent', 'Access to frontier models', 'MCPs, skills, and hooks', 'Cloud agents', 'Priority access to new features'],
         highlight: false,
         badge: 'Power Users',
       },
       {
-        name: 'Teams',
+        name: 'Teams Standard',
         monthlyPrice: 40,
         annualMonthlyPrice: 32,
         perSeat: true,
         features: ['All Pro features per seat', 'SSO & RBAC', 'Admin dashboard', 'Shared chats', 'Centralized billing'],
+        highlight: false,
+      },
+      {
+        name: 'Teams Premium',
+        monthlyPrice: 120,
+        annualMonthlyPrice: 96,
+        perSeat: true,
+        features: ['All Teams Standard features', '5× Standard limits on Agent', 'Team marketplace for rules, skills & plugins', 'Agentic code reviews with Bugbot', 'Team-wide privacy mode'],
         highlight: false,
       },
       {
@@ -746,7 +762,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     description: 'AI pair programmer in GitHub & VS Code with multi-model support, Copilot cloud agent, and repository indexing.',
     category: 'coding',
     url: 'https://github.com/features/copilot/plans',
-    lastVerified: '2026-07-11',
+    lastVerified: '2026-08-17',
     tiers: [
       {
         name: 'Free',
@@ -775,6 +791,14 @@ export const SUBSCRIPTIONS: Subscription[] = [
         badge: 'Power Users',
       },
       {
+        name: 'Max',
+        monthlyPrice: 100,
+        annualMonthlyPrice: 100,
+        perSeat: false,
+        features: ['$100/mo in GitHub AI Credits', 'Built for sustained agent-driven workflows', 'Everything in Pro+', 'Highest individual usage ceiling'],
+        highlight: false,
+      },
+      {
         name: 'Business',
         monthlyPrice: 19,
         annualMonthlyPrice: 19,
@@ -800,7 +824,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     description: 'Cognition\'s AI software engineer. The Windsurf editor is now Devin Desktop — one plan covers the IDE, cloud agents, and Devin sessions.',
     category: 'coding',
     url: 'https://devin.ai/pricing',
-    lastVerified: '2026-07-11',
+    lastVerified: '2026-08-17',
     tiers: [
       {
         name: 'Free',
@@ -855,8 +879,8 @@ export const SUBSCRIPTIONS: Subscription[] = [
     description: 'Agentic coding tool for terminal, IDE, web, and desktop. Included with Claude Pro/Max/Team plans — or pay-as-you-go via API.',
     category: 'coding',
     url: 'https://www.anthropic.com/claude-code',
-    lastVerified: '2026-07-11',
-    underlyingModels: ['anthropic/claude-opus-4.8', 'anthropic/claude-sonnet-5', 'anthropic/claude-fable-5'],
+    lastVerified: '2026-08-17',
+    underlyingModels: ['anthropic/claude-opus-5', 'anthropic/claude-sonnet-5', 'anthropic/claude-fable-5'],
     tiers: [
       {
         name: 'Included w/ Plans',
@@ -877,7 +901,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     description: 'Cloud IDE where Replit Agent 4 builds and ships full-stack apps from prompts. The per-seat Teams plan was sunset in March 2026 — flat-rate Pro is the team option now.',
     category: 'coding',
     url: 'https://replit.com/pricing',
-    lastVerified: '2026-07-11',
+    lastVerified: '2026-08-17',
     tiers: [
       {
         name: 'Starter',
@@ -924,7 +948,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     description: 'AI app builder turning prompts into live full-stack web apps via agentic multi-model orchestration on Claude models. Credit-priced plans — unlimited workspace members on every tier.',
     category: 'coding',
     url: 'https://lovable.dev/pricing',
-    lastVerified: '2026-07-11',
+    lastVerified: '2026-08-17',
     tiers: [
       {
         name: 'Free',
@@ -970,7 +994,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     description: 'Vercel\'s AI app builder — prompts to deployed full-stack apps, metered through its own v0 Mini/Pro/Max model tiers. No annual billing; credits expire after 65 days.',
     category: 'coding',
     url: 'https://v0.app/pricing',
-    lastVerified: '2026-07-11',
+    lastVerified: '2026-08-17',
     tiers: [
       {
         name: 'Free',
@@ -981,7 +1005,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
         highlight: false,
       },
       {
-        name: 'Team',
+        name: 'Plus',
         monthlyPrice: 30,
         annualMonthlyPrice: 30,
         perSeat: true,
@@ -1017,7 +1041,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     description: 'The reference AI image & video generator, currently on V8.1. Subscription-only — no free tier; annual billing is 20% off.',
     category: 'media',
     url: 'https://docs.midjourney.com/hc/en-us/articles/27870484040333-Comparing-Midjourney-Plans',
-    lastVerified: '2026-07-11',
+    lastVerified: '2026-08-17',
     tiers: [
       {
         name: 'Basic',
@@ -1060,7 +1084,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     name: 'Hailuo AI',
     provider: 'MiniMax',
     providerId: 'minimax',
-    description: 'MiniMax\'s Hailuo video & image generator — a multi-model hub with Hailuo 2.3, Veo 3.1, Sora 2 & Seedance 2.0. Annual billing runs ~47% cheaper than monthly.',
+    description: 'MiniMax\'s Hailuo video & image generator — a multi-model hub led by MiniMax H3, with Veo 3.1, Sora 2 & Seedance 2.0. Annual billing runs ~47% cheaper than monthly.',
     category: 'media',
     url: 'https://hailuoai.video/subscribe',
     lastVerified: '2026-07-11',
@@ -1118,7 +1142,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     description: 'AI music generator — v5.5 is the flagship model. Credits refresh monthly; commercial rights require a paid plan.',
     category: 'media',
     url: 'https://suno.com/pricing',
-    lastVerified: '2026-07-11',
+    lastVerified: '2026-08-17',
     tiers: [
       {
         name: 'Free',
@@ -1156,7 +1180,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     description: 'AI voice & audio platform — Eleven v3 expressive TTS, Multilingual v2, Music, and Scribe STT. Annual billing is two months free on every tier.',
     category: 'media',
     url: 'https://elevenlabs.io/pricing',
-    lastVerified: '2026-07-11',
+    lastVerified: '2026-08-17',
     tiers: [
       {
         name: 'Free',
@@ -1227,7 +1251,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     description: 'Kuaishou\'s AI video & image generator on the Kling 3.0 series (Video 3.0/Omni, Image 3.0 Omni). List prices shown — renewals run ~12% lower and annual ~34% off; first-month promos are common.',
     category: 'media',
     url: 'https://kling.ai/app/membership/membership-plan',
-    lastVerified: '2026-07-11',
+    lastVerified: '2026-08-17',
     tiers: [
       {
         name: 'Basic',
@@ -1289,7 +1313,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     description: 'AI video suite built on Gen-4.5, Aleph 2.0 editing, and Act-Two capture — plus hub access to Kling 3.0, Seedance 2.0 & Veo 3.1. The Unlimited plan was retired for Max in June 2026.',
     category: 'media',
     url: 'https://runwayml.com/pricing',
-    lastVerified: '2026-07-11',
+    lastVerified: '2026-08-17',
     tiers: [
       {
         name: 'Free',
@@ -1364,7 +1388,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
       },
       {
         name: 'Copilot Business',
-        monthlyPrice: 21,
+        monthlyPrice: 25.2,
         annualMonthlyPrice: 18,
         perSeat: true,
         features: ['$18 promo through Sep 2026', 'M365 Copilot in Teams, Word, Excel', 'Work IQ intelligence layer', 'Admin controls (up to 300 users)', 'Requires M365 Business base plan'],
