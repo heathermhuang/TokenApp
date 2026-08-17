@@ -633,9 +633,19 @@ function cheapestPaid(s: Subscription): number | null {
  * for GitHub Copilot is affirmatively false — its annual plans closed 2026-06-01 —
  * and is merely noise for the other 58.
  */
+/*
+ * BOTH prices must be published numbers before they can be compared. Falling back to
+ * `monthlyPrice ?? Infinity` (as the main page's inline check does) would make the
+ * shape `{monthlyPrice: null, annualMonthlyPrice: 10}` "a discount" — the type permits
+ * it — and render a row whose monthly cell is "—" while its annual cell says $10.
+ * No entry is shaped that way today; requiring finite numbers means none can be.
+ */
 function hasAnnualDiscount(t: SubscriptionTier): boolean {
-  return t.annualMonthlyPrice !== null && t.annualMonthlyPrice !== undefined
-    && t.annualMonthlyPrice < (t.monthlyPrice ?? Infinity);
+  const monthly = t.monthlyPrice;
+  const annual = t.annualMonthlyPrice;
+  if (typeof monthly !== 'number' || !Number.isFinite(monthly)) return false;
+  if (typeof annual !== 'number' || !Number.isFinite(annual)) return false;
+  return annual < monthly;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

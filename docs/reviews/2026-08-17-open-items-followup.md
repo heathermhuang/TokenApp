@@ -236,6 +236,50 @@ Result, measured against the real data: 50 tiers still show a genuine annual fig
 render "—". Every Copilot tier now shows "—" (uniform, and true — GitHub bills all six
 monthly), while Cursor's real 20% discounts are untouched ($16 / $48 / $160 / $32 / $96).
 
+## Codex round 2 — reviewed the FIX commit, found two more
+
+Round 2 was run against the fix commit specifically, not the opening diff. It is where
+#28's real P2 appeared last time, and it earned its keep again.
+
+### P2 — the predicate was wrong for a shape the types allow (FIXED)
+
+`{monthlyPrice: null, annualMonthlyPrice: 10}` made `null ?? Infinity` yield
+`10 < Infinity` → **true**, which would render a row whose monthly cell reads "—" and
+whose annual cell reads "$10". Inherited straight from the main page's inline check,
+which I had copied on purpose for parity.
+
+No entry is shaped that way today (all 14 null-annual tiers also have null monthly), so
+nothing was mis-rendering. But a helper *named* `hasAnnualDiscount` should be correct for
+every input its own types permit, and `monthlyPrice: number | null` permits this. Now
+requires both values to be finite numbers before comparing.
+
+Verified after hardening: real data unchanged at **50 shown / 73 dashed**, and the edge
+cases behave — `{null, 10}` → "—", `{undefined, 10}` → "—", `{0, 0}` → "—",
+`{20, 16}` → "$16", `{10, 10}` → "—", `{null, null}` → "—".
+
+Note the main page's inline check at `template.ts:3149` still uses `?? Infinity`. It is
+pre-existing, unreachable with current data, and rewriting client-side template JS was out
+of scope here — but it is the same latent trap, so fold it in next time that file is open.
+
+### P2 — `/api/subscriptions` still exposes the raw field (NOT fixed — new open item)
+
+Codex: the renderer fix masks equal values in HTML, but the JSON API still returns
+`annualMonthlyPrice: 10` for Copilot Pro, and a consumer reasonably reads that named field
+as a purchasable annual rate without knowing the renderer-only convention. Correct.
+
+Deliberately **not** fixed here, for two reasons. It is a **schema change** to a public API
+plus the data model plus both renderers, affecting all 28 subscriptions — much larger than
+this PR. And it is **pre-existing, not a regression**: the ambiguity already applied to all
+59 equal-value tiers, and the figures this PR replaced (8.33 / 32.5) were strictly worse,
+asserting a discount that never existed at all. So this PR moves the API from "wrong" to
+"ambiguous", and the remaining ambiguity deserves its own scoped change.
+
+**Proposed open item**: add an explicit cadence field — e.g.
+`annualBilling: 'discounted' | 'same-price' | 'unavailable' | 'unpublished'` — and have
+both renderers and the API read it, replacing the inferred equal-vs-null convention with a
+stated one. That also retires the `?? Infinity` trap above and the two-renderer divergence
+class entirely.
+
 ## Verification
 
 - `npm test` — **58/58 pass**, before and after (the suite pins the version-join truth
