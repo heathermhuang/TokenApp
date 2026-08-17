@@ -1,6 +1,19 @@
 # Proposal: monthly scheduled pricing-verify routine
 
-**Status: PROPOSAL ONLY — nothing scheduled or built. Awaiting approval.**
+**Status: APPROVED 2026-08-17 and BUILT as Option B.** The pinned run prompt is
+`docs/proposals/pricing-verify-prompt.md`; the schedule is the Claude Code scheduled task
+`tokenapp-pricing-verify` (monthly, 1st at 10:00 local, `~/.claude/scheduled-tasks/`).
+Remaining step from "What I'd build once approved" is item 3, the supervised dry run —
+click **Run now** on the task once, which also pre-approves the browser tools so later
+runs do not pause on permission prompts.
+
+A re-costing against the 2026-08-17 pass argued for building only a third of this (a
+fetch-only drift *detector*, never a verifier), because the highest-value find of that
+pass came from following a docs sidebar link and reasoning about "legacy" billing — which
+a scraper returns UNVERIFIABLE on forever. That argument and the counter-evidence are in
+`2026-08-17-open-items-8-10-6-decisions.md`; the user chose full Option B, so full Option B
+is what exists. The guardrails below and in the pinned prompt are what keep its blast
+radius to "a local branch and a report".
 Written 2026-07-11 after the July backlog pass (commits `6abe2e8`, `42fce43`, `8d0375f`), which is the manual prototype of exactly this routine.
 
 ## Goal
