@@ -202,6 +202,61 @@ are left honest rather than stamped on a "probably still free" assumption.
 
 ---
 
+## Residual stale model names inside tier `features[]` (follow-up commit)
+
+Descriptions were the reviewed surface, but model names also live in per-tier
+`features[]`, and a live-page grep after deploy caught three that the description
+pass had left behind. Two of them made a *stamped* entry internally inconsistent,
+and one was introduced by this very PR:
+
+- **claude-code** — `'Opus 4.8, Sonnet 5 & Fable 5'` → **Opus 5**. Self-inflicted:
+  the same commit set this entry's `underlyingModels` to `claude-opus-5` while leaving
+  the on-screen feature at 4.8. Source is the entry's own URL, `anthropic.com/claude-code`.
+- **zhipu-ai** — `'GLM-5.2, GLM-5-Turbo, GLM-4.7'` → **GLM-5.3, GLM-5.2, GLM-5-Turbo**.
+  Source: the z.ai page title, *"GLM Coding Plan — AI Coding Powered by GLM-5.3,
+  GLM-5.2 & GLM-5-Turbo"*, which is precisely this plan's model list.
+- **grok** — SuperGrok Heavy `'Grok 4.3 full access'` → **Grok 4.6**. Source: the
+  x.ai/pricing comparison table carries `Grok 4.6` as the Models row across plans.
+- **perplexity** — Pro `'Frontier models (GPT-5.2, Claude 4.6, Gemini 3.1 Pro)'` →
+  **Sonar 2, GPT-5.6 Terra, Claude Sonnet 5, Gemini 3.7 Flash**. Found by Codex, not by
+  the page grep, because none of the three stale names were on the superseded-string
+  list being searched for — the grep only finds names you already suspect. The source
+  was sitting in this document the whole time: the model mix `perplexity.ai/pro`
+  publishes was recorded under open item 3 and never carried back into the tier.
+  (`Gemini 3.7 Flash` is named on the page but is **not** in our catalogue, so it appears
+  in this display string and deliberately **not** in `underlyingModels`.)
+
+**Deliberately left stale**, because each belongs to an entry whose date is already
+honest about it or to a tier with no source:
+
+| Where | Still says | Why left |
+|---|---|---|
+| kimi → Adagio, Moderato | Kimi K2.6 | Entry is **unstamped** (`07-07`); pricing page redirects to root |
+| hailuo-ai → tier | Hailuo 2.3/2.0/1.0 | Entry is **unstamped** (`07-11`); plans behind auth |
+| kling / runway descriptions | Kling 3.0 series | Only **prices** were verified; Kling's page now labels models "VIDEO 2.6" / "VIDEO O1", which does not map cleanly onto the existing wording. Left because the current product-line name is genuinely unknown — "3.0 series" may still be right, and replacing it would be a guess |
+
+### Version claims DROPPED rather than swapped (second Codex round)
+
+Two entries were stamped yet named a model version there is positive reason to believe
+is stale, on a tier with **no** published source. Swapping in a newer number would have
+been inventing; keeping the old one asserts something likely false. Both had the version
+removed instead, which is strictly more accurate than either alternative:
+
+- **grok → X Premium+** — `'Grok 4.3 access'` dropped. It is an X/Twitter subscription,
+  absent from `x.ai/pricing`, so what model it serves is unknown; but x.ai serves 4.6
+  everywhere it *does* publish, so 4.3 is almost certainly wrong.
+- **github-copilot → Pro+** — `'Claude Opus 4.7/4.8 & Fable 5'` → `'Claude Opus & Fable
+  models'`. GitHub does not publish a model catalogue on the plans page. The adjacent
+  `'Broad premium model catalog'` feature already carries the meaning.
+
+Codex also asked for Perplexity's list to be complete rather than a silent subset; all
+six published models are now named.
+
+Worth noting for the next pass: `lastVerified` says prices were checked, so a stamped
+entry can still carry a stale model name in `features[]`. Grepping the **rendered page**
+for superseded strings caught what reading the diff did not — the three fixes above all
+came from that grep, not from review.
+
 ## Note, not acted on
 
 `x.ai` now titles its pages **"SpaceXAI"**. The entry still reads `provider: 'xAI'` /
