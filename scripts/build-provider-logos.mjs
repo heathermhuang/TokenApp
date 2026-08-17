@@ -23,7 +23,7 @@
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 /** `--check` verifies the committed file matches this generator instead of writing. */
 const CHECK_ONLY = process.argv.includes('--check');
@@ -138,14 +138,6 @@ const ICON_MAP = {
   'dots-studio':     null,
 };
 
-// ── Build ─────────────────────────────────────────────────────────────────────
-
-if (!existsSync(ICON_DIR)) {
-  console.error(`Icon source missing: ${ICON_DIR}\nRun \`npm install\` first.`);
-  process.exit(1);
-}
-
-const available = new Set(readdirSync(ICON_DIR).filter(f => f.endsWith('.svg')).map(f => f.slice(0, -4)));
 
 /**
  * Ink for the `currentColor` parts of an icon that ALSO carries fixed brand paint.
@@ -155,10 +147,43 @@ const available = new Set(readdirSync(ICON_DIR).filter(f => f.endsWith('.svg')).
  * that reads on both backgrounds instead, leaving the brand colour untouched. Slate
  * rather than pure grey so it sits with the UI's palette.
  */
-const MIXED_INK = '#8a8f98';
+export const MIXED_INK = '#8a8f98';
 
-/** Fixed paint that is effectively black, i.e. the tone we are already baking to. */
-const BLACKISH = /^#(0{3}|0{6}|0{8})$/i;
+/**
+ * Paint values that are safe to invert wholesale — `currentColor` itself, nothing, or
+ * black in any of the spellings SVG allows (including the alpha forms).
+ *
+ * `url(#…)` is allowed because gradient and pattern indirection resolves to elements
+ * whose own `stop-color` values are collected by paintValues() and checked here too;
+ * an all-currentColor gradient therefore stays mono, and one with a real colour in a
+ * stop does not.
+ */
+// Black hex covers all four SVG lengths INCLUDING the alpha forms: #000, #000a,
+// #000000, #000000aa. Spelling out only #000/#0000/#000000/#000000ff (the first
+// attempt) left #000f classified as brand paint — harmless, since the error lands on
+// the never-invert side, but it would have quietly stopped a legitimately monochrome
+// mark from following the theme.
+export const MONO_SAFE_PAINT = /^(currentcolor|none|transparent|inherit|black|#0{3}[0-9a-f]?|#0{6}(?:[0-9a-f]{2})?|rgb\(0,0,0\)|rgba\(0,0,0,1?\.?0*\)|url\(#[^)]*\))$/;
+
+/**
+ * Every paint value in the document, from attributes AND from CSS (inline `style=` or
+ * a `<style>` block), normalised for comparison.
+ *
+ * Deliberately broad: the classification below only calls a mark invertible when EVERY
+ * value here is known-safe, so a syntax this misses shows up as an unrecognised value
+ * and pushes the mark to "mixed" — the harmless direction. The previous version asked
+ * the opposite question (does a non-black hex appear?), which fails open: a named
+ * colour or an rgb() would have been invisible to it and the brand paint inverted.
+ */
+export function paintValues(svg) {
+  const out = [];
+  const re = /(?:^|[\s;"'{])(fill|stroke|stop-color|flood-color|lighting-color|color)\s*[=:]\s*(?:"([^"]*)"|'([^']*)'|([^;"'>\s}]+))/gi;
+  let m;
+  while ((m = re.exec(svg))) {
+    out.push(String(m[2] ?? m[3] ?? m[4] ?? '').trim().toLowerCase().replace(/\s+/g, ''));
+  }
+  return out;
+}
 
 /**
  * Normalise one icon for standalone <img> use.
@@ -172,14 +197,21 @@ const BLACKISH = /^#(0{3}|0{6}|0{8})$/i;
  * theme, so it must mean "every visible stroke is the baked ink", not merely "the file
  * mentions currentColor". Three mapped marks (Yi, AWS, LongCat) mix `currentColor` with
  * a fixed brand colour; treating those as mono inverted the brand colour too.
+ *
+ * The test is positive proof, not absence of evidence: a mark is invertible only when
+ * EVERY paint value in it is recognised and safe. Anything unrecognised — a named
+ * colour, an rgb(), a CSS variable, a syntax this does not parse — makes it mixed. That
+ * matters because the icon package is a pinned dependency that gets bumped: today's
+ * corpus happens to use hex only, and a classifier that fails open would silently start
+ * inverting brand paint the first time an upstream icon changed its colour syntax.
  */
-function normalise(raw, name) {
+export function normalise(raw, name) {
   const viewBox = /viewBox="([^"]+)"/.exec(raw);
   if (!viewBox) throw new Error(`${name}: no viewBox — cannot size it safely`);
 
   const usesCurrentColor = raw.includes('currentColor');
-  const fixedPaint = [...new Set(raw.match(/#[0-9A-Fa-f]{3,8}/g) || [])].filter(c => !BLACKISH.test(c));
-  const mixed = usesCurrentColor && fixedPaint.length > 0;
+  const unsafePaint = [...new Set(paintValues(raw).filter(v => v && !MONO_SAFE_PAINT.test(v)))];
+  const mixed = usesCurrentColor && unsafePaint.length > 0;
   const mono = usesCurrentColor && !mixed;
   const ink = mixed ? MIXED_INK : '#000';
   // Rewrite the ROOT <svg> tag only. A global style/width strip would also hit inner
@@ -199,188 +231,214 @@ function normalise(raw, name) {
 
   if (!/^<svg[\s>]/.test(svg)) throw new Error(`${name}: does not start with <svg`);
   if (/<script/i.test(svg)) throw new Error(`${name}: contains <script>`);
-  return { svg, mono, mixed, fixedPaint };
+  return { svg, mono, mixed, unsafePaint };
 }
 
-/**
- * A few entries in the set are detailed illustrations rather than marks — the
- * `dolphin` glyph is 99KB. At the 13px these render at, none of that detail is
- * visible, so past this ceiling the initial tile is the better trade. Enforced as a
- * rule rather than by hand-dropping names, so a future icon-set bump cannot quietly
- * reintroduce a 99KB download for one table row.
- */
-const MAX_ICON_BYTES = 20 * 1024;
+// ── Build ─────────────────────────────────────────────────────────────────────
+// Only builds when run directly. The test suite imports this module to pin the
+// mono/mixed truth table, and that must not write src/logos.ts as a side effect.
+const RUN_DIRECTLY = process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url;
+if (RUN_DIRECTLY) {
 
-const assets = {};
-const monoSlugs = [];
-const unmapped = [];
-const missing = [];
-const oversized = [];
-const mixedInk = [];
-
-for (const [slug, icon] of Object.entries(ICON_MAP)) {
-  if (icon === null) { unmapped.push(slug); continue; }
-  if (!available.has(icon)) { missing.push(`${slug} → ${icon}`); continue; }
-  const raw = readFileSync(join(ICON_DIR, `${icon}.svg`), 'utf8');
-  const { svg, mono, mixed, fixedPaint } = normalise(raw, icon);
-  if (svg.length > MAX_ICON_BYTES) {
-    oversized.push(`${slug} (${icon}, ${(svg.length / 1024).toFixed(0)}KB)`);
-    continue;
+  if (!existsSync(ICON_DIR)) {
+    console.error(`Icon source missing: ${ICON_DIR}\nRun \`npm install\` first.`);
+    process.exit(1);
   }
-  assets[slug] = { svg, mono, icon };
-  if (mono) monoSlugs.push(slug);
-  if (mixed) mixedInk.push(`${slug} (${icon}, keeps ${fixedPaint.join(' ')})`);
-}
 
-if (missing.length) {
-  console.error('Mapped to icons that do not exist in the package:');
-  missing.forEach(m => console.error('  ' + m));
-  process.exit(1);
-}
+  const available = new Set(readdirSync(ICON_DIR).filter(f => f.endsWith('.svg')).map(f => f.slice(0, -4)));
 
-const slugs = Object.keys(assets).sort();
-const body = slugs.map(s => {
-  const a = assets[s];
-  return `  ${JSON.stringify(s)}: { mono: ${a.mono}, svg: ${JSON.stringify(a.svg)} },`;
-}).join('\n');
+  /**
+   * A few entries in the set are detailed illustrations rather than marks — the
+   * `dolphin` glyph is 99KB. At the 13px these render at, none of that detail is
+   * visible, so past this ceiling the initial tile is the better trade. Enforced as a
+   * rule rather than by hand-dropping names, so a future icon-set bump cannot quietly
+   * reintroduce a 99KB download for one table row.
+   */
+  const MAX_ICON_BYTES = 20 * 1024;
 
-/**
- * Cache-busting token for the asset URLs.
- *
- * `/logo/{slug}.svg` is addressed by provider, not by content, so an `immutable`
- * year-long TTL would otherwise pin a returning visitor to the old mark for a year
- * after a logo changes — or after an initial tile is upgraded to a real logo. The
- * token turns the provider-addressed URL into a content-addressed one, which is what
- * makes `immutable` honest. `providers.ts` is folded in because the initial tiles are
- * generated from its display names and colours at request time.
- */
-const version = createHash('sha256')
-  .update(body)
-  .update(readFileSync(join(ROOT, 'src/providers.ts')))
-  .digest('hex')
-  .slice(0, 10);
+  const assets = {};
+  const monoSlugs = [];
+  const unmapped = [];
+  const missing = [];
+  const oversized = [];
+  const mixedInk = [];
 
-const out = `/**
- * GENERATED FILE — do not edit by hand.
- * Regenerate with \`npm run logos\` (scripts/build-provider-logos.mjs).
- *
- * Self-hosted provider brand marks, served from /logo/{slug}.svg so that no visitor
- * request goes to google.com/s2/favicons. Providers absent from this map render a
- * generated initial tile instead — see logoSvg() below.
- *
- * Brand marks are from Lobe Icons, MIT licensed:
- *
- *   Copyright (c) 2023 LobeHub
- *
- *   Permission is hereby granted, free of charge, to any person obtaining a copy
- *   of this software and associated documentation files (the "Software"), to deal
- *   in the Software without restriction, including without limitation the rights
- *   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- *   copies of the Software, and to permit persons to whom the Software is
- *   furnished to do so, subject to the following conditions:
- *
- *   The above copyright notice and this permission notice shall be included in all
- *   copies or substantial portions of the Software.
- *
- *   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- *   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- *   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- *   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- *   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- *   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- *   SOFTWARE.
- *
- * Company names and logos are trademarks of their respective owners, shown to
- * identify whose pricing each row reports.
- */
-import { getProvider } from './providers';
-
-export interface LogoAsset {
-  /** Glyph is drawn in flat black and must be inverted for the dark theme. */
-  mono: boolean;
-  svg: string;
-}
-
-export const PROVIDER_LOGOS: Record<string, LogoAsset> = {
-${body}
-};
-
-/**
- * Slugs whose glyph is ENTIRELY flat black and can therefore be flipped wholesale
- * with \`filter: invert(1)\` on the dark theme. Interpolated into the client bundle so
- * the renderer can tag them.
- *
- * A mark that mixes \`currentColor\` with fixed brand paint is deliberately NOT here:
- * inverting the image would take AWS orange to blue. Those have their
- * \`currentColor\` half baked to a neutral that reads on either background instead.
- */
-export const MONO_LOGO_SLUGS: readonly string[] = ${JSON.stringify(monoSlugs.sort())};
-
-/**
- * Cache-busting token, changing whenever any mark or provider colour changes. The
- * asset URLs are keyed by provider rather than by content, so this is what lets them
- * be served \`immutable\` without pinning returning visitors to a stale logo.
- */
-export const LOGO_ASSET_VERSION = ${JSON.stringify(version)};
-
-/** OpenRouter namespaces some authors as \`~openai\`; the mark is the same. */
-export function canonicalLogoSlug(providerId: string): string {
-  return providerId.toLowerCase().replace(/^~/, '').replace(/\\s+/g, '-');
-}
-
-export function hasProviderLogo(providerId: string): boolean {
-  return Object.prototype.hasOwnProperty.call(PROVIDER_LOGOS, canonicalLogoSlug(providerId));
-}
-
-/** Slug shapes we will look up. Anything else 404s rather than minting a tile. */
-const SLUG_RE = /^[a-z0-9][a-z0-9._~-]{0,63}$/;
-
-/**
- * The SVG for a provider: the vendored brand mark, or a generated initial tile.
- *
- * The tile is why this returns a string rather than null — a provider we have no
- * mark for still gets a stable, themed square instead of a broken-image icon, and
- * new providers appear correctly without a deploy.
- */
-export function logoSvg(providerId: string): string | null {
-  const slug = canonicalLogoSlug(providerId);
-  if (!SLUG_RE.test(slug)) return null;
-
-  const asset = PROVIDER_LOGOS[slug];
-  if (asset) return asset.svg;
-
-  const meta = getProvider(slug);
-  const letter = (meta.displayName.trim()[0] || '?').toUpperCase();
-  const ch = letter === '<' || letter === '&' || letter === '"' ? '?' : letter;
-  return '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" role="img">' +
-    \`<title>\${meta.displayName.replace(/[<>&"]/g, '')}</title>\` +
-    \`<rect width="24" height="24" rx="5" fill="\${meta.color}" fill-opacity="0.18"/>\` +
-    \`<text x="12" y="12" fill="\${meta.color}" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" \` +
-    \`font-size="13" font-weight="700" text-anchor="middle" dominant-baseline="central">\${ch}</text>\` +
-    '</svg>';
-}
-`;
-
-// `--check` is the drift guard: nothing in the build regenerates src/logos.ts, so an
-// ICON_MAP edit or an icon-package bump could otherwise ship a stale MONO_LOGO_SLUGS
-// literal and stale assets with nothing to notice. Wired into the deploy preflight.
-if (CHECK_ONLY) {
-  const committed = existsSync(OUT) ? readFileSync(OUT, 'utf8') : null;
-  if (committed === out) {
-    console.log(`src/logos.ts is up to date (${slugs.length} marks, version ${version}).`);
-    process.exit(0);
+  for (const [slug, icon] of Object.entries(ICON_MAP)) {
+    if (icon === null) { unmapped.push(slug); continue; }
+    if (!available.has(icon)) { missing.push(`${slug} → ${icon}`); continue; }
+    const raw = readFileSync(join(ICON_DIR, `${icon}.svg`), 'utf8');
+    const { svg, mono, mixed, unsafePaint } = normalise(raw, icon);
+    if (svg.length > MAX_ICON_BYTES) {
+      oversized.push(`${slug} (${icon}, ${(svg.length / 1024).toFixed(0)}KB)`);
+      continue;
+    }
+    assets[slug] = { svg, mono, icon };
+    if (mono) monoSlugs.push(slug);
+    if (mixed) mixedInk.push(`${slug} (${icon}, keeps ${unsafePaint.join(' ')})`);
   }
-  console.error('src/logos.ts is STALE — it does not match scripts/build-provider-logos.mjs.');
-  console.error(committed === null ? '  (file is missing entirely)' : '  Run `npm run logos` and commit the result.');
-  process.exit(1);
+
+  if (missing.length) {
+    console.error('Mapped to icons that do not exist in the package:');
+    missing.forEach(m => console.error('  ' + m));
+    process.exit(1);
+  }
+
+  const slugs = Object.keys(assets).sort();
+  const body = slugs.map(s => {
+    const a = assets[s];
+    return `  ${JSON.stringify(s)}: { mono: ${a.mono}, svg: ${JSON.stringify(a.svg)} },`;
+  }).join('\n');
+
+  /**
+   * Cache-busting token for the asset URLs.
+   *
+   * `/logo/{slug}.svg` is addressed by provider, not by content, so an `immutable`
+   * year-long TTL would otherwise pin a returning visitor to the old mark for a year
+   * after a logo changes — or after an initial tile is upgraded to a real logo. The
+   * token turns the provider-addressed URL into a content-addressed one, which is what
+   * makes `immutable` honest.
+   *
+   * All three inputs are things that can change what the route serves:
+   *   • the vendored marks themselves;
+   *   • `providers.ts`, since the initial tiles take their name and colour from it;
+   *   • this script, since it emits the tile markup, the escaping and the slug
+   *     validation that the route runs at request time.
+   *
+   * Hashing the whole script over-busts — a comment edit here re-fetches 54 small
+   * SVGs once — and that is the direction to err in. Extracting just the emitted
+   * runtime substring would be tighter and would silently under-bust the day someone
+   * changed a part the extraction did not cover.
+   */
+  const version = createHash('sha256')
+    .update(body)
+    .update(readFileSync(join(ROOT, 'src/providers.ts')))
+    .update(readFileSync(fileURLToPath(import.meta.url)))
+    .digest('hex')
+    .slice(0, 10);
+
+  const out = `/**
+   * GENERATED FILE — do not edit by hand.
+   * Regenerate with \`npm run logos\` (scripts/build-provider-logos.mjs).
+   *
+   * Self-hosted provider brand marks, served from /logo/{slug}.svg so that no visitor
+   * request goes to google.com/s2/favicons. Providers absent from this map render a
+   * generated initial tile instead — see logoSvg() below.
+   *
+   * Brand marks are from Lobe Icons, MIT licensed:
+   *
+   *   Copyright (c) 2023 LobeHub
+   *
+   *   Permission is hereby granted, free of charge, to any person obtaining a copy
+   *   of this software and associated documentation files (the "Software"), to deal
+   *   in the Software without restriction, including without limitation the rights
+   *   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   *   copies of the Software, and to permit persons to whom the Software is
+   *   furnished to do so, subject to the following conditions:
+   *
+   *   The above copyright notice and this permission notice shall be included in all
+   *   copies or substantial portions of the Software.
+   *
+   *   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   *   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   *   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   *   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   *   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   *   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   *   SOFTWARE.
+   *
+   * Company names and logos are trademarks of their respective owners, shown to
+   * identify whose pricing each row reports.
+   */
+  import { getProvider } from './providers';
+
+  export interface LogoAsset {
+    /** Glyph is drawn in flat black and must be inverted for the dark theme. */
+    mono: boolean;
+    svg: string;
+  }
+
+  export const PROVIDER_LOGOS: Record<string, LogoAsset> = {
+  ${body}
+  };
+
+  /**
+   * Slugs whose glyph is ENTIRELY flat black and can therefore be flipped wholesale
+   * with \`filter: invert(1)\` on the dark theme. Interpolated into the client bundle so
+   * the renderer can tag them.
+   *
+   * A mark that mixes \`currentColor\` with fixed brand paint is deliberately NOT here:
+   * inverting the image would take AWS orange to blue. Those have their
+   * \`currentColor\` half baked to a neutral that reads on either background instead.
+   */
+  export const MONO_LOGO_SLUGS: readonly string[] = ${JSON.stringify(monoSlugs.sort())};
+
+  /**
+   * Cache-busting token, changing whenever any mark or provider colour changes. The
+   * asset URLs are keyed by provider rather than by content, so this is what lets them
+   * be served \`immutable\` without pinning returning visitors to a stale logo.
+   */
+  export const LOGO_ASSET_VERSION = ${JSON.stringify(version)};
+
+  /** OpenRouter namespaces some authors as \`~openai\`; the mark is the same. */
+  export function canonicalLogoSlug(providerId: string): string {
+    return providerId.toLowerCase().replace(/^~/, '').replace(/\\s+/g, '-');
+  }
+
+  export function hasProviderLogo(providerId: string): boolean {
+    return Object.prototype.hasOwnProperty.call(PROVIDER_LOGOS, canonicalLogoSlug(providerId));
+  }
+
+  /** Slug shapes we will look up. Anything else 404s rather than minting a tile. */
+  const SLUG_RE = /^[a-z0-9][a-z0-9._~-]{0,63}$/;
+
+  /**
+   * The SVG for a provider: the vendored brand mark, or a generated initial tile.
+   *
+   * The tile is why this returns a string rather than null — a provider we have no
+   * mark for still gets a stable, themed square instead of a broken-image icon, and
+   * new providers appear correctly without a deploy.
+   */
+  export function logoSvg(providerId: string): string | null {
+    const slug = canonicalLogoSlug(providerId);
+    if (!SLUG_RE.test(slug)) return null;
+
+    const asset = PROVIDER_LOGOS[slug];
+    if (asset) return asset.svg;
+
+    const meta = getProvider(slug);
+    const letter = (meta.displayName.trim()[0] || '?').toUpperCase();
+    const ch = letter === '<' || letter === '&' || letter === '"' ? '?' : letter;
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" role="img">' +
+      \`<title>\${meta.displayName.replace(/[<>&"]/g, '')}</title>\` +
+      \`<rect width="24" height="24" rx="5" fill="\${meta.color}" fill-opacity="0.18"/>\` +
+      \`<text x="12" y="12" fill="\${meta.color}" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" \` +
+      \`font-size="13" font-weight="700" text-anchor="middle" dominant-baseline="central">\${ch}</text>\` +
+      '</svg>';
+  }
+  `;
+
+  // `--check` is the drift guard: nothing in the build regenerates src/logos.ts, so an
+  // ICON_MAP edit or an icon-package bump could otherwise ship a stale MONO_LOGO_SLUGS
+  // literal and stale assets with nothing to notice. Wired into the deploy preflight.
+  if (CHECK_ONLY) {
+    const committed = existsSync(OUT) ? readFileSync(OUT, 'utf8') : null;
+    if (committed === out) {
+      console.log(`src/logos.ts is up to date (${slugs.length} marks, version ${version}).`);
+      process.exit(0);
+    }
+    console.error('src/logos.ts is STALE — it does not match scripts/build-provider-logos.mjs.');
+    console.error(committed === null ? '  (file is missing entirely)' : '  Run `npm run logos` and commit the result.');
+    process.exit(1);
+  }
+
+  writeFileSync(OUT, out);
+
+  console.log(`Wrote ${OUT}`);
+  console.log(`  ${slugs.length} brand marks (${monoSlugs.length} monochrome, ${slugs.length - monoSlugs.length} colour)`);
+  console.log(`  ${unmapped.length} deliberately unmapped → initial tile: ${unmapped.join(', ')}`);
+  if (oversized.length) console.log(`  ${oversized.length} over ${MAX_ICON_BYTES / 1024}KB → initial tile: ${oversized.join(', ')}`);
+  if (mixedInk.length) console.log(`  ${mixedInk.length} mixed currentColor+brand paint → neutral ink ${MIXED_INK}, never inverted: ${mixedInk.join(', ')}`);
+  console.log(`  asset version ${version}`);
+  console.log(`  ${(out.length / 1024).toFixed(1)} KB generated`);
+
 }
-
-writeFileSync(OUT, out);
-
-console.log(`Wrote ${OUT}`);
-console.log(`  ${slugs.length} brand marks (${monoSlugs.length} monochrome, ${slugs.length - monoSlugs.length} colour)`);
-console.log(`  ${unmapped.length} deliberately unmapped → initial tile: ${unmapped.join(', ')}`);
-if (oversized.length) console.log(`  ${oversized.length} over ${MAX_ICON_BYTES / 1024}KB → initial tile: ${oversized.join(', ')}`);
-if (mixedInk.length) console.log(`  ${mixedInk.length} mixed currentColor+brand paint → neutral ink ${MIXED_INK}, never inverted: ${mixedInk.join(', ')}`);
-console.log(`  asset version ${version}`);
-console.log(`  ${(out.length / 1024).toFixed(1)} KB generated`);
