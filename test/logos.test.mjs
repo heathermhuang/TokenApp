@@ -14,7 +14,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalise, paintValues, unsafeConstructs, elementNames, MONO_SAFE_PAINT, MIXED_INK } from '../scripts/build-provider-logos.mjs';
+import { normalise, paintValues, unsafeConstructs, unsafeStyles, elementNames, MONO_SAFE_PAINT, MIXED_INK } from '../scripts/build-provider-logos.mjs';
 
 const svg = (inner, attrs = '') =>
   `<svg viewBox="0 0 24 24" ${attrs} xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
@@ -221,6 +221,40 @@ test('elementNames sees prefixed and closing tags alike', () => {
   const names = elementNames('<svg><s:animate/><g><path/></g></svg>');
   assert.ok(names.includes('s:animate'), 'the prefix is part of the name, not stripped');
   assert.ok(names.includes('path') && names.includes('g') && names.includes('svg'));
+});
+
+test('a NON-ASCII namespace prefix cannot truncate to an allowlisted name', () => {
+  // <gπ:animate> is a valid QName. A name-shaped pattern built on \w (ASCII) captures
+  // just "g", which IS allowlisted, and the animation sails through. Reading to the
+  // next delimiter is what stops that.
+  const names = elementNames('<svg><gπ:animate attributeName="fill"/></svg>');
+  assert.ok(!names.includes('g'), 'must not truncate the QName down to an allowed name');
+  assert.ok(names.some(n => n.includes('animate')), 'the real name is captured whole');
+
+  const { mono, mixed } = normalise(
+    svg('<path fill="currentColor" d="M1 1"/><gπ:animate attributeName="fill" values="currentColor;#f90"/>'), 'qname');
+  assert.equal(mono, false);
+  assert.equal(mixed, true);
+});
+
+test('a CSS-escaped property name cannot smuggle paint past the scan', () => {
+  // CSS decodes f\69ll as fill, so a scanner looking for the literal word sees only
+  // currentColor while the renderer paints orange. Same trick hides `filter`.
+  for (const decl of ['f\\69ll:#f90', 'f\\69lter:invert(1)', 'fill:#f90/*x*/']) {
+    const { mono, mixed } = normalise(svg(`<path fill="currentColor" style="${decl}" d="M1 1"/>`), 'escaped');
+    assert.equal(mono, false, `${decl}: must not be treated as invertible`);
+    assert.equal(mixed, true, `${decl}: must be classified mixed`);
+  }
+});
+
+test('an ordinary style attribute is still fine', () => {
+  // poolside ships style="mask-type:alpha" and must keep following the theme —
+  // refusing every inner style would have cost a real mark.
+  const r = normalise(svg('<mask id="m" style="mask-type:alpha"><path fill="currentColor" d="M0 0h24v24H0z"/></mask>' +
+    '<path fill="currentColor" mask="url(#m)" d="M1 1"/>'), 'plain-style');
+  assert.equal(r.mono, true);
+  assert.deepEqual(unsafeStyles('<path style="mask-type:alpha"/>'), []);
+  assert.equal(unsafeStyles('<path style="f\\69ll:#f90"/>').length, 1);
 });
 
 test('unsafeConstructs names what it rejected, so the build can report it', () => {

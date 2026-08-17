@@ -194,9 +194,47 @@ export const SAFE_ELEMENTS = new Set([
   'lineargradient', 'radialgradient', 'stop', 'mask', 'clippath',
 ]);
 
-/** Every element name in the document, lowercased, prefix included if it has one. */
+/**
+ * Every element name in the document, lowercased, taken up to the first delimiter.
+ *
+ * Deliberately NOT a name-shaped pattern like `[a-zA-Z_][\w.:-]*`: `\w` is ASCII, so
+ * against the valid QName `<gπ:animate>` that pattern captures just `g` — an allowlisted
+ * name — and waves the animation through. Reading to the next whitespace, `/` or `>`
+ * cannot truncate a name, so an unfamiliar one arrives whole and gets rejected.
+ *
+ * It over-captures instead: `<!--`, `<![CDATA[` and tag-like text inside a comment all
+ * come back as "elements" and push the mark to mixed. That is the harmless direction,
+ * and no mark in the corpus contains any of them.
+ */
 export function elementNames(svg) {
-  return [...new Set([...svg.matchAll(/<\/?([a-zA-Z_][\w.:-]*)/g)].map(m => m[1].toLowerCase()))];
+  return [...new Set([...svg.matchAll(/<\/?([^\s/>]+)/g)].map(m => m[1].toLowerCase()))];
+}
+
+/**
+ * `style` attributes whose declarations this file cannot read literally.
+ *
+ * CSS lets a property name be spelled with escapes — `f\69ll` IS `fill` — which slides
+ * straight past a scanner looking for the literal word, and the same trick hides
+ * `filter`. Rather than decode CSS, require the declarations to be boring: no
+ * backslash, no comment, and property names that are plain letters and hyphens.
+ * Anything fancier is not read, it is refused. The corpus needs nothing more than
+ * `mask-type:alpha`.
+ */
+export function unsafeStyles(svg) {
+  const out = [];
+  for (const m of svg.matchAll(/\sstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) {
+    const decl = m[1] ?? m[2] ?? '';
+    // The backslash half of this is belt-and-braces and mutation testing says so: an
+    // escaped property name already fails the plain-name test below, and an escaped
+    // VALUE already fails the paint scan. Kept for value-position escapes nobody has
+    // constructed yet, not because it is currently load-bearing.
+    if (/\\|\/\*/.test(decl)) { out.push(decl); continue; }
+    for (const part of decl.split(';')) {
+      if (!part.trim()) continue;
+      if (!/^\s*[a-zA-Z-]+\s*$/.test(part.split(':')[0] ?? '')) { out.push(decl); break; }
+    }
+  }
+  return out;
 }
 
 /**
@@ -229,6 +267,7 @@ export function unsafeConstructs(svg) {
   const strangers = elementNames(svg).filter(n => !SAFE_ELEMENTS.has(n));
   return [
     ...strangers.map(n => `<${n}> (not on the safe-element list)`),
+    ...unsafeStyles(svg).map(s => `style="${s}" (declarations not literally readable)`),
     ...UNSAFE_CONSTRUCTS.filter(([, re]) => re.test(svg)).map(([name]) => name),
   ];
 }
