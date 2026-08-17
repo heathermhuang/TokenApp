@@ -19,3 +19,7 @@ Moved 2026-08-17.
 - **The Pareto chart must sit ABOVE the models table**: measured — below it, `#pareto-section` lands at offsetTop ~28,000px behind 338 rows. Also: `.market-share` carries **no layout** (the rankings tab supplies its own container), so the panel uses `.table-wrap` + `.leaderboard` instead. Free models are excluded from the plot deliberately (log(0) has no axis home); several provider brand colours are near-white so every dot needs a stroke to survive the light theme.
 
 - **`safeUrl()` is not HTML escaping**: it only checks the `https://` prefix, so a poisoned `huggingFaceId` carrying a double-quote plus a tag passes it and breaks out of the `href`. Every caller must **also** `escape()` at the attribute boundary. (`getProviderUrl` is safe — it reads a static map.)
+
+Moved 2026-08-17 (subscription re-verification pass).
+
+- **`isOpenSource` = `Boolean(raw.hugging_face_id)`, never a name/provider heuristic** (fixed 2026-08-05): the old list treated whole authors as open (`'google'`, `'qwen'`), so every proprietary Gemini and Qwen-Max read as open-weight while GLM-5.2, Kimi K3 and gpt-oss-120b (public weights) read as proprietary. **125 models reclassified**, 125→152 open. Wrong for every user of the homepage "Open Source" filter until then. Caught only because the superlative strip surfaced "best open weights → Gemini 3.6 Flash".
