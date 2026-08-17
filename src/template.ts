@@ -1,3 +1,5 @@
+import { MONO_LOGO_SLUGS } from './logos';
+
 export function getHtml(params: {
   initialModels?: string;
   initialSubscriptions?: string;
@@ -6,6 +8,10 @@ export function getHtml(params: {
   lastUpdated?: string | null;
 }): string {
   const { lastUpdated = null } = params;
+
+  // Which vendored marks are flat black and need inverting on the dark theme. Comes
+  // from the generated asset module so the list cannot drift from the assets.
+  const monoLogoSlugsLiteral = JSON.stringify(MONO_LOGO_SLUGS);
 
   // Escape backticks and ${ in JSON data to avoid breaking the template literal
   function safeLiteral(s: string): string {
@@ -631,10 +637,30 @@ export function getHtml(params: {
       color: var(--text3);
       border-bottom: 1px solid var(--border);
       white-space: nowrap;
-      cursor: pointer;
       user-select: none;
       transition: color 0.15s;
     }
+
+    /* Sortable headers put a real <button> inside the th: the th carries aria-sort
+       (which belongs on the cell), the button carries the activation. Sorting used to
+       be a click handler on the th itself, which no keyboard can reach. The button
+       takes over the cell's padding so the whole header stays a hit target. */
+    thead th[data-sort] { padding: 0; }
+    thead th .th-sort {
+      display: block;
+      width: 100%;
+      padding: 10px 12px;
+      font: inherit;
+      color: inherit;
+      letter-spacing: inherit;
+      text-transform: inherit;
+      background: none;
+      border: 0;
+      text-align: left;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    thead th .th-sort:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
     thead th:hover { color: var(--text2); }
     thead th.sorted { color: var(--accent); }
@@ -757,6 +783,14 @@ export function getHtml(params: {
       object-fit: contain;
     }
     .filter-pill .provider-logo { width: 12px; height: 12px; }
+    /* Marks whose brand is monochrome (OpenAI, Anthropic, xAI, …) ship as flat black
+       so they read on the light theme. Invert for dark. This cannot be done with
+       currentColor: an SVG loaded through <img> is its own document and inherits
+       nothing from ours. */
+    html[data-theme="dark"] .provider-logo--mono { filter: invert(1); }
+    /* …except on the treemap, where the mark sits on its own white chip and black is
+       already the correct ink in both themes. */
+    html[data-theme="dark"] .tm-tile .provider-logo--mono { filter: none; }
 
     /* ── Clickable links ────────────────────────────────────────────────── */
     a.model-link { text-decoration: none; color: inherit; }
@@ -1406,6 +1440,28 @@ export function getHtml(params: {
       border: 0;
     }
 
+    /* ── Skip link ────────────────────────────────────────────────────────── */
+    /* Hidden until focused, then pinned over the sticky nav. Moved rather than
+       display:none'd, so it stays in the tab order — the whole point is that it is
+       the first thing a keyboard reaches. */
+    .skip-link {
+      position: absolute;
+      left: 8px;
+      top: -60px;
+      z-index: 200;
+      padding: 9px 14px;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: top 0.15s ease;
+    }
+    .skip-link:focus { top: 8px; }
+    @media (prefers-reduced-motion: reduce) { .skip-link { transition: none; } }
+    #main-content:focus { outline: none; }
+
     /* ── Footer ───────────────────────────────────────────────────────────── */
     footer {
       border-top: 1px solid var(--border);
@@ -1597,6 +1653,8 @@ export function getHtml(params: {
 </head>
 <body>
 
+<a class="skip-link" href="#main-content">Skip to content</a>
+
 <!-- ── Nav ──────────────────────────────────────────────────────────────────── -->
 <nav>
   <a href="/" class="nav-brand">
@@ -1631,6 +1689,12 @@ export function getHtml(params: {
     </svg>
   </button>
 </nav>
+
+<!-- The page had no main landmark at all, so there was nothing for a skip link to
+     target and nothing for a screen reader to jump to past ~1,390 interactive
+     elements. tabindex="-1" is what makes the skip actually move focus rather than
+     only scrolling. -->
+<main id="main-content" tabindex="-1">
 
 <!-- ── Hero ─────────────────────────────────────────────────────────────────── -->
 <section class="hero">
@@ -1747,15 +1811,15 @@ export function getHtml(params: {
   <table>
     <thead>
       <tr>
-        <th data-sort="name">Model <span class="sort-icon">↕</span></th>
-        <th data-sort="provider">Provider <span class="sort-icon">↕</span></th>
-        <th data-sort="createdAt" class="sorted">Released <span class="sort-icon">↓</span></th>
-        <th data-sort="contextWindow" title="Context window">Context <span class="sort-icon">↕</span></th>
-        <th data-sort="inputPer1M">Input $/1M <span class="sort-icon">↕</span></th>
-        <th data-sort="outputPer1M">Output $/1M <span class="sort-icon">↕</span></th>
-        <th data-sort="blendedPer1M" title="Blended cost per 1M tokens at a 3:1 input:output mix — one number to sort real spend by">Blended $/1M <span class="sort-icon">↕</span></th>
-        <th data-sort="quality" id="quality-col-head" title="Independently-run benchmark score (Epoch AI)">Quality <span class="sort-icon">↕</span></th>
-        <th>Modalities</th>
+        <th scope="col" data-sort="name" aria-sort="none"><button type="button" class="th-sort">Model <span class="sort-icon" aria-hidden="true">↕</span></button></th>
+        <th scope="col" data-sort="provider" aria-sort="none"><button type="button" class="th-sort">Provider <span class="sort-icon" aria-hidden="true">↕</span></button></th>
+        <th scope="col" data-sort="createdAt" class="sorted" aria-sort="descending"><button type="button" class="th-sort">Released <span class="sort-icon" aria-hidden="true">↓</span></button></th>
+        <th scope="col" data-sort="contextWindow" aria-sort="none"><button type="button" class="th-sort" title="Context window">Context <span class="sort-icon" aria-hidden="true">↕</span></button></th>
+        <th scope="col" data-sort="inputPer1M" aria-sort="none"><button type="button" class="th-sort">Input $/1M <span class="sort-icon" aria-hidden="true">↕</span></button></th>
+        <th scope="col" data-sort="outputPer1M" aria-sort="none"><button type="button" class="th-sort">Output $/1M <span class="sort-icon" aria-hidden="true">↕</span></button></th>
+        <th scope="col" data-sort="blendedPer1M" aria-sort="none"><button type="button" class="th-sort" title="Blended cost per 1M tokens at a 3:1 input:output mix — one number to sort real spend by">Blended $/1M <span class="sort-icon" aria-hidden="true">↕</span></button></th>
+        <th scope="col" data-sort="quality" id="quality-col-head" aria-sort="none"><button type="button" class="th-sort" title="Independently-run benchmark score (Epoch AI)">Quality <span class="sort-icon" aria-hidden="true">↕</span></button></th>
+        <th scope="col">Modalities</th>
       </tr>
     </thead>
     <tbody id="models-tbody">
@@ -1922,6 +1986,8 @@ export function getHtml(params: {
   </p>
 </section>
 
+</main>
+
 <!-- ── Footer ───────────────────────────────────────────────────────────────── -->
 <footer>
   <p><a href="/about">About</a></p>
@@ -2039,10 +2105,13 @@ function setBenchPrimary(id) {
   if (!id || state.benchPrimary === id) return;
   state.benchPrimary = id;
   attachDerived();
+  // The tooltip lives on the header's button, not the th — that is the element the
+  // pointer and the focus ring both land on. Keep this the only writer of it.
   var head = document.getElementById('quality-col-head');
-  if (head && state.benchmarks) {
+  var headBtn = head && head.querySelector('.th-sort');
+  if (headBtn && state.benchmarks) {
     var b = state.benchmarks.benchmarks.find(function (x) { return x.id === id; });
-    if (b) head.title = b.label + ' — ' + b.blurb + ' (independently run by Epoch AI)';
+    if (b) headBtn.title = b.label + ' — ' + b.blurb + ' (independently run by Epoch AI)';
   }
 }
 
@@ -2203,87 +2272,10 @@ function getProviderStyle(providerId) {
   return map[providerId] || fallback;
 }
 
-const PROVIDER_DOMAINS = {
-  // Major Western providers
-  openai:               'openai.com',
-  anthropic:            'anthropic.com',
-  google:               'deepmind.google',
-  'meta-llama':         'meta.com',
-  mistralai:            'mistral.ai',
-  deepseek:             'deepseek.com',
-  'x-ai':               'x.ai',
-  cohere:               'cohere.com',
-  perplexityai:         'perplexity.ai',
-  perplexity:           'perplexity.ai',
-  nvidia:               'nvidia.com',
-  amazon:               'aws.amazon.com',
-  microsoft:            'microsoft.com',
-  inflection:           'inflection.ai',
-  writer:               'writer.com',
-  '01-ai':              '01.ai',
-  // Coding tools
-  cursor:               'cursor.com',
-  windsurf:             'devin.ai',
-  codeium:              'devin.ai',
-  // Media / creative
-  midjourney:           'midjourney.com',
-  suno:                 'suno.com',
-  elevenlabs:           'elevenlabs.io',
-  kling:                'kling.ai',
-  runway:               'runwayml.com',
-  // App builders / agents
-  replit:               'replit.com',
-  lovable:              'lovable.dev',
-  vercel:               'v0.app',
-  manus:                'manus.im',
-  // Chinese providers
-  qwen:                 'qianwen.aliyun.com',
-  alibaba:              'alibaba.com',
-  baidu:                'baidu.com',
-  bytedance:            'doubao.com',
-  'bytedance-seed':     'doubao.com',
-  minimax:              'minimax.io',
-  moonshotai:           'moonshot.cn',
-  tencent:              'tencent.com',
-  xiaomi:               'xiaomi.com',
-  stepfun:              'stepfun.com',
-  zhipuai:              'zhipuai.cn',
-  kwaipilot:            'kuaishou.com',
-  meituan:              'meituan.com',
-  'z-ai':               'zhipuai.cn',
-  // Open-source / research labs
-  allenai:              'allenai.org',
-  eleutherai:           'eleuther.ai',
-  nousresearch:         'nousresearch.com',
-  ibm:                  'ibm.com',
-  'ibm-granite':        'ibm.com',
-  // API / infra providers
-  openrouter:           'openrouter.ai',
-  ai21:                 'ai21.com',
-  'arcee-ai':           'arcee.ai',
-  upstage:              'upstage.ai',
-  liquid:               'liquid.ai',
-  inception:            'inceptionlabs.ai',
-  'prime-intellect':    'primeintellect.ai',
-  essentialai:          'essential.ai',
-  switchpoint:          'switchpoint.ai',
-  // Community fine-tuners / small labs with websites
-  'aion-labs':          'aionlabs.ai',
-  cognitivecomputations:'cognitivecomputations.com',
-  deepcogito:           'deepcogito.com',
-  mancer:               'mancer.tech',
-  morph:                'morph.so',
-  tngtech:              'tngtech.com',
-  'anthracite-org':     'anthracite.org',
-  relace:               'relace.ai',
-  'nex-agi':            'nexagi.com',
-  writer:               'writer.com',
-  perplexity:           'perplexity.ai',
-  amazon:               'amazon.com',
-  microsoft:            'microsoft.com',
-  cohere:               'cohere.com',
-  inflection:           'inflection.ai',
-};
+// Provider slugs whose vendored mark is a flat-black glyph and therefore needs
+// inverting on the dark theme. Generated alongside the assets themselves so the two
+// cannot drift — see scripts/build-provider-logos.mjs.
+const MONO_LOGO_SLUGS = new Set(${monoLogoSlugsLiteral});
 
 // ── Provider AI product pages (for provider chip links) ─────────────────────
 const PROVIDER_URLS = {
@@ -2444,34 +2436,36 @@ function getModelUrl(m) {
   return safeUrl(url) || ('https://openrouter.ai/' + m.id);
 }
 
+// Provider marks are served from our own origin — see the /logo/:file route in
+// index.ts for why, and for what a slug we have no mark for resolves to. The route
+// answers for every provider, so there is no null case and no broken-image fallback.
 function getProviderLogo(providerId) {
-  const domain = PROVIDER_DOMAINS[providerId];
-  if (!domain) return null;
-  return \`https://www.google.com/s2/favicons?domain=\${domain}&sz=32\`;
+  return '/logo/' + encodeURIComponent(canonicalLogoSlug(providerId)) + '.svg';
+}
+function canonicalLogoSlug(providerId) {
+  return String(providerId || '').toLowerCase().replace(/^~/, '').replace(/\\s+/g, '-');
 }
 
-function hostOf(url) {
-  try { return new URL(url).hostname; } catch (e) { return null; }
-}
-function s2Favicon(url) {
-  var h = hostOf(url);
-  return h ? 'https://www.google.com/s2/favicons?domain=' + h + '&sz=64' : null;
-}
-// App/agent icon with a layered fallback: faviconUrl -> s2 favicon from
-// originUrl -> a letter-tile. The tile sits behind the <img>; a broken image
-// removes itself and reveals the tile. Never renders blank.
+// App/agent icon: the app's own advertised favicon, else a letter-tile. The tile
+// sits behind the <img>; a broken image removes itself and reveals the tile, which
+// is the common case — OpenRouter advertises a faviconUrl for only ~4 of 20 apps and
+// most of those point at a page rather than an image. The Google favicon proxy used
+// to fill that gap; it was the last thing on the page calling Google, so it is gone
+// and the tile now carries those rows.
 function appIconHtml(a) {
   var letter = escape((((a.title || '?').trim().charAt(0)) || '?').toUpperCase());
   var tile = '<span class="lb-icon-tile">' + letter + '</span>';
-  var src = safeUrl(a.faviconUrl) || s2Favicon(a.originUrl);
+  var src = safeUrl(a.faviconUrl);
   if (!src) return '<span class="lb-icon-wrap">' + tile + '</span>';
   return '<span class="lb-icon-wrap">' + tile +
     '<img class="lb-icon" src="' + escape(src) + '" alt="" loading="lazy" onerror="this.remove()"></span>';
 }
 function providerLogoImg(providerId) {
-  const src = getProviderLogo(providerId);
-  if (!src) return '';
-  return \`<img src="\${src}" class="provider-logo" alt="" loading="lazy" onerror="this.style.display='none'">\`;
+  // Mono marks are flat black so they read on the light theme and on the treemap's
+  // white chip; CSS inverts them for the dark theme. currentColor cannot do this
+  // job — it does not inherit into an SVG loaded through <img>.
+  const mono = MONO_LOGO_SLUGS.has(canonicalLogoSlug(providerId)) ? ' provider-logo--mono' : '';
+  return \`<img src="\${escape(getProviderLogo(providerId))}" class="provider-logo\${mono}" alt="" width="13" height="13" loading="lazy">\`;
 }
 
 // Benchmark filter chips. Each one narrows the table to the models Epoch has
@@ -3620,10 +3614,16 @@ function bindSortHeaders() {
       }
       document.querySelectorAll('thead th').forEach(t => {
         t.classList.remove('sorted');
+        // Only sortable columns carry aria-sort at all — putting "none" on a plain
+        // header would announce it as sortable when it is not.
+        if (t.hasAttribute('data-sort')) t.setAttribute('aria-sort', 'none');
         const icon = t.querySelector('.sort-icon');
         if (icon) icon.textContent = '↕';
       });
       th.classList.add('sorted');
+      // The arrow is aria-hidden, so aria-sort is the ONLY thing that tells a screen
+      // reader which column is sorted and which way. Keep it in step with the icon.
+      th.setAttribute('aria-sort', state.sortDir === 1 ? 'ascending' : 'descending');
       const icon = th.querySelector('.sort-icon');
       if (icon) icon.textContent = state.sortDir === 1 ? '↑' : '↓';
       renderTable();
@@ -4196,6 +4196,7 @@ document.addEventListener('DOMContentLoaded', () => {
       var el = existing[t.tag];
       if (!el) {
         el = document.createElement('button');
+        el.type = 'button';   // inside no form today, but a bare <button> submits by default
         el.setAttribute('data-tag', t.tag);
         host.appendChild(el);
       }
@@ -4206,6 +4207,12 @@ document.addEventListener('DOMContentLoaded', () => {
       el.style.height = t.h.toFixed(1) + 'px';
       el.style.background = t.bg;
       el.title = t.title;
+      // A tile too small for its label renders as the provider mark alone — an
+      // <img alt="">, which leaves the button with no accessible name at all. title
+      // is only a last-resort name source and is never exposed on touch, so name the
+      // button outright with the same text the tooltip carries.
+      el.setAttribute('aria-label', t.title);
+      el.setAttribute('aria-pressed', state.selectedTask === t.tag ? 'true' : 'false');
       el.innerHTML = t.html;
     });
     Object.keys(existing).forEach(function (tag) { if (!seen[tag]) existing[tag].remove(); });
@@ -4248,7 +4255,9 @@ document.addEventListener('DOMContentLoaded', () => {
     state.selectedTask = tag;
     var host = document.getElementById('task-treemap');
     if (host) host.querySelectorAll('.tm-tile').forEach(function (el) {
-      el.classList.toggle('selected', el.getAttribute('data-tag') === tag);
+      var on = el.getAttribute('data-tag') === tag;
+      el.classList.toggle('selected', on);
+      el.setAttribute('aria-pressed', on ? 'true' : 'false');  // must track .selected
     });
     renderTaskModels();
   }
@@ -4785,6 +4794,13 @@ export function getAboutHtml(): string {
     We built token.app because AI token pricing is genuinely confusing — providers use different
     units, price structures, and update their rates frequently. Our goal is a single, always-current
     reference that developers and product teams can rely on when estimating API costs.
+  </p>
+  <p>
+    Provider logos are served from token.app itself rather than a third-party favicon service, so
+    browsing this site does not report which AI providers you looked at to anyone else. The brand
+    marks come from <a href="https://github.com/lobehub/lobe-icons" target="_blank" rel="noopener">Lobe
+    Icons</a> (MIT). Company names and logos are trademarks of their respective owners and are shown
+    to identify whose pricing each row reports.
   </p>
 
   <h2>Contact &amp; Legal</h2>

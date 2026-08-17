@@ -7,6 +7,7 @@ import { getModels, getSubscriptions, getRankings, refreshAllData, readModelUsag
 import { readBenchmarks } from './benchmarks';
 import { getModelHtml, getSubCompareHtml, getModelCompareHtml } from './pages';
 import { PROVIDER_PAGE_SLUGS } from './providers';
+import { logoSvg } from './logos';
 import { getModelEndpoints } from './endpoints';
 import { APP_CATEGORIES, CATEGORY_SLUGS, CATEGORY_LABELS } from './categories';
 import { getHtml, getProviderHtml, getAboutHtml } from './template';
@@ -386,6 +387,28 @@ app.get('/og.png', (c) => {
   return c.body(bytes, 200, {
     'Content-Type': 'image/png',
     'Cache-Control': 'public, max-age=2592000',
+  });
+});
+
+// ── Provider logos ────────────────────────────────────────────────────────────
+// Self-hosted so no visitor request reaches google.com/s2/favicons. Every provider
+// resolves: a vendored brand mark if we have one, otherwise a generated initial
+// tile, so a new provider is never a broken image and never needs a deploy.
+//
+// Cached `immutable` because the URL is content-addressed by provider, not by
+// version — a mark that changes ships under the same path, which is fine at this
+// cadence (brands do not rebrand weekly) and is why the TTL is a year rather than
+// permanent. `default-src 'none'` is belt-and-braces: these are vendored, script-free
+// files, and an <img>-loaded SVG cannot execute script anyway.
+app.get('/logo/:file', (c) => {
+  const file = c.req.param('file');
+  if (!file.endsWith('.svg')) return c.notFound();
+  const svg = logoSvg(file.slice(0, -4));
+  if (!svg) return c.notFound();
+  return c.body(svg, 200, {
+    'Content-Type': 'image/svg+xml; charset=utf-8',
+    'Cache-Control': 'public, max-age=31536000, immutable',
+    'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'",
   });
 });
 
