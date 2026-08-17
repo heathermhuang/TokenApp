@@ -243,30 +243,58 @@ function scoreCell(mb: ModelBenchmarks | null, benchId: string): number | null {
 /**
  * Where a model page should point `rel=canonical`.
  *
- * Suffixed ids (`…:batch`, `…:free`) look like duplicates of their base page and are
- * mostly NOT. Measured against the live catalogue 2026-08-17: of 79 suffixed ids, **66
- * carry different prices from their base** — `anthropic/claude-opus-5` is $5/$25 per 1M
- * while `:batch` is $2.50/$12.50 — so each answers a question the base page does not, and
- * folding them away would discard the only page on the site that answers it. A further
+ * Suffixed ids (`…:batch`, `…:free`, `…:thinking`) look like duplicates of their base page
+ * and mostly are NOT. Measured against the live catalogue 2026-08-17: of 79 suffixed ids,
+ * **66 carry different prices from their base** — `anthropic/claude-opus-5` is $5/$25 per
+ * 1M while `:batch` is $2.50/$12.50 — so each answers a question the base page does not,
+ * and folding them away would discard the only page on the site that answers it. A further
  * **8** have no base entry at all (`openai/gpt-5-codex:batch`, seven `:free` NVIDIA /
  * Cohere / Liquid / Dots ids), so for those the suffixed page IS the model's only page and
  * a blanket rule would point them at a URL that does not exist.
  *
- * That leaves the **5** where the suffix changes nothing about the price (OpenAI ids whose
- * batch rate equals standard). Those are true duplicates and are the only ones collapsed.
+ * What is left is only the pages that are duplicates in FACT: identical on every field the
+ * page renders from. Today that is 4 OpenAI `:batch` ids whose batch rate equals standard,
+ * verified field-by-field — same prices, image price, context, max output, reasoning flag,
+ * modalities and description, so the two pages would differ by nothing but their URL.
  *
- * Deliberately keyed on the PRICES rather than on the suffix, so the set stays correct by
- * itself: if OpenAI starts discounting a batch tier, that page stops being a duplicate and
- * this function stops collapsing it, with no list to maintain.
+ * Three rules this gate learned the hard way, each of which was wrong in the first draft:
+ *
+ *  • **A matching price is not a matching product.** The first version compared only
+ *    input/output price and duly collapsed `qwen/qwen-plus-2025-07-28:thinking`, which is
+ *    priced identically to its base but carries `isReasoning: true` — a different product,
+ *    and its page says different things. Every field that can make the rendered page
+ *    differ has to be in the comparison, not just the two obvious ones.
+ *  • **`null === null` proves nothing.** Two models with no published prices are not
+ *    thereby the same model, so an unpriced pair must never qualify on price equality.
+ *  • **A deprecated base is not a canonical target.** The check must reject it HERE rather
+ *    than in the callers, because the callers pass different sets — the sitemap filters
+ *    deprecated models out before calling, the model page does not. Left to the callers,
+ *    a variant whose base is deprecated gets called self-canonical by the sitemap and
+ *    canonical-to-base by its own HTML: exactly the contradiction this function exists to
+ *    remove.
+ *
+ * Not collapsing is always the safe default — a duplicate that stays split costs a little
+ * ranking signal, while a wrong collapse costs the page. So every uncertain case keeps its
+ * own canonical, the same asymmetry `MODEL_MAP` is built on.
  */
 export function canonicalModelUrl(m: NormalizedModel, all: NormalizedModel[], selfUrl: string): string {
   const sep = m.id.indexOf(':');
   if (sep < 0) return selfUrl;
-  const baseId = m.id.slice(0, sep);
-  const base = all.find((x) => x.id === baseId);
-  if (!base) return selfUrl;                       // no base page exists — keep this one
-  if (base.inputPer1M !== m.inputPer1M) return selfUrl;
-  if (base.outputPer1M !== m.outputPer1M) return selfUrl;
+  const base = all.find((x) => x.id === m.id.slice(0, sep));
+  if (!base || base.isDeprecated) return selfUrl;
+  // Equality only means something once both numbers are actually published.
+  if (m.inputPer1M === null || m.outputPer1M === null) return selfUrl;
+  const same = base.inputPer1M === m.inputPer1M
+    && base.outputPer1M === m.outputPer1M
+    && base.imagePricePer === m.imagePricePer
+    && base.contextWindow === m.contextWindow
+    && base.maxOutput === m.maxOutput
+    && base.isReasoning === m.isReasoning
+    && base.isVision === m.isVision
+    && base.hasToolUse === m.hasToolUse
+    && base.inputModalities.join(',') === m.inputModalities.join(',')
+    && base.outputModalities.join(',') === m.outputModalities.join(',');
+  if (!same) return selfUrl;
   return `https://token.app/model/${encodeURIComponent(base.slug)}`;
 }
 
