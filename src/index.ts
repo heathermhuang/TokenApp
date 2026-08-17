@@ -5,7 +5,7 @@ import type { Env, Subscription } from './types';
 import { KV_KEYS } from './types';
 import { getModels, getSubscriptions, getRankings, refreshAllData, readModelUsage } from './fetchers';
 import { readBenchmarks } from './benchmarks';
-import { getModelHtml, getSubCompareHtml, getModelCompareHtml } from './pages';
+import { getModelHtml, getSubCompareHtml, getModelCompareHtml, canonicalModelUrl } from './pages';
 import { PROVIDER_PAGE_SLUGS } from './providers';
 import { logoSvg } from './logos';
 import { getModelEndpoints } from './endpoints';
@@ -287,8 +287,14 @@ app.get('/sitemap.xml', async (c) => {
     const [{ models }, subs] = await Promise.all([getModels(c.env), getSubscriptions(c.env)]);
     const live = models.filter((m) => !m.isDeprecated);
 
+    // Skip any page that canonicalises elsewhere — currently the handful of `:batch`
+    // ids priced identically to their base. Listing a URL in the sitemap while its own
+    // rel=canonical points somewhere else sends crawlers two contradicting signals.
+    // The page still resolves and still renders; it just is not advertised.
     for (const m of live) {
-      urls.push(u(`https://token.app/model/${encodeURIComponent(m.slug)}`, 'weekly', '0.7'));
+      const self = `https://token.app/model/${encodeURIComponent(m.slug)}`;
+      if (canonicalModelUrl(m, live, self) !== self) continue;
+      urls.push(u(self, 'weekly', '0.7'));
     }
 
     // Every subscription pair WITHIN a category (28 subs → ~150 pairs). These are

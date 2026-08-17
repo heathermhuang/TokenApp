@@ -240,6 +240,36 @@ function scoreCell(mb: ModelBenchmarks | null, benchId: string): number | null {
 // Model detail page — /model/{slug}
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/**
+ * Where a model page should point `rel=canonical`.
+ *
+ * Suffixed ids (`…:batch`, `…:free`) look like duplicates of their base page and are
+ * mostly NOT. Measured against the live catalogue 2026-08-17: of 79 suffixed ids, **66
+ * carry different prices from their base** — `anthropic/claude-opus-5` is $5/$25 per 1M
+ * while `:batch` is $2.50/$12.50 — so each answers a question the base page does not, and
+ * folding them away would discard the only page on the site that answers it. A further
+ * **8** have no base entry at all (`openai/gpt-5-codex:batch`, seven `:free` NVIDIA /
+ * Cohere / Liquid / Dots ids), so for those the suffixed page IS the model's only page and
+ * a blanket rule would point them at a URL that does not exist.
+ *
+ * That leaves the **5** where the suffix changes nothing about the price (OpenAI ids whose
+ * batch rate equals standard). Those are true duplicates and are the only ones collapsed.
+ *
+ * Deliberately keyed on the PRICES rather than on the suffix, so the set stays correct by
+ * itself: if OpenAI starts discounting a batch tier, that page stops being a duplicate and
+ * this function stops collapsing it, with no list to maintain.
+ */
+export function canonicalModelUrl(m: NormalizedModel, all: NormalizedModel[], selfUrl: string): string {
+  const sep = m.id.indexOf(':');
+  if (sep < 0) return selfUrl;
+  const baseId = m.id.slice(0, sep);
+  const base = all.find((x) => x.id === baseId);
+  if (!base) return selfUrl;                       // no base page exists — keep this one
+  if (base.inputPer1M !== m.inputPer1M) return selfUrl;
+  if (base.outputPer1M !== m.outputPer1M) return selfUrl;
+  return `https://token.app/model/${encodeURIComponent(base.slug)}`;
+}
+
 export function getModelHtml(params: {
   model: NormalizedModel;
   all: NormalizedModel[];
@@ -253,6 +283,7 @@ export function getModelHtml(params: {
   const bl = blended(m);
   const mb = benchOf(benchmarks, m.id);
   const url = `https://token.app/model/${encodeURIComponent(m.slug)}`;
+  const canonical = canonicalModelUrl(m, all, url);
   const disp = shortName(m.name);
 
   // ── Cheaper-and-at-least-as-good alternatives.
@@ -430,7 +461,7 @@ export function getModelHtml(params: {
     description: `${disp} costs ${fmtP(m.inputPer1M)}/1M input and ${fmtP(m.outputPer1M)}/1M output.` +
       (m.contextWindow ? ` ${fmtCtx(m.contextWindow)} context.` : '') +
       (myScore !== null ? ` Scores ${(myScore * 100).toFixed(1)}% on GPQA Diamond.` : ''),
-    canonical: url,
+    canonical,
     backHref: '/',
     backLabel: 'All models',
     jsonLd: [faqJsonLd(faqs), JSON.stringify({
