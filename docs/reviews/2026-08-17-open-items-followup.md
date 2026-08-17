@@ -192,6 +192,50 @@ pinned by `npm test`.
 
 ---
 
+---
+
+## Codex round 1 — one P2, and it found a real bug in a place nobody was looking
+
+Codex raised: *"Represent unavailable annual billing as `null`, not the monthly price.
+GitHub's evidence establishes that new annual plans are unavailable; it does not establish
+an annual price of $10/$39… Equalizing replaces an obsolete discount with a different
+unsupported claim."*
+
+The **observation is right and the remedy is wrong**, and separating those two mattered.
+
+Why the remedy was rejected — the file already has two conventions and they mean different
+things. Measured, not assumed:
+
+| Shape | Count | Means |
+|---|---|---|
+| `annual == monthly` | **59** of 123 tier pairs | a price exists, there is **no annual discount** |
+| `annual == null` | 14 | **no price published at all** — every single one also has `monthlyPrice: null` (Enterprise / contact-sales) |
+
+There is **no** precedent for "monthly published, annual `null`". Adopting it would invent
+a third convention meaning "annual price unknown", when what we actually know is stronger
+and more specific: there is no annual plan to price. It would also make the Copilot entry
+internally inconsistent — Business ($19) and Enterprise ($39) are "billed monthly" by the
+same GitHub docs and already carry equal values, as does Max ($100), so only Pro and Pro+
+would have been nulled for a fact all six tiers share.
+
+But Codex was right that something was broken, and it was **not** the data. The two
+renderers disagreed:
+
+- `template.ts:3149` (main site) — shows the annual line only when
+  `annualMonthlyPrice < monthlyPrice`. Equal values correctly render **nothing**.
+- `pages.ts:650` (compare pages) — printed `fmtUsd(annual)` whenever it was non-null, so
+  an equal figure appeared under a column headed **"Annual /mo"**, asserting a purchasable
+  annual rate.
+
+That misread **all 59** equal-value tiers across every subscription, not just Copilot.
+Changing Copilot's data to dodge it would have papered over a display bug affecting 58
+other tiers. Fixed at the renderer instead: `hasAnnualDiscount()` in `pages.ts` now applies
+the same "must beat monthly" test the main page has always used.
+
+Result, measured against the real data: 50 tiers still show a genuine annual figure and 73
+render "—". Every Copilot tier now shows "—" (uniform, and true — GitHub bills all six
+monthly), while Cursor's real 20% discounts are untouched ($16 / $48 / $160 / $32 / $96).
+
 ## Verification
 
 - `npm test` — **58/58 pass**, before and after (the suite pins the version-join truth

@@ -619,6 +619,25 @@ function cheapestPaid(s: Subscription): number | null {
   return prices.length ? Math.min(...prices) : null;
 }
 
+/**
+ * Does this tier actually offer a cheaper annual rate?
+ *
+ * `annualMonthlyPrice === monthlyPrice` is this dataset's convention for "a price
+ * exists and there is NO annual discount" — 59 of 123 tier pairs use it, and it is
+ * distinct from `null`, which every occurrence pairs with a null monthlyPrice and so
+ * means "no price published at all" (Enterprise / contact-sales).
+ *
+ * Mirrors the same test the main page has always applied (`template.ts`, tier-annual
+ * line): an annual figure is only shown when it BEATS monthly. Printing an equal
+ * figure under a column headed "Annual /mo" asserts a purchasable annual rate, which
+ * for GitHub Copilot is affirmatively false — its annual plans closed 2026-06-01 —
+ * and is merely noise for the other 58.
+ */
+function hasAnnualDiscount(t: SubscriptionTier): boolean {
+  return t.annualMonthlyPrice !== null && t.annualMonthlyPrice !== undefined
+    && t.annualMonthlyPrice < (t.monthlyPrice ?? Infinity);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Comparison pages — /compare/{a}-vs-{b}
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -647,7 +666,7 @@ export function getSubCompareHtml(params: {
     return s.tiers.map((t) => `<tr>
           <td><strong>${esc(t.name)}</strong>${t.badge ? ` <span class="chip">${esc(t.badge)}</span>` : ''}</td>
           <td class="num">${esc(fmtUsd(t.monthlyPrice))}${t.perSeat && t.monthlyPrice ? '<span class="muted">/seat</span>' : ''}</td>
-          <td class="num muted">${t.annualMonthlyPrice !== null && t.annualMonthlyPrice !== undefined ? esc(fmtUsd(t.annualMonthlyPrice)) : '—'}</td>
+          <td class="num muted">${hasAnnualDiscount(t) ? esc(fmtUsd(t.annualMonthlyPrice)) : '—'}</td>
         </tr>`).join('\n        ');
   }
 
