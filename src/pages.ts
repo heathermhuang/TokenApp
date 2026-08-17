@@ -335,7 +335,7 @@ export function getModelHtml(params: {
   const body = `
   <div class="crumb"><a href="/">token.app</a> › ${PROVIDER_PAGE_SET.has(provSlug)
     ? `<a href="/${esc(provSlug)}">${esc(prov.displayName)}</a>`
-    : esc(m.provider)} › ${esc(disp)}</div>
+    : esc(prov.displayName)} › ${esc(disp)}</div>
   <h1>${esc(disp)} pricing &amp; benchmarks</h1>
   <p class="lede">
     ${esc(disp)} is available from ${esc(prov?.displayName ?? m.provider)} at ${esc(fmtP(m.inputPer1M))} per million input tokens
@@ -396,7 +396,7 @@ export function getModelHtml(params: {
           const save = bl !== null && bl > 0 ? Math.round((1 - ob / bl) * 100) : null;
           return `<tr>
           <td><a href="/model/${encodeURIComponent(o.slug)}" style="color:var(--text);text-decoration:none;font-weight:500">${esc(shortName(o.name))}</a></td>
-          <td class="muted">${esc(o.provider)}</td>
+          <td class="muted">${esc(getProvider(o.providerId).displayName)}</td>
           <td class="num win">${esc(fmtP(ob))}${save !== null && save > 0 ? ` <span class="muted">(−${save}%)</span>` : ''}</td>
           <td class="num">${(os * 100).toFixed(1)}%</td>
           <td><a href="/compare/${encodeURIComponent(m.slug)}-vs-${encodeURIComponent(o.slug)}" style="color:var(--accent);text-decoration:none">Compare →</a></td>
@@ -880,7 +880,7 @@ export function getModelCompareHtml(params: {
     <div class="tbl-wrap"><table>
       <thead><tr><th></th><th>${esc(an)}</th><th>${esc(bn)}</th></tr></thead>
       <tbody>
-        <tr><td class="stat-k">Provider</td><td>${esc(a.provider)}</td><td>${esc(b.provider)}</td></tr>
+        <tr><td class="stat-k">Provider</td><td>${esc(getProvider(a.providerId).displayName)}</td><td>${esc(getProvider(b.providerId).displayName)}</td></tr>
         <tr><td class="stat-k">Input $/1M</td><td class="num${lowerWins(a.inputPer1M, b.inputPer1M)}">${esc(fmtP(a.inputPer1M))}</td><td class="num${lowerWins(b.inputPer1M, a.inputPer1M)}">${esc(fmtP(b.inputPer1M))}</td></tr>
         <tr><td class="stat-k">Output $/1M</td><td class="num${lowerWins(a.outputPer1M, b.outputPer1M)}">${esc(fmtP(a.outputPer1M))}</td><td class="num${lowerWins(b.outputPer1M, a.outputPer1M)}">${esc(fmtP(b.outputPer1M))}</td></tr>
         <tr><td class="stat-k">Blended $/1M</td><td class="num${lowerWins(ab, bb)}">${esc(fmtP(ab))}</td><td class="num${lowerWins(bb, ab)}">${esc(fmtP(bb))}</td></tr>
