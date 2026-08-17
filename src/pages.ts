@@ -243,44 +243,56 @@ function scoreCell(mb: ModelBenchmarks | null, benchId: string): number | null {
 /**
  * Where a model page should point `rel=canonical`.
  *
- * Suffixed ids (`…:batch`, `…:free`, `…:thinking`) look like duplicates of their base page
- * and mostly are NOT. Measured against the live catalogue 2026-08-17: of 79 suffixed ids,
- * **66 carry different prices from their base** — `anthropic/claude-opus-5` is $5/$25 per
- * 1M while `:batch` is $2.50/$12.50 — so each answers a question the base page does not,
- * and folding them away would discard the only page on the site that answers it. A further
- * **8** have no base entry at all (`openai/gpt-5-codex:batch`, seven `:free` NVIDIA /
- * Cohere / Liquid / Dots ids), so for those the suffixed page IS the model's only page and
- * a blanket rule would point them at a URL that does not exist.
+ * `DUPLICATE_OF` is EXPLICIT-ONLY, same rule and same reason as `MODEL_MAP` in
+ * `benchmarks.ts`: a missed duplicate costs a little ranking signal, a wrong collapse
+ * tells crawlers to drop a page outright, so the two errors are not symmetric and the
+ * default has to be "keep". Every pair below was verified field-by-field against the live
+ * catalogue on 2026-08-17. A new suffixed id fails closed — it keeps its own canonical
+ * until someone checks it.
  *
- * What is left is only the pages that are duplicates in FACT: identical on every field the
- * page renders from. Today that is 4 OpenAI `:batch` ids whose batch rate equals standard,
- * verified field-by-field — same prices, image price, context, max output, reasoning flag,
- * modalities and description, so the two pages would differ by nothing but their URL.
+ * Why an inferred rule was tried and REJECTED, twice, because both failures are instructive:
  *
- * Three rules this gate learned the hard way, each of which was wrong in the first draft:
+ *  • **A matching price is not a matching product.** Collapsing on price equality alone
+ *    caught `qwen/qwen-plus-2025-07-28:thinking`, which is priced identically to its base
+ *    but carries `isReasoning: true`. Thinking mode is a different product; its page says
+ *    different things. (`null === null` also read as "equal prices", so two *unpriced*
+ *    models would have qualified.)
+ *  • **Model-field equality cannot establish PAGE equality**, which is the deeper reason
+ *    no field list can carry this decision alone. The page also renders benchmarks,
+ *    subscriptions, host endpoints and usage history, and every one of those is looked up
+ *    by exact `m.id` — so two records identical in every column can still render
+ *    different panels. Measured: `openai/gpt-5.6-luna` has Epoch scores while
+ *    `…luna:batch` has none.
  *
- *  • **A matching price is not a matching product.** The first version compared only
- *    input/output price and duly collapsed `qwen/qwen-plus-2025-07-28:thinking`, which is
- *    priced identically to its base but carries `isReasoning: true` — a different product,
- *    and its page says different things. Every field that can make the rendered page
- *    differ has to be in the comparison, not just the two obvious ones.
- *  • **`null === null` proves nothing.** Two models with no published prices are not
- *    thereby the same model, so an unpriced pair must never qualify on price equality.
- *  • **A deprecated base is not a canonical target.** The check must reject it HERE rather
- *    than in the callers, because the callers pass different sets — the sitemap filters
- *    deprecated models out before calling, the model page does not. Left to the callers,
- *    a variant whose base is deprecated gets called self-canonical by the sitemap and
- *    canonical-to-base by its own HTML: exactly the contradiction this function exists to
- *    remove.
+ * That last point is also why these four pairs are still safe to collapse: the difference
+ * runs one way only. The variant's content is a SUBSET of the base's — same prices, specs
+ * and description, minus a benchmarks panel the base sometimes has. The variant never
+ * carries anything the base lacks, so consolidating onto the strictly richer page loses
+ * nothing. A pair where the variant had unique content would not belong in this table.
  *
- * Not collapsing is always the safe default — a duplicate that stays split costs a little
- * ranking signal, while a wrong collapse costs the page. So every uncertain case keeps its
- * own canonical, the same asymmetry `MODEL_MAP` is built on.
+ * The field comparison below is kept as a DRIFT GUARD, not as the criterion: if OpenAI
+ * starts discounting a batch tier, or changes its context window, the pair stops matching
+ * and stops collapsing without anyone editing this file. Two deliberate exclusions —
+ * `name` differs by design (the variant is labelled "(batch)"), and `createdAt` is a
+ * listing date that does not change what the page says.
+ *
+ * A deprecated base is rejected HERE rather than in the callers, because the callers pass
+ * different sets: the sitemap filters deprecated models out before calling, the model page
+ * does not. Left to the callers, a variant whose base is deprecated would be self-canonical
+ * per the sitemap and canonical-to-base per its own HTML — the exact contradiction this
+ * function exists to remove.
  */
+const DUPLICATE_OF: Record<string, string> = {
+  'openai/gpt-5.6-luna:batch': 'openai/gpt-5.6-luna',
+  'openai/gpt-5.6-luna-pro:batch': 'openai/gpt-5.6-luna-pro',
+  'openai/gpt-5.6-terra:batch': 'openai/gpt-5.6-terra',
+  'openai/gpt-5.6-terra-pro:batch': 'openai/gpt-5.6-terra-pro',
+};
+
 export function canonicalModelUrl(m: NormalizedModel, all: NormalizedModel[], selfUrl: string): string {
-  const sep = m.id.indexOf(':');
-  if (sep < 0) return selfUrl;
-  const base = all.find((x) => x.id === m.id.slice(0, sep));
+  const baseId = DUPLICATE_OF[m.id];
+  if (!baseId) return selfUrl;
+  const base = all.find((x) => x.id === baseId);
   if (!base || base.isDeprecated) return selfUrl;
   // Equality only means something once both numbers are actually published.
   if (m.inputPer1M === null || m.outputPer1M === null) return selfUrl;
@@ -292,6 +304,8 @@ export function canonicalModelUrl(m: NormalizedModel, all: NormalizedModel[], se
     && base.isReasoning === m.isReasoning
     && base.isVision === m.isVision
     && base.hasToolUse === m.hasToolUse
+    && base.isOpenSource === m.isOpenSource
+    && (base.description ?? '') === (m.description ?? '')
     && base.inputModalities.join(',') === m.inputModalities.join(',')
     && base.outputModalities.join(',') === m.outputModalities.join(',');
   if (!same) return selfUrl;
