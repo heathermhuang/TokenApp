@@ -3536,8 +3536,8 @@ function renderRankings() {
       var parts = slug.split('/');
       var provider = parts[0] || '';
       var modelName = parts.slice(1).join('/') || slug;
-      // NOTE: `provider` here is a RAW model-id prefix (openrouter-json.ts derives it
-      // as slug.split('/')[0]), so this panel prints "by x-ai" / "by meta-llama" /
+      // NOTE: the provider var here is a RAW model-id prefix (openrouter-json.ts derives
+      // it as slug.split('/')[0]), so this panel prints "by x-ai" / "by meta-llama" /
       // "by z-ai" rather than a display name, for every provider, and always has.
       // The logo resolves fine (canonicalLogoSlug + the alias'd logo map); only the
       // TEXT is raw. Fixing it needs display names client-side — interpolate PROVIDERS
