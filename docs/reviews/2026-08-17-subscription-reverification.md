@@ -202,6 +202,38 @@ are left honest rather than stamped on a "probably still free" assumption.
 
 ---
 
+## Residual stale model names inside tier `features[]` (follow-up commit)
+
+Descriptions were the reviewed surface, but model names also live in per-tier
+`features[]`, and a live-page grep after deploy caught three that the description
+pass had left behind. Two of them made a *stamped* entry internally inconsistent,
+and one was introduced by this very PR:
+
+- **claude-code** — `'Opus 4.8, Sonnet 5 & Fable 5'` → **Opus 5**. Self-inflicted:
+  the same commit set this entry's `underlyingModels` to `claude-opus-5` while leaving
+  the on-screen feature at 4.8. Source is the entry's own URL, `anthropic.com/claude-code`.
+- **zhipu-ai** — `'GLM-5.2, GLM-5-Turbo, GLM-4.7'` → **GLM-5.3, GLM-5.2, GLM-5-Turbo**.
+  Source: the z.ai page title, *"GLM Coding Plan — AI Coding Powered by GLM-5.3,
+  GLM-5.2 & GLM-5-Turbo"*, which is precisely this plan's model list.
+- **grok** — SuperGrok Heavy `'Grok 4.3 full access'` → **Grok 4.6**. Source: the
+  x.ai/pricing comparison table carries `Grok 4.6` as the Models row across plans.
+
+**Deliberately left stale**, because each belongs to an entry whose date is already
+honest about it or to a tier with no source:
+
+| Where | Still says | Why left |
+|---|---|---|
+| grok → X Premium+ | Grok 4.3 access | An X/Twitter subscription; not on `x.ai/pricing` at all |
+| kimi → Adagio, Moderato | Kimi K2.6 | Entry is **unstamped** (`07-07`); pricing page redirects to root |
+| github-copilot → Pro+ | Opus 4.7/4.8 & Fable 5 | Prices verified, model catalogue not published on the plans page |
+| hailuo-ai → tier | Hailuo 2.3/2.0/1.0 | Entry is **unstamped** (`07-11`); plans behind auth |
+| kling / runway descriptions | Kling 3.0 series | Only **prices** were verified; Kling's page now labels models "VIDEO 2.6" / "VIDEO O1", which does not map cleanly onto the existing wording |
+
+Worth noting for the next pass: `lastVerified` says prices were checked, so a stamped
+entry can still carry a stale model name in `features[]`. Grepping the **rendered page**
+for superseded strings caught what reading the diff did not — the three fixes above all
+came from that grep, not from review.
+
 ## Note, not acted on
 
 `x.ai` now titles its pages **"SpaceXAI"**. The entry still reads `provider: 'xAI'` /
