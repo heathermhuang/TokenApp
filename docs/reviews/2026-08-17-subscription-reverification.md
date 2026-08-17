@@ -217,6 +217,14 @@ and one was introduced by this very PR:
   GLM-5.2 & GLM-5-Turbo"*, which is precisely this plan's model list.
 - **grok** — SuperGrok Heavy `'Grok 4.3 full access'` → **Grok 4.6**. Source: the
   x.ai/pricing comparison table carries `Grok 4.6` as the Models row across plans.
+- **perplexity** — Pro `'Frontier models (GPT-5.2, Claude 4.6, Gemini 3.1 Pro)'` →
+  **Sonar 2, GPT-5.6 Terra, Claude Sonnet 5, Gemini 3.7 Flash**. Found by Codex, not by
+  the page grep, because none of the three stale names were on the superseded-string
+  list being searched for — the grep only finds names you already suspect. The source
+  was sitting in this document the whole time: the model mix `perplexity.ai/pro`
+  publishes was recorded under open item 3 and never carried back into the tier.
+  (`Gemini 3.7 Flash` is named on the page but is **not** in our catalogue, so it appears
+  in this display string and deliberately **not** in `underlyingModels`.)
 
 **Deliberately left stale**, because each belongs to an entry whose date is already
 honest about it or to a tier with no source:

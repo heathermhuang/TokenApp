@@ -296,7 +296,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
         monthlyPrice: 20,
         annualMonthlyPrice: 17,
         perSeat: false,
-        features: ['300+ Pro searches/day', 'Frontier models (GPT-5.2, Claude 4.6, Gemini 3.1 Pro)', 'Unlimited file uploads', 'Image generation', '$5/mo API credits', 'Standard Create access'],
+        features: ['300+ Pro searches/day', 'Frontier models (Sonar 2, GPT-5.6 Terra, Claude Sonnet 5, Gemini 3.7 Flash)', 'Unlimited file uploads', 'Image generation', '$5/mo API credits', 'Standard Create access'],
         highlight: true,
         badge: 'Most Popular',
       },
