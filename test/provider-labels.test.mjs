@@ -76,6 +76,26 @@ test('the name map is EXACTLY PROVIDERS plus folded aliases, entry for entry', (
   assert.deepEqual(NAMES, expected);
 });
 
+test('product-level anchors hold, independent of the server', () => {
+  // Deliberately hand-written, and NOT derived from PROVIDERS. The exhaustive test
+  // above is a DRIFT test: it recomputes expected from the same source the
+  // implementation reads, so renaming PROVIDERS.qwen.displayName to 'Qwen' would
+  // move actual and expected together and still pass. These absolute values are the
+  // only thing that would catch that, which is why an earlier version of this file
+  // deleting them was a real loss (caught by Codex round 2).
+  //
+  // 'qwen' is the sharpest of these: the slug and the vendor name genuinely differ,
+  // so it is the entry a careless edit is most likely to "correct" into being wrong.
+  assert.equal(NAMES.qwen, 'Alibaba');
+  assert.equal(NAMES.spacexai, 'SpaceXAI');
+  assert.equal(NAMES['x-ai'], 'SpaceXAI');
+  assert.equal(NAMES['meta-llama'], 'Meta');
+  assert.equal(NAMES['z-ai'], 'Zhipu AI');
+  assert.equal(NAMES.perplexityai, 'Perplexity');
+  assert.equal(NAMES.moonshotai, 'Moonshot AI');
+  assert.equal(providerLabel('qwen'), 'Alibaba');
+});
+
 test('a RETIRED slug is folded in and resolves to the CURRENT name', () => {
   // KV holds the old providerId for up to 4h after a rename. Without this the
   // leaderboard prints the retired slug verbatim.
@@ -215,6 +235,13 @@ test('no unknown backslash escape survives inside the page template literal', as
     }
   }
   assert.deepEqual(offenders, [],
-    'unknown escape(s) inside the template literal — the backslash will be dropped:\n' +
+    'unknown escape(s) below the page-literal anchor in src/template.ts.\n\n' +
+    'If the line is INSIDE the template literal (client-side code shipped to the\n' +
+    'browser): double the backslash — \\\\s ships as \\s — or drop the class the way\n' +
+    'chartSlot does with a literal-space regex.\n\n' +
+    'If the line is ORDINARY TYPESCRIPT between the literals: do NOT double it. A\n' +
+    'lone backslash is already correct there, and doubling it would BREAK that regex.\n' +
+    'Narrow this guard instead. Blindly satisfying it is how a guard causes the bug\n' +
+    'it exists to prevent.\n\n' +
     offenders.join('\n'));
 });
