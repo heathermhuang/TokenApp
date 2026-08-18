@@ -123,3 +123,40 @@ test('no renderer prints a raw provider string any more', () => {
   assert.doesNotMatch(html, /escape\(p\.m\.provider\)/, 'pareto prints a baked name');
   assert.doesNotMatch(html, /escape\(info\.name\)/, 'filter pills print a baked name');
 });
+
+/**
+ * Whole-file guard for the eaten-escape class, not just the one line this PR fixed.
+ *
+ * `chartSlot` was the first victim: it shipped /\s+/g as /s+/g and mangled
+ * "deepseek" into "deep-eek". Its comment has documented the trap ever since, and
+ * providerLabel walked straight into it anyway. So rather than fix instances one at
+ * a time, this asserts the invariant: NO unknown escape sequence may appear inside
+ * the page template literal, because every one of them silently loses its backslash
+ * on the way to the browser and neither tsc nor a code review can see it happen.
+ *
+ * If this fails, you wrote a single backslash inside src/template.ts where you meant
+ * a real one. Double it (\\s ships as \s), or avoid the class entirely the way
+ * chartSlot does with a literal-space regex.
+ */
+test('no unknown backslash escape survives inside the page template literal', async () => {
+  const { readFileSync } = await import('node:fs');
+  const lines = readFileSync('src/template.ts', 'utf8').split('\n');
+  // Escapes JS actually recognises. Anything else silently loses its backslash.
+  const VALID = new Set(['n', 't', 'r', '\\', "'", '"', '`', '$', 'b', 'f', 'v', '0', 'x', 'u']);
+  const LITERAL_STARTS_AT = 75; // the getHtml() page literal opens here
+  const offenders = [];
+  for (let i = LITERAL_STARTS_AT - 1; i < lines.length; i++) {
+    const ln = lines[i];
+    for (let j = 0; j < ln.length; j++) {
+      if (ln[j] !== '\\') continue;
+      const nxt = ln[j + 1];
+      if (nxt === undefined) continue;
+      if (nxt === '\\') { j++; continue; }
+      if (VALID.has(nxt)) continue;
+      offenders.push(`L${i + 1}  \\${nxt}   ${ln.trim().slice(0, 100)}`);
+    }
+  }
+  assert.deepEqual(offenders, [],
+    'unknown escape(s) inside the template literal — the backslash will be dropped:\n' +
+    offenders.join('\n'));
+});

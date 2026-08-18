@@ -3351,7 +3351,7 @@ var CHART_SLOT = {
 function chartPalette() { return isLightTheme() ? CHART_PALETTE_LIGHT : CHART_PALETTE_DARK; }
 function chartSlot(slug) {
   // Inputs are already slugs; collapse any stray spaces with a literal-space
-  // regex — a backslash class like \s gets eaten by the template literal and
+  // regex — a backslash class like backslash-s gets eaten by the template literal
   // silently mangles slugs containing "s" (deepseek → deep-eek).
   var id = slug.toLowerCase().replace(/ +/g, '-');
   return Object.prototype.hasOwnProperty.call(CHART_SLOT, id)
