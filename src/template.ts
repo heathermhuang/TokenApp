@@ -2332,7 +2332,12 @@ function providerLabel(id, fallbackName) {
   // backslash-s is an unknown escape and is silently dropped, shipping /s+/g -- a
   // regex matching the LETTER s. That turned some-new-vendor into ' ome new vendor'.
   var slug = String(id == null ? '' : id).toLowerCase().replace(/^~/, '').replace(/\\s+/g, '-');
-  var known = PROVIDER_NAMES[slug];
+  // Own-property check, not a bare index: a bare lookup reaches Object.prototype,
+  // so a slug of 'constructor' or '__proto__' returns a truthy FUNCTION and gets
+  // rendered as the label, bypassing both fallbacks below. Same guard chartSlot uses.
+  var known = Object.prototype.hasOwnProperty.call(PROVIDER_NAMES, slug)
+    ? PROVIDER_NAMES[slug]
+    : null;
   if (known) return known;
   if (fallbackName) return fallbackName;
   if (!slug) return '';

@@ -44,6 +44,19 @@ const { getHtml } = await import(pathToFileURL(p).href);
 
 const html = getHtml({ initialModels: '[]' });
 
+// The SERVER side, loaded independently so the assertions below compare the shipped
+// client against the real source of truth rather than hand-copied expectations.
+// Codex's review of this file was right that duplicating three expected strings would
+// pass just as happily against a hand-written map.
+const provOut = await build({
+  entryPoints: ['src/providers.ts'],
+  bundle: true, format: 'esm', platform: 'node', write: false, logLevel: 'silent',
+});
+const provPath = join(dir, 'providers.mjs');
+writeFileSync(provPath, provOut.outputFiles[0].text);
+const { PROVIDERS, PROVIDER_ALIASES, canonicalProviderId, getProvider } =
+  await import(pathToFileURL(provPath).href);
+
 /** The name map the page actually ships. */
 const NAMES = JSON.parse(html.match(/var PROVIDER_NAMES = (\{.*?\});/s)[1]);
 
@@ -51,11 +64,16 @@ const NAMES = JSON.parse(html.match(/var PROVIDER_NAMES = (\{.*?\});/s)[1]);
 const src = html.match(/function providerLabel\(id, fallbackName\) \{[\s\S]*?\n\}/)[0];
 const providerLabel = new Function('PROVIDER_NAMES', src + '; return providerLabel;')(NAMES);
 
-test('the name map is derived from PROVIDERS, not hand-written', () => {
-  assert.equal(NAMES.spacexai, 'SpaceXAI');
-  assert.equal(NAMES.qwen, 'Alibaba');
-  assert.equal(NAMES['meta-llama'], 'Meta');
-  assert.ok(Object.keys(NAMES).length > 40, 'expected the full provider table');
+test('the name map is EXACTLY PROVIDERS plus folded aliases, entry for entry', () => {
+  // Exhaustive, not a spot check: a hand-written map that happened to get three
+  // entries right would pass a sampled assertion. This one recomputes the whole
+  // expected map from the server module and compares it wholesale.
+  const expected = {};
+  for (const [slug, meta] of Object.entries(PROVIDERS)) expected[slug] = meta.displayName;
+  for (const [from, to] of Object.entries(PROVIDER_ALIASES)) {
+    if (PROVIDERS[to]) expected[from] = PROVIDERS[to].displayName;
+  }
+  assert.deepEqual(NAMES, expected);
 });
 
 test('a RETIRED slug is folded in and resolves to the CURRENT name', () => {
@@ -86,10 +104,36 @@ test('an unknown provider with no baked name is prettified like getProvider()', 
   assert.equal(providerLabel('stepfun-oddity'), 'Stepfun oddity');
 });
 
-test('normalization matches canonicalProviderId (case, tilde, whitespace)', () => {
-  assert.equal(providerLabel('X-AI'), 'SpaceXAI');
-  assert.equal(providerLabel('~x-ai'), 'SpaceXAI');
-  assert.equal(providerLabel('meta llama'), 'Meta');
+test('the client agrees with getProvider() for EVERY known provider', () => {
+  // Compared against the server function itself, so the two cannot drift. Covers
+  // every slug and every alias, not a chosen few.
+  const slugs = [...Object.keys(PROVIDERS), ...Object.keys(PROVIDER_ALIASES)];
+  for (const slug of slugs) {
+    assert.equal(providerLabel(slug), getProvider(slug).displayName, 'slug: ' + slug);
+  }
+});
+
+test('normalization matches canonicalProviderId, including the odd shapes', () => {
+  // Same inputs through both implementations; no hand-copied expectations.
+  for (const raw of ['X-AI', '~x-ai', 'meta llama', 'META  LLAMA', '~Qwen', 'z-ai']) {
+    assert.equal(providerLabel(raw), getProvider(canonicalProviderId(raw)).displayName,
+      'raw: ' + raw);
+  }
+});
+
+test('a prototype key is not mistaken for a provider name', () => {
+  // A bare PROVIDER_NAMES[slug] returns Object.prototype.constructor here — a truthy
+  // function — which would render as the label and skip both fallbacks. Found by Codex.
+  assert.equal(providerLabel('constructor', 'Constructor AI'), 'Constructor AI');
+  assert.equal(providerLabel('__proto__'), '__proto__'); // prettified, not the prototype
+  // Lowercased first, exactly as canonicalProviderId does, then prettified.
+  assert.equal(providerLabel('toString'), 'Tostring');
+  assert.equal(providerLabel('hasOwnProperty'), 'Hasownproperty');
+  // And the server agrees, which is the real assertion.
+  assert.equal(providerLabel('toString'), getProvider('toString').displayName);
+  for (const k of ['constructor', '__proto__', 'toString', 'valueOf']) {
+    assert.equal(typeof providerLabel(k), 'string', 'key: ' + k);
+  }
 });
 
 test('an empty or nullish id renders nothing rather than "Undefined"', () => {
