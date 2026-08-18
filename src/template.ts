@@ -1,4 +1,5 @@
 import { MONO_LOGO_SLUGS, LOGO_ASSET_VERSION } from './logos';
+import { PROVIDERS, PROVIDER_ALIASES } from './providers';
 
 export function getHtml(params: {
   initialModels?: string;
@@ -13,6 +14,28 @@ export function getHtml(params: {
   // from the generated asset module so the list cannot drift from the assets.
   const monoLogoSlugsLiteral = JSON.stringify(MONO_LOGO_SLUGS);
   const logoAssetVersionLiteral = JSON.stringify(LOGO_ASSET_VERSION);
+
+  // Provider slug -> display name, for the client-side renderers.
+  //
+  // Derived from PROVIDERS at render time rather than hand-written, because a second
+  // copy of ~45 vendor names is a copy that drifts: the xAI/SpaceXAI rename already
+  // proved it, landing in providers.ts while five client renderers kept showing the
+  // old label or a raw id prefix.
+  //
+  // Aliases are FOLDED IN here rather than resolved on the client. A retired slug and
+  // its current one both map to the same display name, so the client is a plain lookup
+  // with no alias logic to keep in sync. This is what covers the window after a vendor
+  // rename where KV still holds the OLD providerId for up to 4h of edge cache -- the
+  // stale id resolves to the NEW name instead of falling through to a raw slug.
+  const providerNamesLiteral = JSON.stringify((() => {
+    const names: Record<string, string> = {};
+    for (const [slug, meta] of Object.entries(PROVIDERS)) names[slug] = meta.displayName;
+    for (const [from, to] of Object.entries(PROVIDER_ALIASES)) {
+      const target = PROVIDERS[to];
+      if (target) names[from] = target.displayName;
+    }
+    return names;
+  })());
 
   // Escape backticks and ${ in JSON data to avoid breaking the template literal
   function safeLiteral(s: string): string {
@@ -2282,6 +2305,40 @@ function getProviderStyle(providerId) {
   return map[providerId] || fallback;
 }
 
+// Provider slug -> display name, interpolated from PROVIDERS in providers.ts so this
+// cannot drift from the server. Retired slugs are folded in at render time, so this
+// stays a plain lookup with no alias logic to maintain here.
+var PROVIDER_NAMES = ${providerNamesLiteral};
+
+// Resolve a provider id to the name a human should read. Two kinds of caller:
+//
+//  - the table chip, the filter pills and the pareto tooltip DO have a baked name
+//    (m.provider, written by getProvider() at normalization) and pass it as the
+//    fallback. The map wins over it on purpose: KV plus a 4h un-busted edge cache
+//    keep serving the pre-rename name for hours, while this map is compiled into
+//    every SSR render and is therefore never stale.
+//
+//  - the rankings leaderboard and the task-spend list have NO baked name, only a raw
+//    model-id prefix (openrouter-json.ts derives it as slug.split('/')[0]), so they
+//    pass the id alone. Those two printed "by x-ai" / "by meta-llama" / "by z-ai" for
+//    every provider and always had.
+//
+// Normalization mirrors canonicalProviderId in providers.ts; the alias step does not
+// need mirroring because the aliases are already folded into PROVIDER_NAMES. The
+// prettified last resort mirrors getProvider()'s own fallback, so a provider missing
+// from PROVIDERS reads the same here as it does server-side.
+function providerLabel(id, fallbackName) {
+  // Note the DOUBLED backslash: this whole file is one template literal, so a lone
+  // backslash-s is an unknown escape and is silently dropped, shipping /s+/g -- a
+  // regex matching the LETTER s. That turned some-new-vendor into ' ome new vendor'.
+  var slug = String(id == null ? '' : id).toLowerCase().replace(/^~/, '').replace(/\\s+/g, '-');
+  var known = PROVIDER_NAMES[slug];
+  if (known) return known;
+  if (fallbackName) return fallbackName;
+  if (!slug) return '';
+  return slug.replace(/-/g, ' ').replace(/^./, function (c) { return c.toUpperCase(); });
+}
+
 // Provider slugs whose vendored mark is a flat-black glyph and therefore needs
 // inverting on the dark theme. Generated alongside the assets themselves so the two
 // cannot drift — see scripts/build-provider-logos.mjs.
@@ -2589,7 +2646,7 @@ function renderTable() {
     const logoImg = providerLogoImg(m.providerId);
     const modelUrl = getModelUrl(m);
     const providerUrl = getProviderUrl(m.providerId);
-    const providerChip = \`<span class="provider-chip" style="background:\${ps.bg};color:\${ps.color}">\${logoImg}\${escape(m.provider)}</span>\`;
+    const providerChip = \`<span class="provider-chip" style="background:\${ps.bg};color:\${ps.color}">\${logoImg}\${escape(providerLabel(m.providerId, m.provider))}</span>\`;
 
     const ctxTag = m.contextWindow ? \`<span class="ctx-tag">\${fmtCtx(m.contextWindow)}</span>\` : '';
     const mobileBadges = buildMobileMeta(m);
@@ -2693,7 +2750,7 @@ function renderProviderFilters() {
     const logo = providerLogoImg(pid);
     return \`<button class="filter-pill\${active}" data-provider="\${escape(pid)}"
       style="\${active ? 'background:' + ps.bg + ';border-color:' + ps.color + ';color:' + ps.color : ''}"
-    >\${logo}\${escape(info.name)} <span style="opacity:0.5">\${info.count}</span></button>\`;
+    >\${logo}\${escape(providerLabel(pid, info.name))} <span style="opacity:0.5">\${info.count}</span></button>\`;
   }).join('');
 
   container.querySelectorAll('[data-provider]').forEach(btn => {
@@ -3099,7 +3156,7 @@ function attachParetoHover(pts, onFront) {
     if (!p) { tip.classList.remove('show'); return; }
     var err = p.s.stderr ? ' ±' + (p.s.stderr * 100).toFixed(1) : '';
     tip.innerHTML = '<div class="pt-name">' + escape(p.m.name) + '</div>' +
-      '<div class="pt-row">' + escape(p.m.provider) + ' · ' + fmtPrice(p.price) + '/1M blended</div>' +
+      '<div class="pt-row">' + escape(providerLabel(p.m.providerId, p.m.provider)) + ' · ' + fmtPrice(p.price) + '/1M blended</div>' +
       '<div class="pt-row">' + escape(p.s.benchmark) + ' ' + (p.score).toFixed(1) + '%' + err + '</div>' +
       '<div class="pt-row">in ' + fmtPrice(p.m.inputPer1M) + ' · out ' + fmtPrice(p.m.outputPer1M) + '</div>' +
       (onFront.has(p.m.id) ? '<div class="pt-best">On the price/quality frontier</div>' : '');
@@ -3536,20 +3593,15 @@ function renderRankings() {
       var parts = slug.split('/');
       var provider = parts[0] || '';
       var modelName = parts.slice(1).join('/') || slug;
-      // NOTE: the provider var here is a RAW model-id prefix (openrouter-json.ts derives
-      // it as slug.split('/')[0]), so this panel prints "by x-ai" / "by meta-llama" /
-      // "by z-ai" rather than a display name, for every provider, and always has.
-      // The logo resolves fine (canonicalLogoSlug + the alias'd logo map); only the
-      // TEXT is raw. Fixing it needs display names client-side — interpolate PROVIDERS
-      // from providers.ts into a constant here — which would also fix the task-spend
-      // list and the provider chips. Left out of the SpaceXAI rename deliberately:
-      // it is pre-existing, affects ~50 providers, and deserves its own diff.
+      // provider here is a RAW model-id prefix, so it goes through providerLabel()
+      // rather than being printed verbatim. The logo already resolved correctly via
+      // the alias'd logo map; only the text was raw.
       var logoImg = providerLogoImg(provider);
       return '<li class="lb-item">' +
         '<span class="lb-rank">' + (i + 1) + '</span>' +
         '<div class="lb-info">' +
           '<div class="lb-name">' + escape(modelName) + '</div>' +
-          '<div class="lb-category">' + logoImg + ' by ' + escape(provider) + '</div>' +
+          '<div class="lb-category">' + logoImg + ' by ' + escape(providerLabel(provider)) + '</div>' +
         '</div>' +
         '<div class="lb-stats">' +
           sparklineSvg(m.sparkline) +
@@ -4270,7 +4322,7 @@ document.addEventListener('DOMContentLoaded', () => {
         '<span class="lb-rank">' + (i + 1) + '</span>' +
         '<div class="lb-info">' +
           '<div class="lb-name">' + escape(m.label) + '</div>' +
-          '<div class="lb-category">' + providerLogoImg(m.provider) + ' by ' + escape(m.provider) + '</div>' +
+          '<div class="lb-category">' + providerLogoImg(m.provider) + ' by ' + escape(providerLabel(m.provider)) + '</div>' +
         '</div>' +
         '<div class="lb-stats"><span class="lb-share">' + (m.share * 100).toFixed(1) + '%</span>' + dd + '</div>' +
       '</li>';

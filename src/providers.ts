@@ -76,7 +76,7 @@ export const PROVIDERS: Record<string, ProviderMeta> = {
  *
  * Add an entry here when a vendor renames; never rewrite an OpenRouter model id.
  */
-const PROVIDER_ALIASES: Record<string, string> = {
+export const PROVIDER_ALIASES: Record<string, string> = {
   'x-ai': 'spacexai',
 };
 
