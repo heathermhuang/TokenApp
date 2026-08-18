@@ -113,7 +113,7 @@
    * asset URLs are keyed by provider rather than by content, so this is what lets them
    * be served `immutable` without pinning returning visitors to a stale logo.
    */
-  export const LOGO_ASSET_VERSION = "1c15eb1ea4";
+  export const LOGO_ASSET_VERSION = "c13584d382";
 
   /** OpenRouter namespaces some authors as `~openai`; the mark is the same. */
   export function canonicalLogoSlug(providerId: string): string {
