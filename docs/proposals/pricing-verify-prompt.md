@@ -13,10 +13,29 @@ Approved 2026-08-17 as Option B of `2026-07-11-monthly-pricing-verify.md`.
 Re-verify every entry in `src/subscriptions.ts` against the vendor's own live pricing
 page, and leave **three things for human review**:
 
-1. a **findings report** at `scratchpad/pricing-verify-YYYY-MM.md` — a per-entry verdict
-   table (CURRENT / STALE→value / UNVERIFIABLE) with source URLs and quotes,
+1. a **findings report** at `docs/reviews/pricing-verify-YYYY-MM.md`, **committed on the
+   branch** — a per-entry verdict table (CURRENT / STALE→value / UNVERIFIABLE) with source
+   URLs and quotes. **Not `scratchpad/`**: that directory is gitignored, so the branch would
+   carry the price change and none of the evidence for it — exactly the unsourced-number
+   state this routine exists to prevent. It is not hypothetical: `scratchpad/dump.mjs` was
+   lost that way and step 7 below silently no-opped on 2026-08-18 as a result,
 2. a **branch** `pricing-verify/YYYY-MM` containing only the confirmed fixes,
 3. **`lastVerified` bumps** on the entries whose prices were actually re-read.
+
+## Prerequisite — browser tools must already be approved
+
+This run **cannot complete** without the browser tools, and a scheduled run has nobody at
+the keyboard to approve them. Measured 2026-08-18: neither `.claude/settings.local.json`
+nor `~/.claude/settings.json` contained any `mcp__Claude_Browser__*` entry, so an
+unattended run would stall on the first gated vendor page — and the pages it stalls on
+(kling, manus, cursor, microsoft) are the four that carried every correction in the last
+two passes.
+
+Tools this run needs: `preview_start`, `resize_window`, `navigate`, `get_page_text`,
+`read_page`, `find`, `computer` (screenshot / left_click / scroll / wait), `javascript_tool`.
+
+Approve them once via a supervised **Run now**, or add them to settings, before relying on
+the scheduled run.
 
 ## Hard stops — these are not negotiable
 
@@ -69,13 +88,22 @@ sourced fact.
 So before writing UNVERIFIABLE: check the vendor's **docs/billing/help** pages, not only
 marketing. Search their docs for "annual", "yearly", "per year", "billing cycle".
 
+**And exhaust the page you are already on.** This has now failed three times the same way —
+GitHub's annual price (one docs sidebar link), Perplexity's stale tier `features[]` (found by
+reasoning, not the grep), and on 2026-08-18 **Microsoft**: the 08-17 pass recorded M365 Premium
+and M365 Copilot as *"not on this page"*. They were on that page, behind the **Individual
+plans** / **Enterprise plans** tabs. One click yielded $199.99/yr and $19.99/mo, which produced
+a real correction. Before UNVERIFIABLE, enumerate every **tab, toggle and segmented control**
+and read each state. A price you cannot see may be one click away on the same URL.
+
 ## Known traps — each of these has produced a wrong number before
 
 | Vendor | Trap |
 |---|---|
 | **Kling** | The `$6.99` shown against Standard is a **first-month promo on the MONTHLY plan**, not the annual price. Real annual is $79.20/yr → $6.60/mo. |
-| **Manus** | Prices render as **animated digit rollers**. Screenshotting before they settle reads `$209` for a tier priced `$167`. Wait for them to stop. |
-| **Cursor** | `resize_window` with a **preset** does not clear a 0×0 viewport — pass explicit `width`/`height`. The page also renders a **hidden mobile duplicate of every pricing radio**; a synthetic click lands on the invisible one and changes nothing. Click the visible desktop control. |
+| **Manus** | Prices render as **animated digit rollers**. Two failure modes, and the fix differs. **Screenshot**: capture before they settle and you read `$209` for a tier priced `$167` — wait, then re-capture. **Text extraction**: `get_page_text` returns `$ 0 1 2 3 4 5 6 7 8 9 0 1 …` — every digit lives in the DOM permanently and a CSS transform picks the visible one, so **waiting never helps** and a naive `\$(\d+)` reads **`$0`**, i.e. every tier free. Never text-extract Manus prices; read the rendered value. |
+| **Cursor** | `resize_window` with a **preset** does not clear a 0×0 viewport — pass explicit `width`/`height`. The page also renders a **hidden mobile duplicate of every pricing radio** (measured: 6 hidden at 0×0 shadowing 6 visible); a synthetic click lands on the invisible one and changes nothing. Click the visible desktop control. Tiers are now **nested segmented controls** (Individual → Pro/Pro+/Ultra, Teams → Standard/Premium), so there are three toggle levels, not one. |
+| **Duplicate controls — ALL vendors** | Cursor's decoys are 0×0, so filtering on size finds them. **Kling's are not**: it renders two Yearly/Monthly pairs (y≈132 and y≈1534) and **both report non-zero dimensions**, so the size filter silently fails and only position discriminates. Therefore: **enumerate every matching control and assert how many exist**, then click the topmost visible one. Never `querySelector` the first match. |
 | **Suno** | The page defaults to the **annual** toggle. Read which toggle is active before recording a "monthly" price. |
 | **ChatGPT** | `openai.com/chatgpt/pricing` geolocates to **SGD**. Tier names, structure and model names are readable; the **USD figures are not sourceable from it**. `chatgpt.com/pricing` sits behind a Cloudflare interstitial — do not work around it. |
 | **z.ai** | The GLM model list appears only in `<title>`/`<meta keywords>` — the keywords tag is SEO stuffing. The rendered tiers say only "latest flagship models". Do not treat an SEO tag as a published per-plan model list. |
@@ -88,7 +116,9 @@ return 403 to curl. Also JS-rendered: `hailuoai.video`, `kimi.com`, `kling.ai`,
 
 Use the browser tools for these. `~/.browser-use-env/bin/python` has Playwright if needed.
 
-## The nine that defeat verification — check, but expect these outcomes
+## The entries that defeat verification — check, but expect these outcomes
+
+(Ten entries across six rows — the last row groups five. Count entries, not rows.)
 
 Do not burn the budget rediscovering these. Confirm quickly, then move on.
 
@@ -97,9 +127,9 @@ Do not burn the budget rediscovering these. Confirm quickly, then move on.
 | `chatgpt` | SGD geolocation; USD not sourceable from the pricing page |
 | `github-copilot` | Annual is **discontinued** (legacy since 2026-06-01) — annual == monthly is correct and sourced |
 | `mistral-lechat` | Page shows monthly only; annual 11.99/19.99 unsourced |
-| `microsoft-copilot` | Page covers business bundles; "M365 Premium" and "M365 Copilot" not on it |
+| `microsoft-copilot` | **NO LONGER a dead end — it is the one member of this table with real USD prices that move.** The 08-17 "not on this page" was wrong: M365 Premium and M365 Copilot sit behind the **Individual** / **Enterprise** tabs. Read every tab. |
 | `kimi` | `www.kimi.com/pricing` **redirects to root** — the USD ladder cannot be re-read |
-| `hailuo-ai` | `hailuoai.video/subscribe` requires **sign-in**; only a $9.99 promo banner is public |
+| `hailuo-ai` | `hailuoai.video/subscribe` requires **sign-in**; only a $9.99 promo banner is public. **`curl` returns HTTP 200 — that is a MIRAGE.** The 625KB SSR shell ships before a client-side redirect to root, and the prices inside it are a stale help-article blob that **contradicts itself** (one section calls `$54.99` Pro monthly, another calls it `$34.99`) and describes `$63.99` as a *monthly promo* — the exact value the file stores as Master's *annual*. Confirm in a real browser; never price this entry from curl output. |
 | `ernie-bot`, `doubao`, `deepseek`, `qwen-chat`, `meta-ai` | Free-tier-only entries with no USD price that can drift |
 
 If any of these **changes** — a pricing page comes back, an auth wall drops — that is a
@@ -110,13 +140,24 @@ headline finding. Say so loudly in the report.
 1. `git checkout main && git pull` then `git checkout -b pricing-verify/YYYY-MM`.
 2. Read `docs/reviews/2026-08-17-subscription-reverification.md` and
    `2026-08-17-open-items-followup.md` first. They record what is already settled and why.
-3. Sort entries by `lastVerified` ascending and work oldest first, so a truncated run still
-   improves the worst data.
+3. Sort entries by `lastVerified` ascending and work oldest first **within the VERIFIABLE
+   set** — see the warning immediately below.
+
+   > **The naive sort points the run at its own dead ends.** Measured 2026-08-18: the nine
+   > oldest entries were *exactly* the nine in the defeat-verification table below (minus the
+   > two since stamped). Oldest-first therefore spends the entire budget on entries that are
+   > unverifiable by construction, and a truncated run improves **nothing**. Instead: probe
+   > the nine cheaply for **change** (a status-code sweep costs seconds) and escalate one to
+   > a browser only if its reachability moved. Work the verifiable entries oldest-first. That
+   > ordering is what surfaced the Microsoft corrections on 08-18.
 4. For each entry: open the vendor page, read monthly AND annual for every tier, compare
    against the file, and record a verdict with a quote.
 5. Apply only confirmed fixes. Bump `lastVerified` only where prices were re-read.
 6. Run `npm test` and `./node_modules/.bin/tsc --noEmit`. Both must pass.
-7. Diff the data before/after with `node scratchpad/dump.mjs` if it exists.
+7. Diff the data before/after with `node scratchpad/dump.mjs`. **If it does not exist,
+   say so in the report** rather than skipping silently — it is gitignored and has gone
+   missing once already, and a skipped safety check that reports nothing looks identical
+   to a passed one.
 8. Commit to the branch. Write the report. **Stop and notify.**
 
 ## Reporting rules
@@ -125,6 +166,34 @@ headline finding. Say so loudly in the report.
 - Every unchanged-but-suspicious number gets a recorded reason.
 - State the counts plainly: how many verified, how many stamped, how many left stale.
 - If the run was truncated, say exactly where it stopped.
+
+## Tooling notes — measured, and each one cost a round trip
+
+- `computer` with `coordinate` (`left_click`, `scroll`) **requires a prior `screenshot`**
+  in that tab or it errors. Take one first.
+- `computer` `zoom` with a `region` is **unsupported** in the Browser pane — it silently
+  returns the full screenshot instead of the crop. Do not rely on it to read small print.
+- Screenshots come back **scaled** (800×500 for a 1440×900 viewport). Click coordinates are
+  in the screenshot frame, not the viewport frame. Locate elements with `javascript_tool`
+  (which reports viewport coordinates), then convert.
+- Reading a radio's **`checked`** state via `javascript_tool` is far more reliable than
+  inferring the active toggle from a screenshot, and it is how the Cursor matrix was
+  verified cell by cell.
+- The **Browser pane can hang** (30s timeout, "pane is currently hidden"). It happened once
+  on microsoft.com and was recovered via `javascript_tool`. An unattended run needs to
+  tolerate this rather than die on it.
+- `cursor.com` **fires a clipboard write** during a synthetic click, overwriting the user's
+  OS clipboard. Harmless, but worth knowing for an unattended monthly run.
+
+## Watch list — dated, check these first
+
+- **Copilot Business `$18` promo expires Sep 2026** — the month this task first fires. The
+  file stores the **$21 list** price (corrected 2026-08-18, because $18 is a promotion and
+  this routine records list). Confirm whether $18 lapsed, and do **not** "fix" the 21 back
+  down to 18 unless Microsoft has made it the standing rate.
+- **`ernie-bot`'s stored URL is drifting**: `yiyan.baidu.com` now 302s to
+  `wenxin.baidu.com` (百度文心助手). It still resolves, so it was left alone — a rename is a
+  product judgement a redirect does not prove. Revisit if the redirect breaks.
 
 ## Remember
 
