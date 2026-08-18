@@ -198,9 +198,15 @@ test('no renderer prints a raw provider string any more', () => {
  * the page template literal, because every one of them silently loses its backslash
  * on the way to the browser and neither tsc nor a code review can see it happen.
  *
- * If this fails, you wrote a single backslash inside src/template.ts where you meant
- * a real one. Double it (\\s ships as \s), or avoid the class entirely the way
- * chartSlot does with a literal-space regex.
+ * If this fails, FIRST work out which side of the boundary the flagged line is on --
+ * the repair is opposite on each side, and the assertion message spells both out:
+ *   - inside the literal (client code shipped to the browser): double the backslash
+ *     (\\s ships as \s), or drop the class the way chartSlot does with a
+ *     literal-space regex;
+ *   - ordinary TypeScript between the literals: a lone backslash is ALREADY correct.
+ *     Doubling it would break that regex. Narrow the guard instead.
+ * Do not reach for "double it" reflexively; that is how this guard would cause the
+ * very bug it exists to prevent.
  *
  * Deliberately CONSERVATIVE: the region below the anchor is mostly, but not purely,
  * template literal — a little ordinary TypeScript is interleaved between the page
@@ -215,12 +221,40 @@ test('no unknown backslash escape survives inside the page template literal', as
   // Escapes JS actually recognises. Anything else silently loses its backslash.
   const VALID = new Set(['n', 't', 'r', '\\', "'", '"', '`', '$', 'b', 'f', 'v', '0', 'x', 'u']);
   // DERIVED, not hardcoded: a magic line number silently stops meaning what it said
-  // the first time anyone adds an import. Anchor on the line that opens the page
-  // literal instead, and fail loudly if that anchor ever disappears.
-  const openIdx = lines.findIndex((l) => /^\s*return `<!DOCTYPE html>/.test(l));
-  assert.notEqual(openIdx, -1,
-    'could not find the page template literal opening in src/template.ts — ' +
-    'this guard has lost its anchor and is no longer checking anything');
+  // the first time anyone adds an import.
+  //
+  // Anchored INSIDE getHtml() rather than on the first doctype in the file. Three
+  // lines match `return \`<!DOCTYPE html>` (getHtml plus two provider-page helpers),
+  // and an earlier version of this guard matched on the doctype text globally. That
+  // looked safe -- first match wins, so coverage seemed maximal -- but it had a silent
+  // false negative: reformat getHtml() so the doctype moves to the line AFTER the
+  // backtick and the first match becomes the LATER helper literal, not -1. The guard
+  // would stay green while skipping the entire main page literal. Found by Codex
+  // round 3, after I had talked myself out of exactly this concern.
+  //
+  // So: find getHtml, take the first template literal it opens, and prove nothing
+  // else was found instead. Matching on the backtick alone also makes it immune to
+  // where the doctype happens to be wrapped.
+  const fnIdx = lines.findIndex((l) => /^export function getHtml\b/.test(l));
+  assert.notEqual(fnIdx, -1,
+    'could not find getHtml() in src/template.ts — this guard has lost its anchor');
+
+  const relIdx = lines.slice(fnIdx + 1).findIndex((l) => /^\s*return `/.test(l));
+  assert.notEqual(relIdx, -1,
+    'getHtml() opens no template literal — this guard has lost its anchor');
+  const openIdx = fnIdx + 1 + relIdx;
+
+  // The literal we found must belong to getHtml and not to some function declared
+  // after it, which is the exact way the previous anchor failed silently. Only
+  // TOP-LEVEL declarations count (column 0): getHtml legitimately nests indented
+  // helpers such as safeLiteral() and fmtPriceSsr() before its return.
+  const intervening = lines
+    .slice(fnIdx + 1, openIdx)
+    .filter((l) => /^(export\s+)?(async\s+)?function\s/.test(l));
+  assert.deepEqual(intervening, [],
+    'a function is declared between getHtml() and the literal this guard anchored ' +
+    'on, so the anchor is pointing at the wrong literal');
+
   const LITERAL_STARTS_AT = openIdx + 1;
   const offenders = [];
   for (let i = LITERAL_STARTS_AT - 1; i < lines.length; i++) {
