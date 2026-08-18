@@ -181,13 +181,27 @@ test('no renderer prints a raw provider string any more', () => {
  * If this fails, you wrote a single backslash inside src/template.ts where you meant
  * a real one. Double it (\\s ships as \s), or avoid the class entirely the way
  * chartSlot does with a literal-space regex.
+ *
+ * Deliberately CONSERVATIVE: the region below the anchor is mostly, but not purely,
+ * template literal — a little ordinary TypeScript is interleaved between the page
+ * literals, and an unknown escape there would be harmless. Rather than parse literal
+ * nesting to tell them apart, this flags both. A false positive is a loud failure with
+ * an obvious fix; a false negative is the silent browser-only corruption this whole
+ * file exists to prevent. For that trade the noisy direction is the correct one.
  */
 test('no unknown backslash escape survives inside the page template literal', async () => {
   const { readFileSync } = await import('node:fs');
   const lines = readFileSync('src/template.ts', 'utf8').split('\n');
   // Escapes JS actually recognises. Anything else silently loses its backslash.
   const VALID = new Set(['n', 't', 'r', '\\', "'", '"', '`', '$', 'b', 'f', 'v', '0', 'x', 'u']);
-  const LITERAL_STARTS_AT = 75; // the getHtml() page literal opens here
+  // DERIVED, not hardcoded: a magic line number silently stops meaning what it said
+  // the first time anyone adds an import. Anchor on the line that opens the page
+  // literal instead, and fail loudly if that anchor ever disappears.
+  const openIdx = lines.findIndex((l) => /^\s*return `<!DOCTYPE html>/.test(l));
+  assert.notEqual(openIdx, -1,
+    'could not find the page template literal opening in src/template.ts — ' +
+    'this guard has lost its anchor and is no longer checking anything');
+  const LITERAL_STARTS_AT = openIdx + 1;
   const offenders = [];
   for (let i = LITERAL_STARTS_AT - 1; i < lines.length; i++) {
     const ln = lines[i];
