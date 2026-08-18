@@ -220,41 +220,32 @@ test('no unknown backslash escape survives inside the page template literal', as
   const lines = readFileSync('src/template.ts', 'utf8').split('\n');
   // Escapes JS actually recognises. Anything else silently loses its backslash.
   const VALID = new Set(['n', 't', 'r', '\\', "'", '"', '`', '$', 'b', 'f', 'v', '0', 'x', 'u']);
-  // DERIVED, not hardcoded: a magic line number silently stops meaning what it said
-  // the first time anyone adds an import.
+  // Anchor on the FIRST page literal in the file, identified by content rather than
+  // by which function encloses it. Three attempts got here, each defeated by tying
+  // the anchor to something incidental:
   //
-  // Anchored INSIDE getHtml() rather than on the first doctype in the file. Three
-  // lines match `return \`<!DOCTYPE html>` (getHtml plus two provider-page helpers),
-  // and an earlier version of this guard matched on the doctype text globally. That
-  // looked safe -- first match wins, so coverage seemed maximal -- but it had a silent
-  // false negative: reformat getHtml() so the doctype moves to the line AFTER the
-  // backtick and the first match becomes the LATER helper literal, not -1. The guard
-  // would stay green while skipping the entire main page literal. Found by Codex
-  // round 3, after I had talked myself out of exactly this concern.
+  //  1. hardcoded line 75          -- broke the moment anything was inserted above.
+  //  2. first line matching the doctype TEXT -- three lines match, so wrapping the
+  //     doctype onto the next line silently selected a LATER helper literal and the
+  //     guard stayed green over an unchecked main literal (Codex round 3).
+  //  3. anchored inside getHtml()  -- missed non-function declaration forms
+  //     (const renderPage = () => ...), and assumed getHtml stays the FIRST page
+  //     renderer, so moving it below another one dropped that one's literal from
+  //     coverage entirely (Codex round 4).
   //
-  // So: find getHtml, take the first template literal it opens, and prove nothing
-  // else was found instead. Matching on the backtick alone also makes it immune to
-  // where the doctype happens to be wrapped.
-  const fnIdx = lines.findIndex((l) => /^export function getHtml\b/.test(l));
-  assert.notEqual(fnIdx, -1,
-    'could not find getHtml() in src/template.ts — this guard has lost its anchor');
-
-  const relIdx = lines.slice(fnIdx + 1).findIndex((l) => /^\s*return `/.test(l));
-  assert.notEqual(relIdx, -1,
-    'getHtml() opens no template literal — this guard has lost its anchor');
-  const openIdx = fnIdx + 1 + relIdx;
-
-  // The literal we found must belong to getHtml and not to some function declared
-  // after it, which is the exact way the previous anchor failed silently. Only
-  // TOP-LEVEL declarations count (column 0): getHtml legitimately nests indented
-  // helpers such as safeLiteral() and fmtPriceSsr() before its return.
-  const intervening = lines
-    .slice(fnIdx + 1, openIdx)
-    .filter((l) => /^(export\s+)?(async\s+)?function\s/.test(l));
-  assert.deepEqual(intervening, [],
-    'a function is declared between getHtml() and the literal this guard anchored ' +
-    'on, so the anchor is pointing at the wrong literal');
-
+  // What actually matters is not who owns the literal but that scanning starts at or
+  // before the earliest one. So: find the first line that OPENS a template literal
+  // whose first few lines carry the doctype, and scan from there. Matching the
+  // opening backtick (not the doctype text) keeps it immune to wrapping; taking the
+  // first such literal keeps coverage maximal no matter how the file is reordered;
+  // and it never needs to know which function, class or arrow anything lives in.
+  const DOCTYPE_LOOKAHEAD = 4;
+  const openIdx = lines.findIndex((l, i) =>
+    /^\s*return `/.test(l) &&
+    lines.slice(i, i + DOCTYPE_LOOKAHEAD).join('\n').includes('<!DOCTYPE html>'));
+  assert.notEqual(openIdx, -1,
+    'no page template literal found in src/template.ts — this guard has lost its ' +
+    'anchor and is no longer checking anything');
   const LITERAL_STARTS_AT = openIdx + 1;
   const offenders = [];
   for (let i = LITERAL_STARTS_AT - 1; i < lines.length; i++) {
