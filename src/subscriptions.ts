@@ -630,10 +630,12 @@ export const SUBSCRIPTIONS: Subscription[] = [
     name: 'Qwen Studio',
     provider: 'Alibaba',
     providerId: 'qwen',
-    description: 'Qwen Studio (formerly 通义千问 / Qwen Chat) — Alibaba\'s assistant powered by Qwen3.7. Free consumer app; monetizes via Alibaba Cloud API.',
+    description: 'Qwen Studio (formerly 通义千问 / Qwen Chat) — Alibaba\'s assistant offering Qwen3.8-Max and Qwen3.7-Plus. Free consumer app; monetizes via Alibaba Cloud API.',
     category: 'chat',
     url: 'https://chat.qwen.ai',
     lastVerified: '2026-07-11',
+    // Qwen Studio's picker also offers Qwen3.8-Max, but the catalogue carries only the dated snapshot
+    // qwen3.8-max-0902 and the open-weights qwen3.8-2.4t-a95b; picking one would be a guess, so none is listed.
     underlyingModels: ['qwen/qwen3.7-max', 'qwen/qwen3.7-plus'],
     tiers: [
       {
@@ -641,7 +643,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
         monthlyPrice: 0,
         annualMonthlyPrice: 0,
         perSeat: false,
-        features: ['Qwen3.7 models (unlimited)', 'Thinking & web search modes', 'Image, video & audio understanding', 'Artifacts & code preview'],
+        features: ['Qwen3.8-Max, Qwen3.8-Omni-Flash & Qwen3.7-Plus', 'Thinking & web search modes', 'Image, video & audio understanding', 'Artifacts & code preview'],
         highlight: true,
         badge: 'Free Forever',
       },
@@ -653,7 +655,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     name: 'Meta AI',
     provider: 'Meta',
     providerId: 'meta-llama',
-    description: 'Meta\'s free assistant across Facebook, Instagram, WhatsApp, Messenger, and meta.ai — powered by Muse Spark 1.1 from Meta Superintelligence Labs. Paid Meta One Plus/Premium tiers are in limited testing with no published pricing.',
+    description: 'Meta\'s free assistant across Facebook, Instagram, WhatsApp, Messenger, and meta.ai — powered by Muse Spark models from Meta Superintelligence Labs. Paid Meta One Plus/Premium tiers are in limited testing with no published pricing.',
     category: 'chat',
     url: 'https://www.meta.ai/',
     lastVerified: '2026-07-11',
@@ -663,7 +665,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
         monthlyPrice: 0,
         annualMonthlyPrice: 0,
         perSeat: false,
-        features: ['Muse Spark 1.1 (1M-token context)', 'In FB, IG, WhatsApp & Messenger', 'Thinking mode (app & meta.ai only)', 'Image & video generation (base)'],
+        features: ['Muse Spark models', 'In FB, IG, WhatsApp & Messenger', 'Thinking mode (app & meta.ai only)', 'Image & video generation (base)'],
         highlight: true,
         badge: 'Free',
       },
@@ -1037,7 +1039,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     description: 'Vercel\'s AI app builder — prompts to deployed full-stack apps, metered through its own v0 Mini/Pro/Max model tiers. No annual billing; credits expire after 65 days.',
     category: 'coding',
     url: 'https://v0.app/pricing',
-    lastVerified: '2026-08-17',
+    lastVerified: '2026-09-18',
     tiers: [
       {
         name: 'Free',
@@ -1353,7 +1355,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     name: 'Runway',
     provider: 'Runway',
     providerId: 'runway',
-    description: 'AI video suite built on Gen-4.5, Aleph 2.0 editing, and Act-Two capture — plus hub access to Kling 3.0, Seedance 2.0 & Veo 3.1. The Unlimited plan was retired for Max in June 2026.',
+    description: 'AI video suite built on Gen-4.5, Aleph 2.0 editing, and Act-Two capture — plus hub access to Kling 3.0, Seedance 2.5 & Veo 3.1. The Unlimited plan was retired for Max in June 2026.',
     category: 'media',
     url: 'https://runway.com/pricing',
     lastVerified: '2026-09-18',

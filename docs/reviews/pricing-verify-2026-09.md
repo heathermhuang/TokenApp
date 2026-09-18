@@ -187,3 +187,27 @@ Every id written to `underlyingModels` was checked against the live catalogue (4
 - Before this change, prod's automated feeds were all fresh (`/api/models`, `/rankings`, `/market-share`,
   `/task-spend` and `/benchmarks` all fetched 2026-09-18 06:00 UTC). Model prices matched OpenRouter on 436/445,
   with 3 at 4-decimal rounding and 6 moved on OpenRouter after that hour's cron.
+
+## Follow-ups resolved the same day
+
+The four items flagged above were chased to vendor sources on 2026-09-18.
+
+- **v0: `$30` is the list price.** v0.app/docs/pricing: "Plus : $30/user/month. For fast moving teams and
+  collaboration. Business : $100/user/month." Its plan table reads "Price $0/month $20/month $30/user/month
+  $100/user/month Custom". "$90" appears nowhere in the docs, so the struck-through $90 on `/pricing` is a
+  marketing anchor. Nothing changed, and v0 is now **stamped** (20 stamped in total). The $20 "Premium" plan
+  "is in the process of being sunsetted and is no longer available to new users", so it stays absent.
+- **qwen-chat: the model picker is the source.** Qwen Studio's own picker (chat.qwen.ai, visible logged out)
+  lists "Qwen3.7-Plus" (default), "Qwen3.8-Max — The flagship of Qwen3.8 model…" and "Qwen3.8-Omni-Flash".
+  The description and feature now name them. `underlyingModels` is unchanged: the catalogue has only the dated
+  `qwen3.8-max-0902` and the open-weights `qwen3.8-2.4t-a95b`, and picking one would be a guess (a code comment
+  says so). Not stamped: free-only.
+- **meta-ai: version dropped, not swapped.** developer.meta.com/ai/models/muse-spark/ is titled "Muse Spark 1.3
+  | Meta" and lists 1.2 and 1.1 as older, so "1.1" was stale. No Meta page says which version the Meta AI app
+  runs (meta.ai is behind sign-in), so the entry now says "Muse Spark models". A search-engine summary claimed
+  1.3 powers the app's Thinking mode; the page it cited does not say that, so it was not used. Not stamped.
+- **runway: Veo 3.1 is still offered.** It is absent from the visible pricing text, but runway.com's own page
+  copy reads "third-party models like Nano Banana Pro 2, GPT Image 2, Kling 3.0, Kling O3, Veo 3.1, Seedance 2.5
+  and more". A live "Veo 3.1 on Runway" model page exists, and the plan label is "All AI images and video models
+  (Gen-4.5, Nano Banana Pro, Aleph, Veo 3.1, and more)". The description changes only Seedance 2.0 → **2.5**.
+- `src/template.ts` `PROVIDER_URLS.runway` now points at `https://runway.com/`, since runwayml.com redirects there.
