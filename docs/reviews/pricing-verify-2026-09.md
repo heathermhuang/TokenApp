@@ -42,6 +42,10 @@ prices come from the help centre and the page's own copy (see its row).
 | replit · Core | monthly / annual | 25 / 20 → **20 / 18** | replit.com/pricing, Monthly toggle "Core $20 / month"; Yearly toggle "Core $20 $18 / month, billed annually" ("Up to 10% off") |
 | replit · Pro | annual | 95 → **90** | same page: "Pro $100 $90 / month, billed annually" (monthly "$100 / month" unchanged) |
 
+Annual-price convention, unchanged: when a vendor displays its own per-month annual figure, that figure is
+stored (Claude Pro $17 for $200/yr, Perplexity Max $167 for $2,000/yr, settled 2026-08-17). Otherwise the annual
+total ÷ 12 is stored (16.67, 33.33, 50).
+
 Two of these reverse earlier calls, so the reasoning is recorded:
 
 - **Z.ai.** The 2026-08-17 pass kept list prices and called the ~30% discount "a standing promo". It is now a
@@ -92,7 +96,6 @@ The old "Entry paid tier (was $39)" is dropped too. The China ¥ ladder in the d
 | claude-ai | Lineup "Fable 5" → **Fable 5.1**; `claude-fable-5` → `claude-fable-5.1`; tier bullets "Fable 5 via usage credits" → "Fable via usage credits" / "Fable (50% of weekly limits)" | claude.com/pricing lists "Fable 5.1 — Next generation intelligence for long-running agents" and puts "Fable 5" under **Legacy models**. The plan grid names "Fable" with no version, so tier bullets drop it |
 | claude-code | "Opus 5, Sonnet 5 & Fable 5" → "…Fable 5.1"; `claude-fable-5.1`; url → `claude.com/product/claude-code` | same, plus `www.anthropic.com/claude-code` now **301**s to claude.com |
 | perplexity | Model mix → Sonar 2, GPT-5.6 Terra, Claude Sonnet 5, **Gemini 3.8 Flash**, Kimi K3, **GLM 5.3**, **Grok 4.6**; `underlyingModels` likewise (Sonar 2 still excluded, no catalogue id) | perplexity.ai/pro model cards: "Gemini 3.8 Flash New", "GLM 5.3 New", "Grok 4.6 New" |
-| zhipu-ai | + GLM-5.3-Flash | z.ai `<title>`: "GLM Coding Plan — AI Coding Powered by GLM-5.3, GLM-5.3-Flash, GLM-5.2 & GLM-5-Turbo" |
 | suno | v5.5 / v4.5 → **v6, v6-wild, v6-mini**; Premier "Custom-tuned v5.5" → "Create custom models" | suno.com/pricing comparison table: "Best free model (v6-mini)" · "Advanced models (v6 and v6-wild)"; Premier "Create custom models" |
 | windsurf | "SWE-1.7 & open-source models free" → "Free SWE-2 use through Oct 10, 2026"; + SpaceXAI in provider list | devin.ai/pricing: "SWE-2, our latest model, is now available" · "Free use of SWE-2 Free in Devin Desktop and CLI through October 10, 2026" · "models from OpenAI, Claude, Gemini, and SpaceXAI" |
 | midjourney | "currently on V8.1" → **V8.2** | docs.midjourney.com Version article: "V8.2 released as the default version on July 24, 2026." (The 08-17 pass missed this.) |
@@ -158,8 +161,8 @@ Every id written to `underlyingModels` was checked against the live catalogue (4
 - **perplexity**: the page's model cards (used) disagree with its own FAQ ("Gemini 3.1 Pro Thinking, Grok 4.1")
   and with help article 10352901 (an older roster). "Education Pro" ($10/mo) is not tracked.
 - **replit**: the free **Starter** card is gone from the pricing page, and "Free Mode" appears only as a usage
-  mode inside Core and Pro. The tier is kept: removing it is a product judgement, the same call made on 08-17
-  for X Premium.
+  mode inside Core and Pro. The plan itself still exists: docs.replit.com/billing/plans/starter-plan describes
+  what "you can build for Free… all at no cost". The tier is kept, and the stamp rests on that page.
 - **gemini**: the "Cut from $7.99 in June 2026" and "Cut from $249.99 at I/O 2026" feature notes no longer
   appear on the page. They are historical and not wrong, so they were kept.
 - **cursor**: feature wording drifted (Hobby "Access to Composer", Pro adds "Grok Bot access"). This is not a
@@ -167,6 +170,10 @@ Every id written to `underlyingModels` was checked against the live catalogue (4
   7 radios, all visible.
 - **manus**: "Manus 1.6" is not named anywhere on manus.im today. It is unverified, but there is no evidence it
   is stale.
+- **zhipu-ai**: the page `<title>` and body name a new **GLM-5.3-Flash** ("GLM-5.3 and GLM-5.3-Flash (OX
+  Alpha)"). That is plan-level evidence only: the tier cards say just "latest flagship models", and the
+  routine's own z.ai trap forbids reading the title as a per-tier list. So Coding Lite's model string was
+  **not** extended (Codex review, P2).
 - **src/template.ts** `PROVIDER_URLS.runway` is still `https://runwayml.com/`. It works via the permanent
   redirect and is outside this data-only change.
 

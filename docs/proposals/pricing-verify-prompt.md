@@ -203,7 +203,8 @@ headline finding. Say so loudly in the report.
   check whether the free period ended or was extended, and update or drop the string.
 - **v0 Plus shows `$30` beside a struck-through `$90`**, with no promo label. The file keeps $30 and is
   unstamped. Decide whether $90 is list price.
-- **Replit's free Starter card is gone** from the pricing page (kept in the file as a product judgement).
+- **Replit's free Starter card is gone** from the pricing page. The plan is still documented at
+  docs.replit.com/billing/plans/starter-plan ("all at no cost"), so source it there.
 - **`grok.com/supergrok`** (the only page pricing SuperGrok Lite, Heavy and annual) is Cloudflare-gated.
   If it opens up, those three numbers can finally be re-read.
 - **meta-ai "Muse Spark 1.1" and qwen-chat "Qwen3.7"** are probably stale (the catalogue has Muse Spark 1.3
