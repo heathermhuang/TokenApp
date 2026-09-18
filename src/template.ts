@@ -2380,7 +2380,7 @@ const PROVIDER_URLS = {
   suno:                 'https://suno.com/',
   elevenlabs:           'https://elevenlabs.io/',
   kling:                'https://kling.ai/',
-  runway:               'https://runwayml.com/',
+  runway:               'https://runway.com/',
   // App builders / agents
   replit:               'https://replit.com/',
   lovable:              'https://lovable.dev/',

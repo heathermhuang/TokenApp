@@ -201,14 +201,18 @@ headline finding. Say so loudly in the report.
   "fix" 21 down to 18 unless Microsoft makes it the standing rate.
 - **Windsurf feature string `Free SWE-2 use through Oct 10, 2026`** is dated. The October run should
   check whether the free period ended or was extended, and update or drop the string.
-- **v0 Plus shows `$30` beside a struck-through `$90`**, with no promo label. The file keeps $30 and is
-  unstamped. Decide whether $90 is list price.
+- **v0 Plus shows `$30` beside a struck-through `$90`.** RESOLVED 2026-09-18: v0.app/docs/pricing lists
+  "$30/user/month", which is also what the card charges. The $90 is unexplained and appears in no doc, so it is
+  not recorded. Read the docs page, not just the pricing card.
 - **Replit's free Starter card is gone** from the pricing page. The plan is still documented at
   docs.replit.com/billing/plans/starter-plan ("all at no cost"), so source it there.
 - **`grok.com/supergrok`** (the only page pricing SuperGrok Lite, Heavy and annual) is Cloudflare-gated.
   If it opens up, those three numbers can finally be re-read.
-- **meta-ai "Muse Spark 1.1" and qwen-chat "Qwen3.7"** are probably stale (the catalogue has Muse Spark 1.3
-  and Qwen 3.8), but neither vendor names a version publicly. Look for a vendor source.
+- **Model sources for free-only entries.** qwen-chat: Qwen Studio's model picker (chat.qwen.ai, visible
+  logged out) names its models. meta-ai: developer.meta.com lists the current Muse Spark version but not which
+  one the Meta AI app runs, so the entry deliberately names no version. Keep it that way until Meta says.
+- **Runway's visible pricing text omits models it still offers.** Veo 3.1 is only in the page's embedded copy
+  (search the HTML for "third-party models like"). Do not drop a model because the rendered text lacks it.
 - **`ernie-bot`'s stored URL is drifting**: `yiyan.baidu.com` now 302s to
   `wenxin.baidu.com` (百度文心助手). It still resolves, so it was left alone — a rename is a
   product judgement a redirect does not prove. Revisit if the redirect breaks.
