@@ -37,6 +37,12 @@ Tools this run needs: `preview_start`, `resize_window`, `navigate`, `get_page_te
 Approve them once via a supervised **Run now**, or add them to settings, before relying on
 the scheduled run.
 
+**Run from a clone outside `~/Documents`.** That folder is iCloud-managed, and evicted
+(`dataless`) files make git hang rather than fail. The 2026-09-01 run stalled ten minutes in,
+during setup, and produced nothing. On 2026-09-18, 521 `.git` files were dataless and
+`git fetch` hung for minutes. Check with `ls -lO` (evicted files show `dataless`). If the
+working tree is evicted, `git clone` from origin into a non-iCloud directory and work there.
+
 ## Hard stops — these are not negotiable
 
 - **No `git push`. No PR. No `npm run deploy`. No `POST /api/refresh`.** The run ends with
@@ -102,11 +108,12 @@ and read each state. A price you cannot see may be one click away on the same UR
 |---|---|
 | **Kling** | The `$6.99` shown against Standard is a **first-month promo on the MONTHLY plan**, not the annual price. Real annual is $79.20/yr → $6.60/mo. |
 | **Manus** | Prices render as **animated digit rollers**. Two failure modes, and the fix differs. **Screenshot**: capture before they settle and you read `$209` for a tier priced `$167` — wait, then re-capture. **Text extraction**: `get_page_text` returns `$ 0 1 2 3 4 5 6 7 8 9 0 1 …` — every digit lives in the DOM permanently and a CSS transform picks the visible one, so **waiting never helps** and a naive `\$(\d+)` reads **`$0`**, i.e. every tier free. Never text-extract Manus prices; read the rendered value. |
-| **Cursor** | `resize_window` with a **preset** does not clear a 0×0 viewport — pass explicit `width`/`height`. The page also renders a **hidden mobile duplicate of every pricing radio** (measured: 6 hidden at 0×0 shadowing 6 visible); a synthetic click lands on the invisible one and changes nothing. Click the visible desktop control. Tiers are now **nested segmented controls** (Individual → Pro/Pro+/Ultra, Teams → Standard/Premium), so there are three toggle levels, not one. |
+| **Cursor** | `resize_window` with a **preset** does not clear a 0×0 viewport — pass explicit `width`/`height`. The page also renders a **hidden mobile duplicate of every pricing radio** (measured: 6 hidden at 0×0 shadowing 6 visible); a synthetic click lands on the invisible one and changes nothing. Click the visible desktop control. Tiers are now **nested segmented controls** (Individual → Pro/Pro+/Ultra, Teams → Standard/Premium), so there are three toggle levels, not one. On 2026-09-18 the hidden duplicates were **gone** (7 radios, all visible). Keep enumerating: they may come back. |
 | **Duplicate controls — ALL vendors** | Cursor's decoys are 0×0, so filtering on size finds them. **Kling's are not**: it renders two Yearly/Monthly pairs (y≈132 and y≈1534) and **both report non-zero dimensions**, so the size filter silently fails and only position discriminates. Therefore: **enumerate every matching control and assert how many exist**, then click the topmost visible one. Never `querySelector` the first match. |
 | **Suno** | The page defaults to the **annual** toggle. Read which toggle is active before recording a "monthly" price. |
-| **ChatGPT** | `openai.com/chatgpt/pricing` geolocates to **SGD**. Tier names, structure and model names are readable; the **USD figures are not sourceable from it**. `chatgpt.com/pricing` sits behind a Cloudflare interstitial — do not work around it. |
-| **z.ai** | The GLM model list appears only in `<title>`/`<meta keywords>` — the keywords tag is SEO stuffing. The rendered tiers say only "latest flagship models". Do not treat an SEO tag as a published per-plan model list. |
+| **ChatGPT** | `chatgpt.com/pricing` sits behind a Cloudflare interstitial, and since 2026-09-18 so does `openai.com/chatgpt/pricing`, **even in a real browser** (it used to serve SGD). Do not work around either. **Model-per-plan is sourceable** from the OpenAI Help Center, which loads in the browser but 403s to curl. Article 20001354, "GPT-5.6 and GPT-6 Pro in ChatGPT", and the ChatGPT release notes both work. The USD prices are still not sourceable. |
+| **z.ai** | The GLM model list appears only in `<title>`/`<meta keywords>`. The keywords tag is SEO stuffing, and the rendered tiers say only "latest flagship models", so do not treat an SEO tag as a per-plan model list. **Pricing is now a Monthly / Quarterly (20% off) / Yearly (30% off) toggle that defaults to Yearly.** Read Monthly for `monthlyPrice` and Yearly for `annualMonthlyPrice`. The 30% was a "standing promo" until 2026-08-17 and is a cadence discount now. The **Team** tab has per-seat Standard and Premium. |
+| **Perplexity** | `/pro` shows only annual equivalents and has no toggle. Monthly Pro comes from the page's own copy ("First month free, then $20/month"); Max comes from help article 11680686 ("$200/monthly or $2000/annually"). Enterprise prices sit in a **Framer FAQ accordion** that will not open while the Browser pane is hidden. The answer text is in the page's JS bundle, so fetch the `modulepreload` scripts and search for "per user per year". Help article 11187416 corroborates. The model cards (tagged "New") disagree with the page's own FAQ: use the cards and report the conflict. |
 
 ## Pages that need a real browser (fetch-only will fail)
 
@@ -119,6 +126,7 @@ Use the browser tools for these. `~/.browser-use-env/bin/python` has Playwright 
 ## The entries that defeat verification — check, but expect these outcomes
 
 (Ten entries across six rows — the last row groups five. Count entries, not rows.)
+Rows marked **RESOLVED** are no longer dead ends. Verify them like any other entry.
 
 Do not burn the budget rediscovering these. Confirm quickly, then move on.
 
@@ -126,9 +134,9 @@ Do not burn the budget rediscovering these. Confirm quickly, then move on.
 |---|---|
 | `chatgpt` | SGD geolocation; USD not sourceable from the pricing page |
 | `github-copilot` | Annual is **discontinued** (legacy since 2026-06-01) — annual == monthly is correct and sourced |
-| `mistral-lechat` | Page shows monthly only; annual 11.99/19.99 unsourced |
+| `mistral-lechat` | **RESOLVED 2026-09-18.** The page still shows monthly only, but help.mistral.ai article 455205 states "Annual billing includes a 20% discount". 11.99 and 19.99 are 20% off $14.99 and $24.99. Re-check the rate |
 | `microsoft-copilot` | **NO LONGER a dead end — it is the one member of this table with real USD prices that move.** The 08-17 "not on this page" was wrong: M365 Premium and M365 Copilot sit behind the **Individual** / **Enterprise** tabs. Read every tab. |
-| `kimi` | `www.kimi.com/pricing` **redirects to root** — the USD ladder cannot be re-read |
+| `kimi` | **RESOLVED 2026-09-18.** `/pricing` still redirects to root, but the ladder is at **`www.kimi.com/membership/pricing`** (paid tiers renamed Plus/Pro/Max/Ultra, plus a Business tab). Verify it like any other entry |
 | `hailuo-ai` | `hailuoai.video/subscribe` requires **sign-in**; only a $9.99 promo banner is public. **`curl` returns HTTP 200 — that is a MIRAGE.** The 625KB SSR shell ships before a client-side redirect to root, and the prices inside it are a stale help-article blob that **contradicts itself** (one section calls `$54.99` Pro monthly, another calls it `$34.99`) and describes `$63.99` as a *monthly promo* — the exact value the file stores as Master's *annual*. Confirm in a real browser; never price this entry from curl output. |
 | `ernie-bot`, `doubao`, `deepseek`, `qwen-chat`, `meta-ai` | Free-tier-only entries with no USD price that can drift |
 
@@ -187,10 +195,20 @@ headline finding. Say so loudly in the report.
 
 ## Watch list — dated, check these first
 
-- **Copilot Business `$18` promo expires Sep 2026** — the month this task first fires. The
-  file stores the **$21 list** price (corrected 2026-08-18, because $18 is a promotion and
-  this routine records list). Confirm whether $18 lapsed, and do **not** "fix" the 21 back
-  down to 18 unless Microsoft has made it the standing rate.
+- **Copilot Business `$18` promo.** The page says *"available between July 1, 2026, and December
+  31, 2026"* and *"promotional pricing applies to the first year only"*. An earlier note said "expires Sep
+  2026" and was wrong. The file stores the **$21 list** price. Re-check in **January 2027**, and do **not**
+  "fix" 21 down to 18 unless Microsoft makes it the standing rate.
+- **Windsurf feature string `Free SWE-2 use through Oct 10, 2026`** is dated. The October run should
+  check whether the free period ended or was extended, and update or drop the string.
+- **v0 Plus shows `$30` beside a struck-through `$90`**, with no promo label. The file keeps $30 and is
+  unstamped. Decide whether $90 is list price.
+- **Replit's free Starter card is gone** from the pricing page. The plan is still documented at
+  docs.replit.com/billing/plans/starter-plan ("all at no cost"), so source it there.
+- **`grok.com/supergrok`** (the only page pricing SuperGrok Lite, Heavy and annual) is Cloudflare-gated.
+  If it opens up, those three numbers can finally be re-read.
+- **meta-ai "Muse Spark 1.1" and qwen-chat "Qwen3.7"** are probably stale (the catalogue has Muse Spark 1.3
+  and Qwen 3.8), but neither vendor names a version publicly. Look for a vendor source.
 - **`ernie-bot`'s stored URL is drifting**: `yiyan.baidu.com` now 302s to
   `wenxin.baidu.com` (百度文心助手). It still resolves, so it was left alone — a rename is a
   product judgement a redirect does not prove. Revisit if the redirect breaks.
