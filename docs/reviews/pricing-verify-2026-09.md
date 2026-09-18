@@ -194,14 +194,16 @@ The four items flagged above were chased to vendor sources on 2026-09-18.
 
 - **v0: `$30` is the list price.** v0.app/docs/pricing: "Plus : $30/user/month. For fast moving teams and
   collaboration. Business : $100/user/month." Its plan table reads "Price $0/month $20/month $30/user/month
-  $100/user/month Custom". "$90" appears nowhere in the docs, so the struck-through $90 on `/pricing` is a
-  marketing anchor. Nothing changed, and v0 is now **stamped** (20 stamped in total). The $20 "Premium" plan
+  $100/user/month Custom", and $30 is what the pricing card charges. "$90" appears nowhere in the docs. What
+  the struck-through $90 means is unexplained, so it is not called list price and not recorded. Nothing
+  changed, and v0 is now **stamped** (20 stamped in total). The $20 "Premium" plan
   "is in the process of being sunsetted and is no longer available to new users", so it stays absent.
 - **qwen-chat: the model picker is the source.** Qwen Studio's own picker (chat.qwen.ai, visible logged out)
   lists "Qwen3.7-Plus" (default), "Qwen3.8-Max — The flagship of Qwen3.8 model…" and "Qwen3.8-Omni-Flash".
-  The description and feature now name them. `underlyingModels` is unchanged: the catalogue has only the dated
-  `qwen3.8-max-0902` and the open-weights `qwen3.8-2.4t-a95b`, and picking one would be a guess (a code comment
-  says so). Not stamped: free-only.
+  The description and feature now name them. `underlyingModels` drops `qwen3.7-max`, which the picker no
+  longer lists (Codex review, P2). No 3.8 id was added: the catalogue has only the dated `qwen3.8-max-0902` and
+  the open-weights `qwen3.8-2.4t-a95b`, and picking one would be a guess (a code comment says so). Not stamped:
+  free-only.
 - **meta-ai: version dropped, not swapped.** developer.meta.com/ai/models/muse-spark/ is titled "Muse Spark 1.3
   | Meta" and lists 1.2 and 1.1 as older, so "1.1" was stale. No Meta page says which version the Meta AI app
   runs (meta.ai is behind sign-in), so the entry now says "Muse Spark models". A search-engine summary claimed

@@ -634,9 +634,10 @@ export const SUBSCRIPTIONS: Subscription[] = [
     category: 'chat',
     url: 'https://chat.qwen.ai',
     lastVerified: '2026-07-11',
-    // Qwen Studio's picker also offers Qwen3.8-Max, but the catalogue carries only the dated snapshot
-    // qwen3.8-max-0902 and the open-weights qwen3.8-2.4t-a95b; picking one would be a guess, so none is listed.
-    underlyingModels: ['qwen/qwen3.7-max', 'qwen/qwen3.7-plus'],
+    // Qwen Studio's picker (2026-09-18) offers Qwen3.7-Plus, Qwen3.8-Max and Qwen3.8-Omni-Flash. Qwen3.7-Max is no
+    // longer listed, so it was dropped. No 3.8 id is listed either: the catalogue carries only the dated snapshot
+    // qwen3.8-max-0902 and the open-weights qwen3.8-2.4t-a95b, and picking one would be a guess.
+    underlyingModels: ['qwen/qwen3.7-plus'],
     tiers: [
       {
         name: 'Free',

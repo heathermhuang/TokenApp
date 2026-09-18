@@ -202,7 +202,8 @@ headline finding. Say so loudly in the report.
 - **Windsurf feature string `Free SWE-2 use through Oct 10, 2026`** is dated. The October run should
   check whether the free period ended or was extended, and update or drop the string.
 - **v0 Plus shows `$30` beside a struck-through `$90`.** RESOLVED 2026-09-18: v0.app/docs/pricing lists
-  "$30/user/month", and $90 is only a marketing anchor. Read the docs page, not the pricing card.
+  "$30/user/month", which is also what the card charges. The $90 is unexplained and appears in no doc, so it is
+  not recorded. Read the docs page, not just the pricing card.
 - **Replit's free Starter card is gone** from the pricing page. The plan is still documented at
   docs.replit.com/billing/plans/starter-plan ("all at no cost"), so source it there.
 - **`grok.com/supergrok`** (the only page pricing SuperGrok Lite, Heavy and annual) is Cloudflare-gated.
