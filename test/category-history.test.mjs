@@ -167,9 +167,9 @@ test('a category board with 7 days of history reports them and aggregates', asyn
 });
 
 test('other categories and the global board do not pad a category count', async () => {
-  // Guards the fix that "works" by dropping the category predicate: these extra
+  // Guards the fix that "works" by dropping the category predicate: the other
   // rows sit on days the target category has no history for, so ignoring the
-  // predicate would report 9 days and aggregate three different apps.
+  // predicate would count days this category never charted on.
   const rows = [
     ...appRows('Cline', 5, { category: CAT }),
     ...appRows('Cursor', 4, { category: 'ide-extension', endOffsetDays: 5 }),
@@ -207,4 +207,41 @@ test('the global board still counts its own rows', async () => {
   assert.equal(r.appsHistoryDays, 7, 'category rows must not pad the global count');
   assert.equal(r.topApps.week.length, 1);
   assert.equal(r.topApps.week[0].title, 'Roo');
+});
+
+test('category rows INSIDE the window do not pad the global count', async () => {
+  // The control above cannot see `category IS NULL` go missing: its category
+  // rows are 7-10 days old, so the cutoff excludes them anyway and dropping the
+  // predicate changes nothing (Codex review, P2). Here the category rows sit
+  // inside the window, on days the global board never charted, so only the
+  // predicate itself keeps them out of the count.
+  const rows = [
+    ...appRows('Roo', 5, { category: null }),
+    ...appRows('Cline', 7, { category: CAT }),
+  ];
+  const r = await getRankings(env(rows), 'week', undefined, null);
+  assert.equal(r.appsHistoryDays, 5, 'only global rows count toward the global board');
+  assert.equal(r.topApps.week.length, 0, '5 global days is short of 7, so it stays gated');
+});
+
+test('history outside the window does not unlock the board', async () => {
+  // Nothing else here can see `snapshot_at >= ?` go missing: every other fixture
+  // row sits inside its window (Codex review, P2). These 10 days of cli-agent
+  // history ended 20 days ago, so a board that renders from them is reporting a
+  // "7D" total built out of three-week-old snapshots.
+  const r = await getRankings(env(appRows('Cline', 10, { category: CAT, endOffsetDays: 20 })), 'week', undefined, CAT);
+  assert.equal(r.appsHistoryDays, 0, 'stale days must not count toward the window');
+  assert.equal(r.topApps.week.length, 0);
+});
+
+test('only the in-window days of a longer category history count', async () => {
+  // Same predicate from the other side: recent history passes the gate, but the
+  // older run must not inflate the count past what the window holds.
+  const rows = [
+    ...appRows('Cline', 7, { category: CAT }),
+    ...appRows('Cline', 10, { category: CAT, endOffsetDays: 20 }),
+  ];
+  const r = await getRankings(env(rows), 'week', undefined, CAT);
+  assert.equal(r.appsHistoryDays, 7, 'the 10 stale days must not be counted');
+  assert.equal(r.topApps.week.length, 1);
 });
