@@ -460,11 +460,15 @@ async function aggregateRange(env: Env, kind: 'model' | 'app', days: number, cat
 // snapshots would label a 1- or 2-day total as a "7D"/"30D" total — fake.
 async function countAppDaysInRange(env: Env, days: number, category: string | null = null): Promise<number> {
   const cutoff = new Date(Date.now() - days * 86400_000).toISOString();
-  const catClause = category == null ? 'category IS NULL' : 'category = ?';
+  // The category clause goes AFTER the window, matching the bind order below —
+  // the same shape aggregateRange uses. With `category = ?` placed first, D1 read
+  // the binds positionally and compared the category column against the cutoff
+  // timestamp, so every category board counted 0 days and stayed gated forever.
+  const catClause = category == null ? ' AND category IS NULL' : ' AND category = ?';
   const binds: unknown[] = [cutoff];
   if (category != null) binds.push(category);
   const row = await env.RANKINGS_DB
-    .prepare(`SELECT COUNT(DISTINCT snapshot_day) AS n FROM rankings_snapshots WHERE kind = 'app' AND period = 'day' AND ${catClause} AND snapshot_at >= ?`)
+    .prepare(`SELECT COUNT(DISTINCT snapshot_day) AS n FROM rankings_snapshots WHERE kind = 'app' AND period = 'day' AND snapshot_at >= ?${catClause}`)
     .bind(...binds)
     .first<{ n: number }>();
   return Number(row?.n) || 0;
