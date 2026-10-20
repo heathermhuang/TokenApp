@@ -243,8 +243,13 @@ function faqJsonLd(qs: { q: string; a: string }[]): string {
  * prices directly. Taking `endpoints[0]` would publish a range on one basis while
  * the hosts table shows another.
  *
- * The range is gated at 2 priced hosts, the same threshold `hostsPanel` renders on,
- * so the markup never claims a spread the page itself does not show.
+ * The range describes the rows `hostsPanel` actually RENDERS, on its own predicate —
+ * a non-null BLENDED price, two or more of them. Filtering on a non-null input price
+ * instead is the near-miss: `blend()` returns null when either side is missing, so a
+ * host quoting input but no output passes an input-price filter while the hosts table
+ * drops it. That published a 1-9 spread on a page showing no hosts table at all and
+ * a single $2.50 (caught in review, 2026-10-20). Google reads markup against visible
+ * content, so the two gates have to be the same gate, not merely the same threshold.
  */
 function offersJsonLd(
   m: NormalizedModel,
@@ -254,21 +259,28 @@ function offersJsonLd(
   const base = {
     '@type': 'AggregateOffer',
     priceCurrency: 'USD',
-    availability: 'https://schema.org/InStock',
+    // Derived, not asserted: the catalogue carries retired models, and publishing
+    // InStock for one is exactly the kind of unverified claim this file avoids.
+    availability: m.isDeprecated
+      ? 'https://schema.org/Discontinued'
+      : 'https://schema.org/InStock',
     description: 'USD per 1M input tokens',
     url,
   };
 
-  const hostPrices = (eps?.endpoints ?? [])
+  // Second filter is a type guard, not a second rule: a non-null blended price
+  // implies a non-null input price, since blend() needs both.
+  const shownPrices = (eps?.endpoints ?? [])
+    .filter((e) => e.blendedPer1M !== null)
     .map((e) => e.inputPer1M)
     .filter((p): p is number => p !== null);
 
-  if (hostPrices.length >= 2) {
+  if (shownPrices.length >= 2) {
     return {
       ...base,
-      lowPrice: priceStr(Math.min(...hostPrices)),
-      highPrice: priceStr(Math.max(...hostPrices)),
-      offerCount: hostPrices.length,
+      lowPrice: priceStr(Math.min(...shownPrices)),
+      highPrice: priceStr(Math.max(...shownPrices)),
+      offerCount: shownPrices.length,
     };
   }
   if (m.inputPer1M !== null) return { ...base, lowPrice: priceStr(m.inputPer1M) };
@@ -514,14 +526,15 @@ export function getModelHtml(params: {
       name: disp,
       description: m.description?.slice(0, 300) ?? `${disp} API pricing and benchmarks`,
       brand: { '@type': 'Brand', name: prov.displayName },
-      // There is no product photograph to offer — the product is an API. Raster
-      // first because /og.png is a 1200x630 PNG every crawler supports, while the
-      // brand mark is a 24px SVG (a generated initial tile for unmapped slugs, so
-      // the URL always answers 200). Both are reachable: robots.txt allows all.
-      image: [
-        'https://token.app/og.png',
-        `https://token.app/logo/${encodeURIComponent(canonicalLogoSlug(m.providerId))}.svg?v=${LOGO_ASSET_VERSION}`,
-      ],
+      // There is no product photograph to offer — the product is an API — so this is
+      // the provider's brand mark, which at least depicts the thing named. /og.png was
+      // here first as a raster hedge and is gone: it is the SITE banner, carrying
+      // token.app branding and site-wide counts, so shipping it as 469 different
+      // models' product image is a relevance problem Google's structured-data policy
+      // speaks to, and the hedge bought nothing once Google's own image docs confirmed
+      // SVG is supported. The route answers 200 for every slug (generated initial tile
+      // when unmapped), and robots.txt allows all, so this URL is always crawlable.
+      image: `https://token.app/logo/${encodeURIComponent(canonicalLogoSlug(m.providerId))}.svg?v=${LOGO_ASSET_VERSION}`,
       url,
       ...(offers ? { offers } : {}),
     })],

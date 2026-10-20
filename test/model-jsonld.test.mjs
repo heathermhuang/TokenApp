@@ -78,7 +78,7 @@ function productLd(endpoints) {
 test('price bounds come from input prices, not the blended sort order', () => {
   // Ascending by BLENDED (3:1), which is how ModelEndpoints is documented to arrive.
   // Input prices deliberately disagree with that order: the cheapest blended host is
-  // the DEAREST on input, so reading endpoints[0]/endpoints.at(-1) yields 9 and 1 —
+  // the DEAREST on input, so reading endpoints[0]/endpoints.at(-1) yields 9 and 4 —
   // a range that is both wrong and inverted.
   const eps = {
     modelId: MODEL.id, fetchedAt: '2026-10-20T00:00:00Z',
@@ -117,9 +117,10 @@ test('never fabricates aggregateRating or review', () => {
 
 test('carries the critical image field and an availability', () => {
   const prod = productLd(null);
-  assert.ok(Array.isArray(prod.image) && prod.image.length >= 1);
-  assert.equal(prod.image[0], 'https://token.app/og.png');
-  assert.match(prod.image[1], /^https:\/\/token\.app\/logo\/openai\.svg\?v=\w+$/);
+  // The site banner (/og.png) was deliberately dropped: it carries token.app branding
+  // and site-wide counts, so it depicts the site, not this model.
+  assert.match(prod.image, /^https:\/\/token\.app\/logo\/openai\.svg\?v=\w+$/);
+  assert.ok(!JSON.stringify(prod.image).includes('og.png'), 'no site banner as product image');
   assert.equal(prod.offers.availability, 'https://schema.org/InStock');
   assert.equal(prod.offers.priceCurrency, 'USD');
 });
@@ -150,6 +151,100 @@ test('unpriced hosts do not count toward the gate or the bounds', () => {
   const o = productLd(eps).offers;
   assert.equal(o.lowPrice, '2.5', 'one priced host is not a range');
   assert.ok(!('offerCount' in o));
+});
+
+// ── Markup must describe what the page renders ───────────────────────────────
+
+test('a published range means the hosts table is on the page', () => {
+  // The near-miss this guards: blend() returns null when EITHER side is missing, so a
+  // host quoting input but no output passes an input-price filter while hostsPanel
+  // drops it. Filtering on inputPer1M published lowPrice 1 / highPrice 9 / offerCount 2
+  // on a page with no hosts table at all. Google reads markup against visible content,
+  // so this asserts the HTML and the JSON-LD agree rather than trusting one gate.
+  const eps = {
+    modelId: MODEL.id, fetchedAt: '',
+    endpoints: [
+      endpoint({ inputPer1M: 1, outputPer1M: 1, blendedPer1M: 1 }),
+      endpoint({ inputPer1M: 9, outputPer1M: null, blendedPer1M: null }),
+    ],
+  };
+  const html = getModelHtml({
+    model: MODEL, all: [MODEL], benchmarks: null, subscriptions: [], endpoints: eps,
+  });
+  const o = JSON.parse(
+    [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
+      .map((mm) => mm[1].replace(/\\u003c/g, '<'))
+      .find((j) => j.includes('"Product"')),
+  ).offers;
+
+  assert.ok(!html.includes('Where to run'), 'fixture must hide the hosts table');
+  assert.ok(!('highPrice' in o), 'no spread may be published without the table');
+  assert.ok(!('offerCount' in o), 'no count may be published without the table');
+  assert.equal(o.lowPrice, '2.5', 'falls back to the price the page header shows');
+});
+
+// ── Counting and filtering ───────────────────────────────────────────────────
+
+test('offerCount counts the priced rows, not every endpoint', () => {
+  // 3 endpoints, 2 of them priced: `eps.endpoints.length` would say 3.
+  const eps = {
+    modelId: MODEL.id, fetchedAt: '',
+    endpoints: [
+      endpoint({ inputPer1M: 2, outputPer1M: 2, blendedPer1M: 2 }),
+      endpoint({ inputPer1M: 6, outputPer1M: 6, blendedPer1M: 6 }),
+      endpoint({ inputPer1M: null, outputPer1M: null, blendedPer1M: null }),
+    ],
+  };
+  const o = productLd(eps).offers;
+  assert.equal(o.offerCount, 2, 'an unpriced row is not an offer');
+  assert.equal(o.lowPrice, '2');
+  assert.equal(o.highPrice, '6');
+});
+
+test('a genuinely free host at $0 is kept, not filtered as falsy', () => {
+  // `p !== null` and a truthiness filter differ at exactly one value, and the
+  // catalogue really does carry free models. Dropping 0 would publish the
+  // second-cheapest host as the floor.
+  const eps = {
+    modelId: MODEL.id, fetchedAt: '',
+    endpoints: [
+      endpoint({ inputPer1M: 0, outputPer1M: 0, blendedPer1M: 0 }),
+      endpoint({ inputPer1M: 5, outputPer1M: 5, blendedPer1M: 5 }),
+    ],
+  };
+  const o = productLd(eps).offers;
+  assert.equal(o.lowPrice, '0', 'free is a price');
+  assert.equal(o.offerCount, 2);
+});
+
+test('the fallback reads the catalogue price rather than a constant', () => {
+  // Pins the fallback to m.inputPer1M. The other fallback cases all use 2.5, so a
+  // hard-coded '2.5' passed them; this model is priced differently on purpose.
+  const dear = { ...MODEL, slug: 'dear-model', inputPer1M: 13.75 };
+  const html = getModelHtml({
+    model: dear, all: [dear], benchmarks: null, subscriptions: [], endpoints: null,
+  });
+  const o = JSON.parse(
+    [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
+      .map((mm) => mm[1].replace(/\\u003c/g, '<'))
+      .find((j) => j.includes('"Product"')),
+  ).offers;
+  assert.equal(o.lowPrice, '13.75');
+});
+
+// ── Availability is derived, not asserted ────────────────────────────────────
+
+test('a retired model is not advertised as in stock', () => {
+  const dead = { ...MODEL, slug: 'retired-model', isDeprecated: true };
+  const html = getModelHtml({
+    model: dead, all: [dead], benchmarks: null, subscriptions: [], endpoints: null,
+  });
+  const o = JSON.parse(
+    [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
+      .map((mm) => mm[1].replace(/\\u003c/g, '<'))
+      .find((j) => j.includes('"Product"')),
+  ).offers;
+  assert.equal(o.availability, 'https://schema.org/Discontinued');
 });
 
 // ── Degenerate prices ────────────────────────────────────────────────────────
