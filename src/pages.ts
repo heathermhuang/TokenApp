@@ -15,6 +15,7 @@
 
 import type { NormalizedModel, Subscription, SubscriptionTier, BenchmarksPayload, ModelBenchmarks, ModelEndpoints, ModelUsage } from './types';
 import { getProvider, PROVIDER_PAGE_SET, canonicalProviderId } from './providers';
+import { canonicalLogoSlug, LOGO_ASSET_VERSION } from './logos';
 
 // ── Shared formatting ─────────────────────────────────────────────────────────
 
@@ -217,6 +218,84 @@ function faqJsonLd(qs: { q: string; a: string }[]): string {
   });
 }
 
+/**
+ * `offers` for a model page — an AggregateOffer, and deliberately not an Offer.
+ *
+ * The same model is resold by many hosts at prices differing by multiples, so the
+ * aggregate IS the honest shape (schema.org: "a product that is being sold by
+ * multiple merchants"). It is also what keeps these pages out of Google's MERCHANT
+ * LISTING validation, which requires a plain `Offer` because it assumes the page
+ * owner is the seller: "Only pages where a shopper can purchase a product are
+ * eligible for merchant listing experiences". We sell nothing and link out, so we
+ * can never qualify — a bare `Offer` bought us a critical Search Console error
+ * ("Missing field image", reported 2026-10-20) against a feature we cannot have.
+ * Product snippets accept an AggregateOffer and are the report that applies to an
+ * aggregator; there, `name` plus any offer is already the whole requirement.
+ *
+ * NOT fabricated, and never to be: `aggregateRating` and `review` are the other two
+ * fields Search Console asks for. We hold no ratings and no reviews, and inventing
+ * them would breach Google's own policy — the same class of unfounded claim that
+ * `leadingBenchmark()` exists to gate. `shippingDetails` and `hasMerchantReturnPolicy`
+ * are likewise inapplicable: nothing ships and nothing is returned.
+ *
+ * `ModelEndpoints.endpoints` is sorted by BLENDED price, so the first row is not
+ * necessarily the cheapest INPUT price — the bounds are computed over the input
+ * prices directly. Taking `endpoints[0]` would publish a range on one basis while
+ * the hosts table shows another.
+ *
+ * The range describes the rows `hostsPanel` actually RENDERS, on its own predicate —
+ * a non-null BLENDED price, two or more of them. Filtering on a non-null input price
+ * instead is the near-miss: `blend()` returns null when either side is missing, so a
+ * host quoting input but no output passes an input-price filter while the hosts table
+ * drops it. That published a 1-9 spread on a page showing no hosts table at all and
+ * a single $2.50 (caught in review, 2026-10-20). Google reads markup against visible
+ * content, so the two gates have to be the same gate, not merely the same threshold.
+ */
+function offersJsonLd(
+  m: NormalizedModel,
+  eps: ModelEndpoints | null,
+  url: string,
+): Record<string, unknown> | null {
+  const base = {
+    '@type': 'AggregateOffer',
+    priceCurrency: 'USD',
+    // Derived, not asserted: the catalogue carries retired models, and publishing
+    // InStock for one is exactly the kind of unverified claim this file avoids.
+    availability: m.isDeprecated
+      ? 'https://schema.org/Discontinued'
+      : 'https://schema.org/InStock',
+    description: 'USD per 1M input tokens',
+    url,
+  };
+
+  // Second filter is a type guard, not a second rule: a non-null blended price
+  // implies a non-null input price, since blend() needs both.
+  const shownPrices = (eps?.endpoints ?? [])
+    .filter((e) => e.blendedPer1M !== null)
+    .map((e) => e.inputPer1M)
+    .filter((p): p is number => p !== null);
+
+  if (shownPrices.length >= 2) {
+    return {
+      ...base,
+      lowPrice: priceStr(Math.min(...shownPrices)),
+      highPrice: priceStr(Math.max(...shownPrices)),
+      offerCount: shownPrices.length,
+    };
+  }
+  if (m.inputPer1M !== null) return { ...base, lowPrice: priceStr(m.inputPer1M) };
+  return null;   // no price anywhere: omit `offers` rather than publish a blank one
+}
+
+/**
+ * Prices are carried per-1M, i.e. a per-token float multiplied by 1e6, which leaves
+ * binary noise: $0.07 arrives as 0.07000000000000001. Harmless on screen (fmtP
+ * rounds) but it would ship into the markup verbatim.
+ */
+function priceStr(n: number): string {
+  return String(Number(n.toFixed(6)));
+}
+
 function faqHtml(qs: { q: string; a: string }[]): string {
   return qs.map((x, i) => `<details${i === 0 ? ' open' : ''}>
       <summary>${esc(x.q)}</summary>
@@ -259,6 +338,7 @@ export function getModelHtml(params: {
   const mb = benchOf(benchmarks, m.id);
   const url = `https://token.app/model/${encodeURIComponent(m.slug)}`;
   const disp = shortName(m.name);
+  const offers = offersJsonLd(m, endpoints, url);
 
   // ── Cheaper-and-at-least-as-good alternatives.
   // This is the recommendation only a price+quality site can make, and it is
@@ -446,16 +526,17 @@ export function getModelHtml(params: {
       name: disp,
       description: m.description?.slice(0, 300) ?? `${disp} API pricing and benchmarks`,
       brand: { '@type': 'Brand', name: prov.displayName },
+      // There is no product photograph to offer — the product is an API — so this is
+      // the provider's brand mark, which at least depicts the thing named. /og.png was
+      // here first as a raster hedge and is gone: it is the SITE banner, carrying
+      // token.app branding and site-wide counts, so shipping it as 469 different
+      // models' product image is a relevance problem Google's structured-data policy
+      // speaks to, and the hedge bought nothing once Google's own image docs confirmed
+      // SVG is supported. The route answers 200 for every slug (generated initial tile
+      // when unmapped), and robots.txt allows all, so this URL is always crawlable.
+      image: `https://token.app/logo/${encodeURIComponent(canonicalLogoSlug(m.providerId))}.svg?v=${LOGO_ASSET_VERSION}`,
       url,
-      ...(m.inputPer1M !== null ? {
-        offers: {
-          '@type': 'Offer',
-          priceCurrency: 'USD',
-          price: String(m.inputPer1M),
-          description: 'USD per 1M input tokens',
-          url,
-        },
-      } : {}),
+      ...(offers ? { offers } : {}),
     })],
     body,
   });
