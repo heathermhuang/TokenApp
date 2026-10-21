@@ -283,7 +283,16 @@ function offersJsonLd(
       offerCount: shownPrices.length,
     };
   }
-  if (m.inputPer1M !== null) return { ...base, lowPrice: priceStr(m.inputPer1M) };
+  // A NEGATIVE catalogue price is OpenRouter's sentinel for "depends on whatever this
+  // routes to" (-1 per token, so -1000000 per 1M), and it reaches 7 real models:
+  // openrouter/auto, /auto-beta, /fusion, /pareto-code, /bodybuilder, nvidia/switchyard
+  // and typesafe/jev-router. A negative lowPrice is invalid markup, so a model with no
+  // knowable price publishes no `offers` at all — same as one with no price field.
+  // Found by sweeping all 467 live pages; three spot-checked pages did not show it.
+  // Endpoint prices need no such guard: usdPerM() already nulls anything below zero.
+  if (m.inputPer1M !== null && m.inputPer1M >= 0) {
+    return { ...base, lowPrice: priceStr(m.inputPer1M) };
+  }
   return null;   // no price anywhere: omit `offers` rather than publish a blank one
 }
 

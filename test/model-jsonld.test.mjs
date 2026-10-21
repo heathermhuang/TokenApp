@@ -261,6 +261,23 @@ test('omits offers entirely when there is no price at all', () => {
   assert.ok(!('offers' in prod), 'a blank offer is worse than none');
 });
 
+test("a router's negative sentinel price publishes no offer", () => {
+  // OpenRouter encodes "price depends on whatever this routes to" as -1 per token,
+  // which lands as -1000000 per 1M. Seven real models carry it (openrouter/auto,
+  // /auto-beta, /fusion, /pareto-code, /bodybuilder, nvidia/switchyard,
+  // typesafe/jev-router) and a `!== null` guard let every one of them publish
+  // lowPrice "-1000000" to crawlers. Caught only by sweeping all 467 live pages.
+  const router = { ...MODEL, slug: 'auto', inputPer1M: -1000000, outputPer1M: -1000000 };
+  const html = getModelHtml({
+    model: router, all: [router], benchmarks: null, subscriptions: [], endpoints: null,
+  });
+  const prod = [...html.matchAll(
+    /<script type="application\/ld\+json">([\s\S]*?)<\/script>/g,
+  )].map((mm) => JSON.parse(mm[1].replace(/\\u003c/g, '<')))
+    .find((b) => b['@type'] === 'Product');
+  assert.ok(!('offers' in prod), 'an unknowable price is not a price');
+});
+
 test('trims the per-1M float noise out of the markup', () => {
   // $0.00000007/token x 1e6 lands as 0.07000000000000001 in IEEE754.
   const eps = {
