@@ -193,11 +193,11 @@ function shell(o: {
   <meta property="og:type" content="article" />
   <meta property="og:url" content="${esc(o.canonical)}" />
   <meta property="og:site_name" content="token.app" />
-  <meta property="og:image" content="https://token.app/og.png" />
+  <meta property="og:image" content="https://token.app/og.png?v=2" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:image" content="https://token.app/og.png" />
+  <meta name="twitter:image" content="https://token.app/og.png?v=2" />
   <link rel="canonical" href="${esc(o.canonical)}" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔷</text></svg>" />
   ${ld}

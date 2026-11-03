@@ -84,13 +84,13 @@ export function getHtml(params: {
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://token.app/" />
   <meta property="og:site_name" content="token.app" />
-  <meta property="og:image" content="https://token.app/og.png" />
+  <meta property="og:image" content="https://token.app/og.png?v=2" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="token.app — AI Pricing Tracker" />
   <meta name="twitter:description" content="Real-time token pricing and usage rankings for ${modelCount}+ AI models. Compare costs, context windows, subscriptions, and see trending models and agents by 24H/7D/30D usage." />
-  <meta name="twitter:image" content="https://token.app/og.png" />
+  <meta name="twitter:image" content="https://token.app/og.png?v=2" />
   <meta name="author" content="Measurable AI" />
   <link rel="canonical" href="https://token.app/" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔷</text></svg>" />
@@ -4763,11 +4763,11 @@ export function getProviderHtml(params: {
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://token.app/${encodeURIComponent(providerId)}" />
   <meta property="og:site_name" content="token.app" />
-  <meta property="og:image" content="https://token.app/og.png" />
+  <meta property="og:image" content="https://token.app/og.png?v=2" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:image" content="https://token.app/og.png" />
+  <meta name="twitter:image" content="https://token.app/og.png?v=2" />
   <link rel="canonical" href="https://token.app/${encodeURIComponent(providerId)}" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔷</text></svg>" />
   <script type="application/ld+json">
@@ -4889,7 +4889,7 @@ export function getAboutHtml(): string {
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://token.app/about" />
   <meta property="og:site_name" content="token.app" />
-  <meta property="og:image" content="https://token.app/og.png" />
+  <meta property="og:image" content="https://token.app/og.png?v=2" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <link rel="canonical" href="https://token.app/about" />
