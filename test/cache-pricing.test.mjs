@@ -242,3 +242,31 @@ test('a saving too small to show as a multiple is stated as a percentage', () =>
   assert.match(big, /20\.0x cheaper/);
   assert.doesNotMatch(big, /% cheaper/);
 });
+
+test('a negative cache price is rejected, but the prompt sentinel is NOT', () => {
+  // OpenRouter encodes "price depends on what this routes to" as -1/token. Seven
+  // models use it, and #45 shipped it live as lowPrice:"-1000000" in JSON-LD. A
+  // cache price has no such contract, and -1 reaching fmtPriceFine's sub-cent
+  // branch prints "$-1000000.0000".
+  const m = normalizeModel(raw({ prompt: '-1', completion: '-1', input_cache_read: '-1', input_cache_write: '-1' }));
+  assert.equal(m.cacheReadPer1M, null);
+  assert.equal(m.cacheWritePer1M, null);
+
+  // The guard must NOT widen to toMillion(): inputPer1M keeps the sentinel,
+  // because the offers guard added in #45 tests for exactly that value.
+  assert.equal(m.inputPer1M, -1000000);
+  assert.equal(m.outputPer1M, -1000000);
+});
+
+test('a non-finite cache price is rejected too', () => {
+  for (const bad of ['Infinity', '-Infinity', 'NaN', 'not-a-price']) {
+    const m = normalizeModel(raw({ input_cache_read: bad }));
+    assert.equal(m.cacheReadPer1M, null, `${bad} should normalize to null`);
+  }
+});
+
+test('the guard does not disturb ordinary cache prices', () => {
+  const m = normalizeModel(raw({ input_cache_read: '0.0000002', input_cache_write: '0' }));
+  assert.equal(m.cacheReadPer1M, 0.2);
+  assert.equal(m.cacheWritePer1M, 0);   // a real published zero still means free
+});

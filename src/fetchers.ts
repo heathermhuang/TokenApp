@@ -63,8 +63,21 @@ function toMillion(pricePerToken: string): number | null {
 // Cache prices are optional upstream. `?? '0'` is right for prompt/completion
 // (every model has them) but wrong here: it turns "not published" into "free",
 // which then sorts ahead of every real price. Absent stays null.
+//
+// Negatives and non-finites are rejected here, NOT in toMillion(). OpenRouter
+// encodes "price depends on what this routes to" as -1/token, and seven models
+// use it (openrouter/auto, /auto-beta, /fusion, /pareto-code, /bodybuilder,
+// nvidia/switchyard, typesafe/jev-router). `inputPer1M` must KEEP that -1000000:
+// the JSON-LD offers guard added in #45 tests for it, and widening toMillion()
+// would silently turn those seven into unpriced models everywhere. A cache price
+// has no such sentinel contract, so here the sentinel is simply not a price —
+// and letting one through would print "$-1000000.0000" via fmtPriceFine's
+// sub-cent branch, the same shape as the lowPrice:"-1000000" bug #45 shipped.
+// Matches usdPerM() in endpoints.ts, which has always rejected both.
 function toMillionOrNull(pricePerToken: string | undefined): number | null {
   if (pricePerToken === undefined || pricePerToken === '') return null;
+  const n = Number.parseFloat(pricePerToken);
+  if (!Number.isFinite(n) || n < 0) return null;
   return toMillion(pricePerToken);
 }
 
