@@ -1681,6 +1681,12 @@ export function getHtml(params: {
 
       /* Table: all columns visible, swipe right to see all */
       .table-wrap { padding: 0 0 32px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      /* Only the table runs edge to edge; the chart card and the table's meta line
+         keep the page's 16px gutter. */
+      .pareto-shell { padding: 0 16px 24px; overflow-x: visible; }
+      #api-section .table-meta { padding-left: 16px; padding-right: 16px; }
+      #api-section tbody td:first-child,
+      #api-section thead th:first-child .th-sort { padding-left: 16px; }
       table { min-width: 720px; table-layout: auto; }
       table th, table td { padding: 6px 8px; }
       /* Sortable headers delegate their padding to the inner button, so the tighter
