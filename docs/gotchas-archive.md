@@ -62,3 +62,9 @@ note redirects sessions that open in the stale `~/Documents` copy.
 
 - **Eviction, the settled diagnosis**: macOS leaves `dataless` files in `~/Documents`, and reads of them block on a download. Detect with `ls -lO`, or `find -flags +dataless`. **Without the `+`, `-flags dataless` is an EXACT match that misses `compressed,dataless` and reports 0.** This explains the undici `mixinBody` deploy failures and the preflight ETIMEDOUT (both archived; `docs/gotchas-archive.md`). `npm ci` repairs only `node_modules`. The old copy still holds the superseded local branch `pricing-verify/2026-08` and a packfile the August repair moved aside (kept).
 
+Moved 2026-11-03 — #41 shipped in September and `test/category-history.test.mjs`
+pins it with a positional D1 stub; the one rule worth keeping in view is left in
+`CLAUDE.md` as a pointer.
+
+- **Category 7D/30D boards work now** (#41). `countAppDaysInRange` listed `category = ?` before `snapshot_at >= ?` while binding `[cutoff, category]`, so D1 filled the placeholders positionally and counted 0 days: every category week/month board was gated from `3fd59c3` (2026-06-22) until now. The clause moved after the window, matching `aggregateRange`; the file's other three dynamic category clauses were audited and are correct. Live: cli-agent 7D went 0 apps → 20 (7 of 7 days), 30D reads 30 of 30, 11 of 13 categories populate, the short two stay gated, the global board is unchanged. `test/category-history.test.mjs` pins it with a D1 stub that maps each `?` by position, mutation-tested five ways.
+
