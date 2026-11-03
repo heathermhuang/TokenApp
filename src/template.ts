@@ -634,6 +634,32 @@ export function getHtml(params: {
       padding: 0 24px 48px;
     }
 
+    .unit-note { color: var(--text3); opacity: 0.75; }
+
+    /* The pricing table is the ONE section that outgrew the 1200px page container
+       once the Cached column made it ten wide (#47): 1219px of columns in a 1152px
+       content box. On desktop nothing clipped it, so the overflow widened the WHOLE
+       PAGE and every section scrolled sideways, with Modalities entirely past the
+       right edge. Three parts, all scoped to #api-section — .table-wrap also wraps
+       the pareto chart and market-share, which fit and must stay aligned:
+
+       1. overflow-x: auto, so at any width a too-wide table scrolls INSIDE itself and
+          the page never does. Safe because the thead is not sticky (only the nav is).
+       2. 10px instead of 12px horizontal cell padding on desktop: 40px across ten
+          columns. Inside min-width: 769px because these ID selectors would otherwise
+          outrank the mobile block's own 8px padding.
+       3. From 1232px, let the section grow past 1200px — capped at 1296px rather than
+          full-bleed, so the break-out reads as deliberate, not as a different page. */
+    #api-section { overflow-x: auto; }
+    @media (min-width: 769px) {
+      #api-section tbody td,
+      #api-section thead th:not([data-sort]),
+      #api-section thead th .th-sort { padding-left: 10px; padding-right: 10px; }
+    }
+    @media (min-width: 1232px) {
+      #api-section { max-width: min(1296px, calc(100vw - 32px)); }
+    }
+
     .table-meta {
       display: flex;
       justify-content: space-between;
@@ -1836,7 +1862,7 @@ export function getHtml(params: {
 <h2 class="sr-only">API Pricing</h2>
 <div class="table-wrap" id="api-section">
   <div class="table-meta">
-    <span><strong id="filtered-count">—</strong> models shown</span>
+    <span><strong id="filtered-count">—</strong> models shown <span class="unit-note">· prices in USD per 1M tokens</span></span>
     <span id="table-updated"></span>
   </div>
   <table>
@@ -1846,10 +1872,10 @@ export function getHtml(params: {
         <th scope="col" data-sort="provider" aria-sort="none"><button type="button" class="th-sort">Provider <span class="sort-icon" aria-hidden="true">↕</span></button></th>
         <th scope="col" data-sort="createdAt" class="sorted" aria-sort="descending"><button type="button" class="th-sort">Released <span class="sort-icon" aria-hidden="true">↓</span></button></th>
         <th scope="col" data-sort="contextWindow" aria-sort="none"><button type="button" class="th-sort" title="Context window">Context <span class="sort-icon" aria-hidden="true">↕</span></button></th>
-        <th scope="col" data-sort="inputPer1M" aria-sort="none"><button type="button" class="th-sort">Input $/1M <span class="sort-icon" aria-hidden="true">↕</span></button></th>
-        <th scope="col" data-sort="outputPer1M" aria-sort="none"><button type="button" class="th-sort">Output $/1M <span class="sort-icon" aria-hidden="true">↕</span></button></th>
-        <th scope="col" data-sort="blendedPer1M" aria-sort="none"><button type="button" class="th-sort" title="Blended cost per 1M tokens at a 3:1 input:output mix — one number to sort real spend by">Blended $/1M <span class="sort-icon" aria-hidden="true">↕</span></button></th>
-        <th scope="col" data-sort="cacheReadPer1M" aria-sort="none"><button type="button" class="th-sort" title="Price per 1M cached input tokens. Deliberately NOT folded into Blended: that would need a cache hit rate we would be inventing. A dagger marks a model whose cache WRITE costs more than its uncached prompt.">Cached in $/1M <span class="sort-icon" aria-hidden="true">↕</span></button></th>
+        <th scope="col" data-sort="inputPer1M" aria-sort="none"><button type="button" class="th-sort" title="Uncached input, USD per 1M tokens">Input <span class="sort-icon" aria-hidden="true">↕</span></button></th>
+        <th scope="col" data-sort="outputPer1M" aria-sort="none"><button type="button" class="th-sort" title="Output, USD per 1M tokens">Output <span class="sort-icon" aria-hidden="true">↕</span></button></th>
+        <th scope="col" data-sort="blendedPer1M" aria-sort="none"><button type="button" class="th-sort" title="Blended cost in USD per 1M tokens at a 3:1 input:output mix — one number to sort real spend by">Blended <span class="sort-icon" aria-hidden="true">↕</span></button></th>
+        <th scope="col" data-sort="cacheReadPer1M" aria-sort="none"><button type="button" class="th-sort" title="Price per 1M cached input tokens. Deliberately NOT folded into Blended: that would need a cache hit rate we would be inventing. A dagger marks a model whose cache WRITE costs more than its uncached prompt.">Cached <span class="sort-icon" aria-hidden="true">↕</span></button></th>
         <th scope="col" data-sort="quality" id="quality-col-head" aria-sort="none"><button type="button" class="th-sort" title="Independently-run benchmark score (Epoch AI)">Quality <span class="sort-icon" aria-hidden="true">↕</span></button></th>
         <th scope="col">Modalities</th>
       </tr>
