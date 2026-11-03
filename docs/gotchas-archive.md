@@ -56,3 +56,9 @@ the versions actually in `package.json`.
 
 - **Subscriptions** (#36, #38): 20/28 stamped `2026-09-18`. #36 made 9 price fixes and added 5 tiers; Kimi moved to `/membership/pricing`. #38 resolved every flagged follow-up from vendor pages: v0 `$30` confirmed by its docs; Qwen Studio's picker adds Qwen3.8-Max; Meta names no Muse Spark version; Runway still offers Veo 3.1 and moved to Seedance 2.5. Evidence: `docs/reviews/pricing-verify-2026-09.md`.
 
+Moved 2026-11-03 — the eviction diagnosis is complete and the repair is done;
+`CLAUDE.md` keeps the operational line (work in `~/Code/TokenApp`) and a memory
+note redirects sessions that open in the stale `~/Documents` copy.
+
+- **Eviction, the settled diagnosis**: macOS leaves `dataless` files in `~/Documents`, and reads of them block on a download. Detect with `ls -lO`, or `find -flags +dataless`. **Without the `+`, `-flags dataless` is an EXACT match that misses `compressed,dataless` and reports 0.** This explains the undici `mixinBody` deploy failures and the preflight ETIMEDOUT (both archived; `docs/gotchas-archive.md`). `npm ci` repairs only `node_modules`. The old copy still holds the superseded local branch `pricing-verify/2026-08` and a packfile the August repair moved aside (kept).
+
