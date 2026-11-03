@@ -470,7 +470,7 @@ export function getHtml(params: {
     @media (max-width: 700px) {
       .pareto-header { flex-direction:column; align-items:stretch; }
     }
-    .pareto-wrap { position:relative; width:100%; overflow-x:auto; padding:8px 12px 0; box-sizing:border-box; }
+    .pareto-wrap { position:relative; width:100%; overflow-x:auto; overflow-y:hidden; padding:8px 12px 0; box-sizing:border-box; }
     .pareto-svg { display:block; width:100%; min-width:520px; height:auto; }
     .pareto-axis { stroke:var(--border); stroke-width:1; }
     .pareto-grid { stroke:var(--border); stroke-width:1; stroke-dasharray:2 4; opacity:0.55; }
