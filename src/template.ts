@@ -442,6 +442,7 @@ export function getHtml(params: {
     .sup-m { font-size: 12px; color: var(--text2); display: block; margin-top: 3px; font-variant-numeric: tabular-nums; }
     @media (max-width: 600px) {
       .superlatives { grid-template-columns: repeat(2, 1fr); margin-top: 18px; }
+      .sup:last-child:nth-child(odd) { grid-column: 1 / -1; }
     }
 
     /* ── Controls ─────────────────────────────────────────────────────────── */
