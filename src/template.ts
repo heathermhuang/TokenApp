@@ -2728,6 +2728,14 @@ function cachedCell(m) {
   if (havePrompt && prompt > 0 && read > 0) {
     if (read >= prompt) {
       parts.push('no cheaper than the ' + fmtPriceFine(prompt) + ' uncached prompt, so a cache hit saves nothing');
+    } else if (prompt / read < 1.05) {
+      // "1.0x cheaper" reads as "not cheaper at all" and buries the real figure. Six
+      // models sit here (z-ai/glm-5.3-flash, deepseek-v4-pro-0813 and four -latest
+      // aliases) saving 1.3%-4.3%, which toFixed(1) flattened to 1.0x. Below 5% the
+      // percentage is the honest unit; 5% matches the hosts panel's own
+      // "all priced within ~5% of each other" threshold.
+      parts.push('only ' + Math.round((1 - read / prompt) * 100) + '% cheaper than the ' +
+                 fmtPriceFine(prompt) + ' uncached prompt');
     } else {
       parts.push((prompt / read).toFixed(1) + 'x cheaper than the ' + fmtPriceFine(prompt) + ' uncached prompt');
     }
