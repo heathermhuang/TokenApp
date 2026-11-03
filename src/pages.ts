@@ -126,6 +126,7 @@ const SHELL_CSS = `
     .linkgrid a { display:block; padding:9px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); font-size:13px; color:var(--text2); text-decoration:none; }
     .linkgrid a:hover { color:var(--text); border-color:var(--border2); }
     .hostwarn { font-size:11px; color:var(--orange,#f97316); margin-top:3px; font-weight:500; }
+    .hostnote { font-size:10px; color:var(--text3); margin-top:2px; font-weight:400; }
     .cite { font-size:11px; color:var(--text3); line-height:1.6; padding:12px 18px; border-top:1px solid var(--border); }
     .cite a { color:var(--text2); }
     details { border-bottom:1px solid var(--border); }
@@ -659,6 +660,7 @@ function hostsPanel(eps: ModelEndpoints | null, m: NormalizedModel): string {
   const spread = lo.blendedPer1M! > 0 ? hi.blendedPer1M! / lo.blendedPer1M! : null;
   const bestCtx = Math.max(...eps.endpoints.map((e) => e.contextLength ?? 0));
   const showQuant = eps.endpoints.some((e) => e.quantization);
+  const showCache = eps.endpoints.some((e) => e.cacheReadPer1M !== null);
   const anyLong = eps.endpoints.some((e) => e.longContext);
 
   const rows = eps.endpoints.map((e) => {
@@ -674,6 +676,7 @@ function hostsPanel(eps: ModelEndpoints | null, m: NormalizedModel): string {
           <td><strong>${esc(e.label)}</strong>${warn.length ? `<div class="hostwarn">⚠ ${warn.map(esc).join(' · ')}</div>` : ''}</td>
           <td class="num${e === lo ? ' win' : ''}">${esc(fmtP(e.blendedPer1M))}</td>
           <td class="num muted">${esc(fmtP(e.inputPer1M))} / ${esc(fmtP(e.outputPer1M))}</td>
+          ${showCache ? `<td class="num muted">${e.cacheReadPer1M === null ? '—' : esc(fmtP(e.cacheReadPer1M)) + ' / ' + (e.cacheWritePer1M === null ? '—' : esc(fmtP(e.cacheWritePer1M)))}${e.implicitCaching ? '<div class="hostnote">automatic</div>' : ''}</td>` : ''}
           <td class="num muted">${esc(fmtCtx(e.contextLength))}</td>
           ${showQuant ? `<td class="muted">${e.quantization ? esc(e.quantization) : '—'}</td>` : ''}
           <td class="num muted">${e.uptimeDay !== null ? e.uptimeDay.toFixed(1) + '%' : '—'}</td>
@@ -699,12 +702,12 @@ function hostsPanel(eps: ModelEndpoints | null, m: NormalizedModel): string {
       <div class="panel-sub">${esc(headline)}. Blended at 3:1. ⚠ marks an option serving less context than the best available, or re-pricing above a prompt-length threshold. Bracketed labels are the provider's own service tier or region.</div>
     </div>
     <div class="tbl-wrap"><table>
-      <thead><tr><th>Host</th><th>Blended $/1M</th><th>In / Out</th><th>Context</th>${showQuant ? '<th>Weights</th>' : ''}<th>Uptime 24h</th></tr></thead>
+      <thead><tr><th>Host</th><th>Blended $/1M</th><th>In / Out</th>${showCache ? '<th>Cache read / write</th>' : ''}<th>Context</th>${showQuant ? '<th>Weights</th>' : ''}<th>Uptime 24h</th></tr></thead>
       <tbody>
         ${rows}
       </tbody>
     </table></div>
-    <div class="cite">Host prices and uptime from OpenRouter, synced ${esc((eps.fetchedAt || '').slice(0, 10))}.${showQuant ? ' Lower-precision weights (fp4, fp8) can cost less and score worse than the same model at bf16 — the score above is not host-specific.' : ''}${anyLong ? '' : ''}</div>
+    <div class="cite">Host prices and uptime from OpenRouter, synced ${esc((eps.fetchedAt || '').slice(0, 10))}.${showCache ? ' Cache read is what a repeated prompt prefix costs; cache write is what putting it there costs, and it is not always cheaper than simply resending the prompt — compare it against the In column before assuming caching saves money. "automatic" marks a host that caches without an explicit request.' : ''}${showQuant ? ' Lower-precision weights (fp4, fp8) can cost less and score worse than the same model at bf16 — the score above is not host-specific.' : ''}${anyLong ? '' : ''}</div>
   </div>`;
 }
 

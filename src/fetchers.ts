@@ -60,6 +60,14 @@ function toMillion(pricePerToken: string): number | null {
   return parseFloat((n * 1_000_000).toFixed(4));
 }
 
+// Cache prices are optional upstream. `?? '0'` is right for prompt/completion
+// (every model has them) but wrong here: it turns "not published" into "free",
+// which then sorts ahead of every real price. Absent stays null.
+function toMillionOrNull(pricePerToken: string | undefined): number | null {
+  if (pricePerToken === undefined || pricePerToken === '') return null;
+  return toMillion(pricePerToken);
+}
+
 export function normalizeModel(raw: OpenRouterModel): NormalizedModel {
   // The model `id` keeps OpenRouter's spelling forever — it is the join key for
   // benchmarks, D1 rankings and `underlyingModels`. Only the derived providerId is
@@ -71,6 +79,9 @@ export function normalizeModel(raw: OpenRouterModel): NormalizedModel {
   const modality = parseModality(raw.architecture?.modality ?? 'text->text');
   const inputPer1M = toMillion(raw.pricing?.prompt ?? '0');
   const outputPer1M = toMillion(raw.pricing?.completion ?? '0');
+  const cacheReadPer1M = toMillionOrNull(raw.pricing?.input_cache_read);
+  const cacheWritePer1M = toMillionOrNull(raw.pricing?.input_cache_write);
+  const cacheWrite1hPer1M = toMillionOrNull(raw.pricing?.input_cache_write_1h);
   const imagePricePer = raw.pricing?.image
     ? parseFloat(raw.pricing.image) || null
     : null;
@@ -130,6 +141,9 @@ export function normalizeModel(raw: OpenRouterModel): NormalizedModel {
     providerId: providerId ?? 'unknown',
     inputPer1M,
     outputPer1M,
+    cacheReadPer1M,
+    cacheWritePer1M,
+    cacheWrite1hPer1M,
     imagePricePer,
     contextWindow: raw.context_length ?? null,
     maxOutput: raw.top_provider?.max_completion_tokens ?? null,
