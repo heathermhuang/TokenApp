@@ -123,6 +123,7 @@ const SHELL_CSS = `
     .num { font-variant-numeric:tabular-nums; }
     .win { color:var(--green); font-weight:600; }
     .muted { color:var(--text3); }
+    .muted a { color:var(--text2); }
     .chip { display:inline-block; padding:2px 7px; border-radius:20px; font-size:11px; font-weight:600; background:var(--surface2); color:var(--text2); }
     .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
     .stat-row { display:flex; justify-content:space-between; gap:12px; padding:7px 0; border-bottom:1px solid var(--border); font-size:13px; }
