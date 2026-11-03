@@ -227,3 +227,18 @@ test('a sub-cent cache read keeps enough precision to be worth sorting', () => {
   assert.doesNotMatch(a, /<\$0\.01/);
   assert.notEqual(a, b);
 });
+
+test('a saving too small to show as a multiple is stated as a percentage', () => {
+  // Caught on prod after the first deploy. Six models save 1.3%-4.3%, and
+  // (prompt/read).toFixed(1) flattened every one to "1.0x cheaper" -- a figure that
+  // reads as "no saving" while a real one exists. Real shape: deepseek-v4-pro-0813,
+  // prompt $0.115 against a $0.110 cached read.
+  const out = cachedCell({ inputPer1M: 0.115, outputPer1M: 0.5, cacheReadPer1M: 0.11, cacheWritePer1M: null });
+  assert.match(out, /only 4% cheaper/);
+  assert.doesNotMatch(out, /1\.0x cheaper/);
+
+  // Just above the threshold keeps the multiple.
+  const big = cachedCell({ inputPer1M: 4, outputPer1M: 20, cacheReadPer1M: 0.2, cacheWritePer1M: null });
+  assert.match(big, /20\.0x cheaper/);
+  assert.doesNotMatch(big, /% cheaper/);
+});
