@@ -83,6 +83,7 @@ function shortName(name: string): string {
 const SHELL_CSS = `
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
+      color-scheme:dark;
       --bg:#0c0c0e; --surface:#141418; --surface2:#1c1c22;
       --border:#27272f; --border2:#33333d;
       --text:#f0f0f4; --text2:#a3a3b3; --text3:#80808f;
@@ -91,6 +92,7 @@ const SHELL_CSS = `
       --nav-bg:rgba(12,12,14,0.88);
     }
     html[data-theme="light"] {
+      color-scheme:light;
       --bg:#f4f4f8; --surface:#ffffff; --surface2:#ebebf2;
       --border:#dcdce8; --border2:#c8c8d8;
       --text:#111118; --text2:#3d3d52; --text3:#62627a;

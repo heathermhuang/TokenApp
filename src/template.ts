@@ -193,6 +193,7 @@ export function getHtml(params: {
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
+      color-scheme: dark;
       --bg: #0c0c0e;
       --surface: #141418;
       --surface2: #1c1c22;
@@ -215,6 +216,7 @@ export function getHtml(params: {
     }
 
     html[data-theme="light"] {
+      color-scheme: light;
       --bg: #f4f4f8;
       --surface: #ffffff;
       --surface2: #ebebf2;
@@ -4785,6 +4787,7 @@ export function getProviderHtml(params: {
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
+      color-scheme: dark;
       --bg: #0c0c0e; --surface: #141418; --surface2: #1c1c22;
       --border: #27272f; --border2: #33333d;
       --text: #f0f0f4; --text2: #a3a3b3; --text3: #80808f;
@@ -4793,6 +4796,7 @@ export function getProviderHtml(params: {
       --nav-bg: rgba(12,12,14,0.88);
     }
     html[data-theme="light"] {
+      color-scheme: light;
       --bg: #f4f4f8; --surface: #ffffff; --surface2: #ebebf2;
       --border: #dcdce8; --border2: #c8c8d8;
       --text: #111118; --text2: #3d3d52; --text3: #62627a;
@@ -4907,11 +4911,13 @@ export function getAboutHtml(): string {
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
+      color-scheme: dark;
       --bg: #0c0c0e; --surface: #141418; --surface2: #1c1c22;
       --border: #27272f; --text: #f0f0f4; --text2: #a3a3b3; --text3: #80808f;
       --accent: #6366f1; --radius: 8px; --nav-bg: rgba(12,12,14,0.88);
     }
     html[data-theme="light"] {
+      color-scheme: light;
       --bg: #f4f4f8; --surface: #ffffff; --surface2: #ebebf2;
       --border: #dcdce8; --text: #111118; --text2: #3d3d52; --text3: #62627a;
       --accent: #4746b8; --nav-bg: rgba(244,244,248,0.92);
