@@ -236,6 +236,8 @@ export function getHtml(params: {
 
     html { scroll-behavior: smooth; }
 
+    button, input, select, textarea { font-family: inherit; }
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
       background: var(--bg);
