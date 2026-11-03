@@ -53,6 +53,7 @@ interface RawEndpoint {
   pricing?: {
     prompt?: string; completion?: string;
     input_cache_read?: string;
+    input_cache_write?: string;
     overrides?: { min_prompt_tokens?: number; prompt?: string; completion?: string }[];
   };
 }
@@ -94,6 +95,7 @@ export function normalizeEndpoints(modelId: string, raw: RawEndpoint[]): ModelEn
       outputPer1M,
       blendedPer1M: blend(inputPer1M, outputPer1M),
       cacheReadPer1M: usdPerM(e.pricing?.input_cache_read),
+      cacheWritePer1M: usdPerM(e.pricing?.input_cache_write),
       contextLength: e.context_length ?? null,
       maxOutput: e.max_completion_tokens ?? null,
       // "unknown" is not information — normalized away above so the UI can decide

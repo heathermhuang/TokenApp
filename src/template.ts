@@ -746,6 +746,8 @@ export function getHtml(params: {
       white-space: nowrap;
     }
 
+    .cache-dagger { color: var(--text3); font-size: 0.85em; margin-left: 2px; vertical-align: super; }
+
     .ctx {
       font-family: 'Menlo', 'Monaco', monospace;
       font-size: 12px;
@@ -1847,12 +1849,13 @@ export function getHtml(params: {
         <th scope="col" data-sort="inputPer1M" aria-sort="none"><button type="button" class="th-sort">Input $/1M <span class="sort-icon" aria-hidden="true">↕</span></button></th>
         <th scope="col" data-sort="outputPer1M" aria-sort="none"><button type="button" class="th-sort">Output $/1M <span class="sort-icon" aria-hidden="true">↕</span></button></th>
         <th scope="col" data-sort="blendedPer1M" aria-sort="none"><button type="button" class="th-sort" title="Blended cost per 1M tokens at a 3:1 input:output mix — one number to sort real spend by">Blended $/1M <span class="sort-icon" aria-hidden="true">↕</span></button></th>
+        <th scope="col" data-sort="cacheReadPer1M" aria-sort="none"><button type="button" class="th-sort" title="Price per 1M cached input tokens. Deliberately NOT folded into Blended: that would need a cache hit rate we would be inventing. A dagger marks a model whose cache WRITE costs more than its uncached prompt.">Cached in $/1M <span class="sort-icon" aria-hidden="true">↕</span></button></th>
         <th scope="col" data-sort="quality" id="quality-col-head" aria-sort="none"><button type="button" class="th-sort" title="Independently-run benchmark score (Epoch AI)">Quality <span class="sort-icon" aria-hidden="true">↕</span></button></th>
         <th scope="col">Modalities</th>
       </tr>
     </thead>
     <tbody id="models-tbody">
-      <tr><td colspan="9"><div class="loading"><div class="spinner"></div> Loading models…</div></td></tr>
+      <tr><td colspan="10"><div class="loading"><div class="spinner"></div> Loading models…</div></td></tr>
     </tbody>
   </table>
 </div>
@@ -2638,7 +2641,7 @@ function renderTable() {
   document.getElementById('filtered-count').textContent = list.length.toLocaleString();
 
   if (list.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><h3>No models found</h3><p>Try adjusting your filters or search query.</p></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10"><div class="empty-state"><h3>No models found</h3><p>Try adjusting your filters or search query.</p></div></td></tr>';
     return;
   }
 
@@ -2678,10 +2681,83 @@ function renderTable() {
       <td><span class="price \${inPClass}">\${fmtPrice(m.inputPer1M)}</span></td>
       <td><span class="price \${outPClass}">\${fmtPrice(m.outputPer1M)}</span></td>
       <td><span class="price \${priceClass(m.blendedPer1M, 'input')}">\${fmtPrice(m.blendedPer1M)}</span></td>
+      <td>\${cachedCell(m)}</td>
       <td>\${qualityCell(m)}</td>
       <td><div class="modality-icons">\${modIcons}</div></td>
     </tr>\`;
   }).join('');
+}
+
+// Cached-input cell. Two things this must not do, both of which were tempting.
+// It must not print $0.00 when the model publishes no cache price: a third of the
+// catalogue publishes none, and "free" would sort ahead of every real price (the
+// same class of fabrication as the fake-7D bug). And it must not sell a cheap
+// cache READ without the write alongside it, because the write is not always a
+// discount — Anthropic charges $5.00/1M to write Opus 5.5's cache against $4.00
+// to send the prompt uncached, so a cache that is written once and read once
+// LOSES money. The dagger marks exactly that case; the tooltip carries the sums.
+function fmtPriceFine(n) {
+  if (n === null || n === undefined) return '—';
+  if (n === 0) return '$0.00';
+  if (n < 0.01) return '$' + n.toFixed(4);
+  return fmtPrice(n);
+}
+
+function cachedCell(m) {
+  var read = m.cacheReadPer1M;
+  var write = m.cacheWritePer1M;
+  var write1h = m.cacheWrite1hPer1M;
+  var prompt = m.inputPer1M;
+  var havePrompt = prompt !== null && prompt !== undefined;
+  var haveWrite = write !== null && write !== undefined;
+
+  // No READ price is still the em dash — there is no comparable number to sort by —
+  // but a published WRITE price must not vanish with it. Three models (all Qwen)
+  // publish a write and no read, and one of them prices the write ABOVE its prompt,
+  // which is exactly the case the dagger exists to warn about.
+  if (read === null || read === undefined) {
+    var noRead = 'This model publishes no cached-read price';
+    if (haveWrite) noRead += ' · cache write ' + fmtPriceFine(write) + '/1M';
+    if (write1h !== null && write1h !== undefined) noRead += ' · cache write ' + fmtPriceFine(write1h) + '/1M (1 hour TTL)';
+    return '<span class="q-none" title="' + escape(noRead) + '">—</span>';
+  }
+
+  var parts = ['Cached read ' + fmtPriceFine(read) + '/1M'];
+  // Only claim a saving that exists. Five models price the cached read EXACTLY at
+  // their prompt price, where the old "1.0x cheaper" was simply false.
+  if (havePrompt && prompt > 0 && read > 0) {
+    if (read >= prompt) {
+      parts.push('no cheaper than the ' + fmtPriceFine(prompt) + ' uncached prompt, so a cache hit saves nothing');
+    } else {
+      parts.push((prompt / read).toFixed(1) + 'x cheaper than the ' + fmtPriceFine(prompt) + ' uncached prompt');
+    }
+  }
+  if (haveWrite) parts.push('Cache write ' + fmtPriceFine(write) + '/1M (5 min TTL)');
+  if (write1h !== null && write1h !== undefined) {
+    parts.push('Cache write ' + fmtPriceFine(write1h) + '/1M (1 hour TTL)');
+  }
+
+  var dearWrite = haveWrite && havePrompt && write > prompt;
+  if (dearWrite) {
+    var note = 'WRITE COSTS MORE THAN THE UNCACHED PROMPT';
+    // Payback counts READS AFTER the write, and the write request itself replaces an
+    // uncached send, so that send must be credited: break even where
+    //   write + R*read = (R+1)*prompt  ->  R = (write - prompt) / (prompt - read).
+    // Charging the write without the credit (the first version shipped
+    // write/(prompt-read)) overstates the threshold by ~5x — it reported 1.3 reads for
+    // Opus 5.5 where the true figure is 0.26, i.e. the first reuse already pays.
+    // Guarded on prompt > read strictly: five models price read == prompt, which makes
+    // the denominator zero and printed Infinity.
+    if (prompt > read) {
+      var reads = Math.max(1, Math.ceil((write - prompt) / (prompt - read)));
+      note += ' — it pays back after ' + reads + (reads === 1 ? ' reuse' : ' reuses') + ' of the same prefix';
+    } else {
+      note += ' and a cache hit is no cheaper than the prompt, so caching never pays here';
+    }
+    parts.push(note);
+  }
+  return '<span class="price ' + priceClass(read, 'input') + '" title="' + escape(parts.join(' · ')) + '">' +
+    fmtPriceFine(read) + (dearWrite ? '<span class="cache-dagger" aria-hidden="true">†</span>' : '') + '</span>';
 }
 
 // Quality cell. Renders NOTHING when we have no verified score — an em dash that
@@ -3887,7 +3963,7 @@ async function init() {
       }
     } catch (err) {
       document.getElementById('models-tbody').innerHTML =
-        '<tr><td colspan="9"><div class="empty-state"><h3>Failed to load data</h3><p>' + err.message + '</p></div></td></tr>';
+        '<tr><td colspan="10"><div class="empty-state"><h3>Failed to load data</h3><p>' + err.message + '</p></div></td></tr>';
     }
   }
 }

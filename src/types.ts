@@ -16,6 +16,13 @@ export interface NormalizedModel {
   providerId: string;    // e.g. "openai"
   inputPer1M: number | null;   // USD per 1M input tokens
   outputPer1M: number | null;  // USD per 1M output tokens
+  // Cached input. null = the model publishes no cache price (NOT free). Reads are
+  // ~10x cheaper than prompt at the median; writes can cost MORE than prompt
+  // (Opus 5.5: $5.00 write vs $4.00 prompt), so surfacing read alone would sell
+  // caching as a free win it is not.
+  cacheReadPer1M: number | null;
+  cacheWritePer1M: number | null;
+  cacheWrite1hPer1M: number | null;
   imagePricePer: number | null; // USD per image (if applicable)
   contextWindow: number | null;
   maxOutput: number | null;
@@ -77,6 +84,12 @@ export interface OpenRouterModel {
     completion: string;
     image?: string;
     request?: string;
+    // Cache pricing. Absent on ~a third of the catalogue, and absence means "not
+    // published", never "free" — normalize it to null, not 0, or an unpriced model
+    // wins every ascending price sort. No model publishes a zero cache read.
+    input_cache_read?: string;
+    input_cache_write?: string;
+    input_cache_write_1h?: string;   // Anthropic's 1-hour TTL tier, dearer than the 5m default
   };
   top_provider: {
     context_length: number;
@@ -277,6 +290,7 @@ export interface ProviderEndpoint {
   outputPer1M: number | null;
   blendedPer1M: number | null; // 3:1, same basis as the rest of the site
   cacheReadPer1M: number | null;
+  cacheWritePer1M: number | null;
   contextLength: number | null;
   maxOutput: number | null;
   quantization: string | null; // fp4 / fp8 / bf16 / unknown — a real quality difference
