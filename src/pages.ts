@@ -85,7 +85,7 @@ const SHELL_CSS = `
     :root {
       --bg:#0c0c0e; --surface:#141418; --surface2:#1c1c22;
       --border:#27272f; --border2:#33333d;
-      --text:#f0f0f4; --text2:#9090a0; --text3:#606070;
+      --text:#f0f0f4; --text2:#a3a3b3; --text3:#80808f;
       --accent:#6366f1; --accent-dim:rgba(99,102,241,0.15);
       --green:#22c55e; --red:#ef4444; --radius:8px; --radius-sm:5px;
       --nav-bg:rgba(12,12,14,0.88);
