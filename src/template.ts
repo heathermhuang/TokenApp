@@ -2705,24 +2705,56 @@ function fmtPriceFine(n) {
 
 function cachedCell(m) {
   var read = m.cacheReadPer1M;
-  if (read === null || read === undefined) {
-    return '<span class="q-none" title="This model publishes no cached-input price">—</span>';
-  }
   var write = m.cacheWritePer1M;
+  var write1h = m.cacheWrite1hPer1M;
   var prompt = m.inputPer1M;
+  var havePrompt = prompt !== null && prompt !== undefined;
+  var haveWrite = write !== null && write !== undefined;
+
+  // No READ price is still the em dash — there is no comparable number to sort by —
+  // but a published WRITE price must not vanish with it. Three models (all Qwen)
+  // publish a write and no read, and one of them prices the write ABOVE its prompt,
+  // which is exactly the case the dagger exists to warn about.
+  if (read === null || read === undefined) {
+    var noRead = 'This model publishes no cached-read price';
+    if (haveWrite) noRead += ' · cache write ' + fmtPriceFine(write) + '/1M';
+    if (write1h !== null && write1h !== undefined) noRead += ' · cache write ' + fmtPriceFine(write1h) + '/1M (1 hour TTL)';
+    return '<span class="q-none" title="' + escape(noRead) + '">—</span>';
+  }
+
   var parts = ['Cached read ' + fmtPriceFine(read) + '/1M'];
-  if (prompt !== null && prompt !== undefined && prompt > 0 && read > 0) {
-    parts.push((prompt / read).toFixed(1) + 'x cheaper than the ' + fmtPriceFine(prompt) + ' uncached prompt');
+  // Only claim a saving that exists. Five models price the cached read EXACTLY at
+  // their prompt price, where the old "1.0x cheaper" was simply false.
+  if (havePrompt && prompt > 0 && read > 0) {
+    if (read >= prompt) {
+      parts.push('no cheaper than the ' + fmtPriceFine(prompt) + ' uncached prompt, so a cache hit saves nothing');
+    } else {
+      parts.push((prompt / read).toFixed(1) + 'x cheaper than the ' + fmtPriceFine(prompt) + ' uncached prompt');
+    }
   }
-  if (write !== null && write !== undefined) parts.push('Cache write ' + fmtPriceFine(write) + '/1M (5 min TTL)');
-  if (m.cacheWrite1hPer1M !== null && m.cacheWrite1hPer1M !== undefined) {
-    parts.push('Cache write ' + fmtPriceFine(m.cacheWrite1hPer1M) + '/1M (1 hour TTL)');
+  if (haveWrite) parts.push('Cache write ' + fmtPriceFine(write) + '/1M (5 min TTL)');
+  if (write1h !== null && write1h !== undefined) {
+    parts.push('Cache write ' + fmtPriceFine(write1h) + '/1M (1 hour TTL)');
   }
-  var dearWrite = write !== null && write !== undefined &&
-                  prompt !== null && prompt !== undefined && write > prompt;
+
+  var dearWrite = haveWrite && havePrompt && write > prompt;
   if (dearWrite) {
-    parts.push('WRITE COSTS MORE THAN THE UNCACHED PROMPT — caching only pays once the same prefix is read back more than ' +
-               (write / (prompt - read)).toFixed(1) + ' times');
+    var note = 'WRITE COSTS MORE THAN THE UNCACHED PROMPT';
+    // Payback counts READS AFTER the write, and the write request itself replaces an
+    // uncached send, so that send must be credited: break even where
+    //   write + R*read = (R+1)*prompt  ->  R = (write - prompt) / (prompt - read).
+    // Charging the write without the credit (the first version shipped
+    // write/(prompt-read)) overstates the threshold by ~5x — it reported 1.3 reads for
+    // Opus 5.5 where the true figure is 0.26, i.e. the first reuse already pays.
+    // Guarded on prompt > read strictly: five models price read == prompt, which makes
+    // the denominator zero and printed Infinity.
+    if (prompt > read) {
+      var reads = Math.max(1, Math.ceil((write - prompt) / (prompt - read)));
+      note += ' — it pays back after ' + reads + (reads === 1 ? ' reuse' : ' reuses') + ' of the same prefix';
+    } else {
+      note += ' and a cache hit is no cheaper than the prompt, so caching never pays here';
+    }
+    parts.push(note);
   }
   return '<span class="price ' + priceClass(read, 'input') + '" title="' + escape(parts.join(' · ')) + '">' +
     fmtPriceFine(read) + (dearWrite ? '<span class="cache-dagger" aria-hidden="true">†</span>' : '') + '</span>';

@@ -122,6 +122,46 @@ test('a write DEARER than the uncached prompt is flagged with a dagger', () => {
   assert.match(out, /WRITE COSTS MORE/);
 });
 
+test('the payback count credits the uncached send the write replaces', () => {
+  // Found by Codex. The first version charged the write without crediting the
+  // request it replaces -- write/(prompt-read) = 5/3.8 = "more than 1.3 reads".
+  // Truth: write + R*read = (R+1)*prompt, so R = (write-prompt)/(prompt-read)
+  // = 1/3.8 = 0.26, i.e. the FIRST reuse already pays. Caching Opus 5.5 once and
+  // reading it once costs $5.20 against $8.00 for two uncached sends.
+  const out = cachedCell({ inputPer1M: 4, outputPer1M: 20, cacheReadPer1M: 0.2, cacheWritePer1M: 5 });
+  assert.match(out, /pays back after 1 reuse/);
+  assert.doesNotMatch(out, /1\.3/);
+});
+
+test('read == prompt does not print Infinity or a false saving', () => {
+  // Five real models (openai/gpt-oss-20b, qwen3-30b-a3b, bytedance/ui-tars-1.5-7b,
+  // two inference-net) price the cached read EXACTLY at their prompt price. The old
+  // code claimed "1.0x cheaper", and the payback divisor (prompt-read) was zero.
+  const out = cachedCell({ inputPer1M: 0.03, outputPer1M: 0.1, cacheReadPer1M: 0.03, cacheWritePer1M: null });
+  assert.match(out, /saves nothing/);
+  assert.doesNotMatch(out, /1\.0x cheaper/);
+  assert.doesNotMatch(out, /Infinity/);
+  assert.doesNotMatch(out, /NaN/);
+
+  // Same shape but with a dear write: must not divide by zero.
+  const dear = cachedCell({ inputPer1M: 0.03, outputPer1M: 0.1, cacheReadPer1M: 0.03, cacheWritePer1M: 0.05 });
+  assert.doesNotMatch(dear, /Infinity/);
+  assert.doesNotMatch(dear, /NaN/);
+  assert.match(dear, /never pays here/);
+});
+
+test('a published write price is not hidden when no read price exists', () => {
+  // Found by Codex: three Qwen models publish input_cache_write with no
+  // input_cache_read, and the early em-dash return dropped the write silently --
+  // including qwen3.6-flash, whose write ($0.234) exceeds its prompt ($0.1875),
+  // the exact case the dagger exists to warn about.
+  const out = cachedCell({ inputPer1M: 0.1875, outputPer1M: 1, cacheReadPer1M: null, cacheWritePer1M: 0.2344 });
+  assert.match(out, /—/);
+  assert.match(out, /cache write/i);
+  // fmtPriceFine only adds 4dp BELOW a cent, so $0.2344 correctly renders $0.234.
+  assert.match(out, /\$0\.234/);
+});
+
 test('a write CHEAPER than the prompt carries no dagger', () => {
   const out = cachedCell({ inputPer1M: 4, outputPer1M: 20, cacheReadPer1M: 0.2, cacheWritePer1M: 3 });
   assert.doesNotMatch(out, /†/);
@@ -159,6 +199,21 @@ test('the Cached column is sortable and the empty-state colspan matches it', () 
   const headerCount = (html.match(/<th scope="col"/g) || []).length;
   assert.equal(headerCount, 10);
   assert.doesNotMatch(html, /colspan="9"/);
+});
+
+test('the row renderer actually emits a cell for every header', () => {
+  // Found by Codex: the assertions above pass with the row's `cachedCell(m)` call
+  // deleted, which ships a 10-header table whose body rows have 9 cells — every
+  // column right of Blended shifts one left and reads as the wrong metric. Pin the
+  // CALL, not just the header, and pin the counts against each other so a future
+  // column cannot add a header without a cell.
+  const rowFn = html.match(/function renderRows\(|return `<tr class="model-row/);
+  assert.ok(rowFn, 'row template not found — this test needs rewiring');
+  assert.match(html, /\$\{cachedCell\(m\)\}/);
+  const rowTemplate = html.match(/return `<tr class="model-row[\s\S]*?<\/tr>`/)[0];
+  const cellCount = (rowTemplate.match(/<td/g) || []).length;
+  const headerCount = (html.match(/<th scope="col"/g) || []).length;
+  assert.equal(cellCount, headerCount);
 });
 
 test('a sub-cent cache read keeps enough precision to be worth sorting', () => {

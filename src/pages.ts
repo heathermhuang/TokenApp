@@ -32,6 +32,16 @@ function fmtCtx(n: number | null | undefined): string {
   return String(n);
 }
 
+// Cache reads run an order of magnitude below prompt prices, so fmtP's "<$0.01"
+// floor erases the differences the column exists to show. Mirrors fmtPriceFine in
+// template.ts; kept separate because In/Out deliberately keep the coarser format.
+function fmtPFine(n: number | null | undefined): string {
+  if (n === null || n === undefined) return '—';
+  if (n === 0) return '$0.00';
+  if (n < 0.01) return '$' + n.toFixed(4);
+  return fmtP(n);
+}
+
 function fmtP(n: number | null | undefined): string {
   if (n === null || n === undefined) return '—';
   if (n === 0) return 'Free';
@@ -676,7 +686,7 @@ function hostsPanel(eps: ModelEndpoints | null, m: NormalizedModel): string {
           <td><strong>${esc(e.label)}</strong>${warn.length ? `<div class="hostwarn">⚠ ${warn.map(esc).join(' · ')}</div>` : ''}</td>
           <td class="num${e === lo ? ' win' : ''}">${esc(fmtP(e.blendedPer1M))}</td>
           <td class="num muted">${esc(fmtP(e.inputPer1M))} / ${esc(fmtP(e.outputPer1M))}</td>
-          ${showCache ? `<td class="num muted">${e.cacheReadPer1M === null ? '—' : esc(fmtP(e.cacheReadPer1M)) + ' / ' + (e.cacheWritePer1M === null ? '—' : esc(fmtP(e.cacheWritePer1M)))}${e.implicitCaching ? '<div class="hostnote">automatic</div>' : ''}</td>` : ''}
+          ${showCache ? `<td class="num muted">${e.cacheReadPer1M === null ? '—' : esc(fmtPFine(e.cacheReadPer1M)) + ' / ' + (e.cacheWritePer1M === null ? '—' : esc(fmtPFine(e.cacheWritePer1M)))}${e.implicitCaching ? '<div class="hostnote">automatic</div>' : ''}</td>` : ''}
           <td class="num muted">${esc(fmtCtx(e.contextLength))}</td>
           ${showQuant ? `<td class="muted">${e.quantization ? esc(e.quantization) : '—'}</td>` : ''}
           <td class="num muted">${e.uptimeDay !== null ? e.uptimeDay.toFixed(1) + '%' : '—'}</td>
