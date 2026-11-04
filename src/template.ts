@@ -3904,6 +3904,9 @@ async function init() {
       updateStats();
       renderProviderFilters();
       renderTable();
+      // A view opened from the URL hash rendered before this data arrived; draw it again.
+      if (state.view === 'subscriptions') renderSubscriptions();
+      else if (state.view === 'rankings') renderRankings();
       loadBenchmarks();
       if (lu) {
         var upd2 = fmtUpdated(lu);
