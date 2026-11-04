@@ -109,6 +109,20 @@ try {
   );
 }
 
+// 5. src/assets.ts (fonts, images) is generated the same way, from assets/.
+try {
+  execFileSync(process.execPath, [fileURLToPath(new URL('./build-assets.mjs', import.meta.url)), '--check'], {
+    encoding: 'utf8', timeout: 60_000, stdio: 'pipe',
+  });
+} catch (err) {
+  const detail = String((err && (err.stderr || err.message)) || '').trim();
+  problems.push(
+    'src/assets.ts does not match its generator.\n' +
+    (detail ? '    ' + detail.split('\n').join('\n    ') + '\n' : '') +
+    '    Fix: npm run assets && git add src/assets.ts'
+  );
+}
+
 if (problems.length === 0) {
   console.log(`preflight ok — undici ${snapshot.undici ?? '?'}, ${snapshot.workerd ?? 'workerd ?'}`);
   process.exit(0);

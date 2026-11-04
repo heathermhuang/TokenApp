@@ -9,6 +9,8 @@
     "test": "node --test test/*.test.mjs",
     "logos": "node scripts/build-provider-logos.mjs",
     "logos:check": "node scripts/build-provider-logos.mjs --check",
+    "assets": "node scripts/build-assets.mjs",
+    "assets:check": "node scripts/build-assets.mjs --check",
     "preflight": "node scripts/preflight-deploy.mjs"
   },
   "dependencies": {
