@@ -1,0 +1,22 @@
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&display=swap');
+
+.tad-sheet .ss-stage {
+  --t-bg: #f6f4ef; --t-text: #1a1915; --t-text2: #57534a; --t-text3: #6e695f;
+  --t-line: #e3dfd6; --t-line-strong: #d3cec3; --t-fill: #ece9e1; --t-field: #fffdf8;
+  --t-accent: #c2410c; --t-accent-text: #c2410c; --t-cheap: #15803d;
+  --t-font: Inter, system-ui, sans-serif; --t-display: 'Instrument Serif', Georgia, serif;
+  --t-figure: Inter, system-ui, sans-serif;
+  --t-h1: 68px; --t-h1-w: 400; --t-h1-track: -0.015em; --t-em-style: italic; --t-em: #c2410c;
+  --t-pick-gap: 0; --t-pick-bg: transparent; --t-pick-border: none; --t-big-w: 400;
+  --t-r-sm: 4px; --t-r-md: 6px; --t-r-lg: 0;
+  --t-seg-on: #1a1915; --t-seg-on-text: #f6f4ef; --t-seg-shadow: none;
+  --t-table-top: 2px solid #1a1915; --t-th-rule: 1px solid #1a1915; --t-num-size: 14px;
+  --t-logo-bg: #ffffff;
+}
+.tad-sheet .tad-hero { padding-top: 44px; }
+.tad-sheet .tad-picks { border-top: 2px solid var(--t-text); }
+.tad-sheet .tad-pick { padding: 16px 24px 4px; }
+.tad-sheet .tad-pick:first-child { padding-left: 0; }
+.tad-sheet .tad-pick + .tad-pick { border-left: 1px solid var(--t-line); }
+.tad-sheet .tad-big { font-family: var(--t-display); font-size: 44px; letter-spacing: -0.01em; }
+.tad-sheet .tad-logo { box-shadow: inset 0 0 0 1px var(--t-line); }

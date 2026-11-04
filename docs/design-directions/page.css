@@ -1,0 +1,84 @@
+/* Shared structure for the three directions. Each look sets the --t-* tokens
+   and the two font stacks; nothing below names a color or a family. */
+.tad .ss-stage {
+  overflow: hidden;
+  background: var(--t-bg);
+  color: var(--t-text);
+  font-family: var(--t-font);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+.tad-page { position: absolute; inset: 0; padding: 0 56px; }
+
+/* Nav */
+.tad-nav {
+  height: 60px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  border-bottom: 1px solid var(--t-line);
+  margin: 0 -56px;
+  padding: 0 56px;
+}
+.tad-mark { display: flex; align-items: center; gap: 8px; font-weight: 650; font-size: 16px; letter-spacing: -0.01em; color: var(--t-text); }
+.tad-glyph { color: var(--t-accent); font-size: 16px; line-height: 1; }
+.tad-links { display: flex; gap: 4px; }
+.tad-links span { padding: 6px 12px; border-radius: var(--t-r-sm); color: var(--t-text2); font-weight: 500; }
+.tad-links .is-on { color: var(--t-text); background: var(--t-fill); }
+.tad-status { justify-self: end; display: flex; align-items: center; gap: 8px; color: var(--t-text3); font-size: 13px; }
+.tad-live { width: 6px; height: 6px; border-radius: 50%; background: var(--t-cheap); }
+
+/* Hero */
+.tad-hero { padding: 48px 0 32px; max-width: 760px; }
+.tad-h1 { font-family: var(--t-display); font-size: var(--t-h1); font-weight: var(--t-h1-w); line-height: 1.04; letter-spacing: var(--t-h1-track); color: var(--t-text); }
+.tad-h1 em { font-style: var(--t-em-style); color: var(--t-em); }
+.tad-sub { margin-top: 14px; font-size: 16px; line-height: 1.5; color: var(--t-text2); max-width: 560px; }
+
+/* Picks: one strip, three columns */
+.tad-picks { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--t-pick-gap); margin-bottom: 28px; }
+.tad-pick { padding: 16px 20px 18px; background: var(--t-pick-bg); border: var(--t-pick-border); border-radius: var(--t-r-lg); }
+.tad-k { font-size: 12px; font-weight: 600; color: var(--t-text3); }
+.tad-big { margin-top: 10px; font-family: var(--t-figure); font-size: 30px; font-weight: var(--t-big-w); letter-spacing: -0.02em; line-height: 1; color: var(--t-text); font-variant-numeric: tabular-nums; }
+.tad-pick:first-child .tad-big { color: var(--t-cheap); }
+.tad-name { margin-top: 10px; font-weight: 600; color: var(--t-text); }
+.tad-meta { margin-top: 2px; font-size: 13px; color: var(--t-text2); }
+
+/* Toolbar: search, type, provider, benchmark in one row */
+.tad-toolbar { display: flex; align-items: center; gap: 10px; padding-bottom: 14px; }
+.tad-search, .tad-select {
+  height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 12px;
+  border: 1px solid var(--t-line-strong); border-radius: var(--t-r-md); background: var(--t-field);
+  color: var(--t-text3); font-size: 13px;
+}
+.tad-search { width: 260px; }
+.tad-search-icon { width: 11px; height: 11px; border: 1.5px solid var(--t-text3); border-radius: 50%; position: relative; flex: none; }
+.tad-search-icon::after { content: ''; position: absolute; width: 5px; height: 1.5px; background: var(--t-text3); right: -4px; bottom: -2px; transform: rotate(45deg); }
+.tad-select { color: var(--t-text); font-weight: 500; }
+.tad-caret { width: 6px; height: 6px; border-right: 1.5px solid var(--t-text3); border-bottom: 1.5px solid var(--t-text3); transform: translateY(-2px) rotate(45deg); margin-left: 4px; }
+.tad-seg { display: flex; padding: 3px; gap: 2px; border-radius: var(--t-r-md); background: var(--t-fill); margin-right: auto; }
+.tad-seg span { padding: 5px 11px; border-radius: calc(var(--t-r-md) - 3px); color: var(--t-text2); font-size: 13px; font-weight: 500; }
+.tad-seg .is-on { background: var(--t-seg-on); color: var(--t-seg-on-text); box-shadow: var(--t-seg-shadow); }
+
+/* Table */
+.tad-table { border-top: var(--t-table-top); }
+.tad-tr {
+  display: grid;
+  grid-template-columns: minmax(0, 2.6fr) 1fr 0.8fr 0.9fr 0.9fr 0.95fr 0.9fr 0.8fr;
+  align-items: center; column-gap: 16px;
+  height: 52px; padding: 0 4px;
+  border-bottom: 1px solid var(--t-line);
+}
+.tad-th { height: 38px; font-size: 12px; font-weight: 600; color: var(--t-text3); border-bottom: var(--t-th-rule); }
+.tad-th span:nth-child(2) { color: var(--t-accent-text); }
+.r { text-align: right; }
+.num { font-family: var(--t-figure); font-variant-numeric: tabular-nums; font-size: var(--t-num-size); color: var(--t-text); }
+.num.strong { font-weight: 600; }
+.is-cheap { color: var(--t-cheap); }
+.tad-dim { color: var(--t-text3); }
+.tad-model { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.tad-logo { width: 22px; height: 22px; flex: none; display: grid; place-items: center; border-radius: 6px; background: var(--t-logo-bg); }
+.tad-logo img { width: 14px; height: 14px; display: block; }
+.tad-model-text { display: grid; gap: 1px; min-width: 0; }
+.tad-model-name { font-weight: 600; color: var(--t-text); white-space: nowrap; }
+.tad-model-prov { font-size: 12px; color: var(--t-text3); }
+.tad-tr:last-child { border-bottom: none; }
