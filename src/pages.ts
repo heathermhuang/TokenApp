@@ -16,6 +16,8 @@
 import type { NormalizedModel, Subscription, SubscriptionTier, BenchmarksPayload, ModelBenchmarks, ModelEndpoints, ModelUsage } from './types';
 import { getProvider, PROVIDER_PAGE_SET, canonicalProviderId } from './providers';
 import { canonicalLogoSlug, LOGO_ASSET_VERSION } from './logos';
+import { FONT_PRELOAD, FONT_FACE_CSS } from './typeface';
+import { siteNav, SITE_NAV_CSS, type NavSection } from './site-nav';
 
 // ── Shared formatting ─────────────────────────────────────────────────────────
 
@@ -84,45 +86,42 @@ const SHELL_CSS = `
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
       color-scheme:dark;
-      --bg:#0c0c0e; --surface:#141418; --surface2:#1c1c22;
-      --border:#27272f; --border2:#33333d;
-      --text:#f0f0f4; --text2:#a3a3b3; --text3:#80808f;
-      --accent:#6366f1; --accent-dim:rgba(99,102,241,0.15);
-      --green:#22c55e; --red:#ef4444; --radius:8px; --radius-sm:5px;
-      --nav-bg:rgba(12,12,14,0.88);
+      --bg:#0a0a0a; --surface:#111111; --surface2:#191919;
+      --border:#1f1f1f; --border2:#2e2e2e;
+      --text:#ededed; --text2:#a1a1a1; --text3:#8b8b8b;
+      --accent:#ffb224; --on-accent:#0a0a0a; --accent-dim:rgba(255,178,36,0.14);
+      --green:#3dd68c; --red:#ef4444; --radius:8px; --radius-sm:5px;
+      --nav-bg:rgba(10,10,10,0.85);
     }
     html[data-theme="light"] {
       color-scheme:light;
-      --bg:#f4f4f8; --surface:#ffffff; --surface2:#ebebf2;
-      --border:#dcdce8; --border2:#c8c8d8;
-      --text:#111118; --text2:#3d3d52; --text3:#62627a;
-      --accent:#4746b8; --accent-dim:rgba(71,70,184,0.1);
-      --green:#15803d; --red:#b91c1c; --nav-bg:rgba(244,244,248,0.92);
+      --bg:#fafafa; --surface:#ffffff; --surface2:#f2f2f2;
+      --border:#e6e6e6; --border2:#d1d1d1;
+      --text:#171717; --text2:#454545; --text3:#666666;
+      --accent:#b45309; --on-accent:#ffffff; --accent-dim:rgba(180,83,9,0.1);
+      --green:#15803d; --red:#b91c1c; --nav-bg:rgba(250,250,250,0.88);
     }
-    body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text); font-size:14px; line-height:1.5; min-height:100vh; }
-    nav { position:sticky; top:0; z-index:100; background:var(--nav-bg); backdrop-filter:blur(14px); border-bottom:1px solid var(--border); padding:0 24px; height:52px; display:flex; align-items:center; justify-content:space-between; gap:16px; }
-    .nav-brand { display:flex; align-items:center; gap:8px; font-size:16px; font-weight:700; color:var(--text); text-decoration:none; letter-spacing:-0.3px; }
-    .nav-brand .diamond { color:var(--accent); font-size:18px; }
-    .nav-back { font-size:13px; color:var(--text2); text-decoration:none; }
-    .nav-back:hover { color:var(--text); }
-    main { max-width:1100px; margin:0 auto; padding:28px 24px 60px; }
+    body { font-family:var(--font); background:var(--bg); color:var(--text); font-size:14px; line-height:1.5; min-height:100vh; }
+${SITE_NAV_CSS}
+    main { max-width:1200px; margin:0 auto; padding:32px 24px 64px; }
     .crumb { font-size:12px; color:var(--text3); margin-bottom:14px; }
     .crumb a { color:var(--text2); text-decoration:none; }
     .crumb a:hover { color:var(--text); }
-    h1 { font-size:26px; font-weight:700; margin-bottom:8px; letter-spacing:-0.4px; }
-    h2 { font-size:16px; font-weight:650; margin-bottom:12px; }
-    .lede { color:var(--text2); font-size:14px; line-height:1.65; max-width:760px; margin-bottom:20px; }
+    h1 { font-size:34px; font-weight:600; margin-bottom:12px; letter-spacing:-0.035em; line-height:1.1; text-wrap:balance; }
+    h2 { font-size:16px; font-weight:600; margin-bottom:12px; }
+    .lede { color:var(--text2); font-size:15px; line-height:1.6; max-width:760px; margin-bottom:28px; }
     .panel { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:20px; overflow:hidden; }
     .panel-head { padding:14px 18px 12px; border-bottom:1px solid var(--border); }
-    .panel-title { font-size:14px; font-weight:650; }
+    .panel-title { font-size:14px; font-weight:600; }
     .panel-sub { font-size:12px; color:var(--text3); margin-top:3px; }
     .panel-body { padding:16px 18px; }
     table { width:100%; border-collapse:collapse; font-size:13px; }
-    thead th { text-align:left; padding:10px 14px; border-bottom:1px solid var(--border); font-size:11px; font-weight:600; color:var(--text3); text-transform:uppercase; letter-spacing:0.04em; white-space:nowrap; }
+    thead th { text-align:left; padding:10px 14px; border-bottom:1px solid var(--border2); font-size:12px; font-weight:500; color:var(--text3); white-space:nowrap; }
     tbody tr { border-bottom:1px solid var(--border); }
     tbody tr:last-child { border-bottom:none; }
     tbody td { padding:10px 14px; vertical-align:top; }
-    .num { font-variant-numeric:tabular-nums; }
+    /* Figures in mono, as on the homepage table */
+    .num { font-family:var(--mono); font-variant-numeric:tabular-nums; }
     .win { color:var(--green); font-weight:600; }
     .muted { color:var(--text3); }
     .muted a { color:var(--text2); }
@@ -154,15 +153,15 @@ const SHELL_CSS = `
     footer a:hover { color:var(--text2); }
     .tbl-wrap { overflow-x:auto; }
     .usage-stats { display:flex; gap:26px; flex-wrap:wrap; margin-bottom:16px; }
-    .usage-stat .k { font-size:11px; color:var(--text3); text-transform:uppercase; letter-spacing:0.04em; }
-    .usage-stat .v { font-size:19px; font-weight:650; font-variant-numeric:tabular-nums; margin-top:2px; }
+    .usage-stat .k { font-size:12px; color:var(--text3); }
+    .usage-stat .v { font-family:var(--mono); font-size:20px; font-weight:500; font-variant-numeric:tabular-nums; margin-top:2px; }
     .usage-chart { width:100%; height:auto; display:block; }
     .usage-axis { display:flex; justify-content:space-between; font-size:11px; color:var(--text3); margin-top:5px; font-variant-numeric:tabular-nums; }
     .up { color:var(--green); }
     .down { color:var(--red); }
     @media (max-width:700px) {
       main { padding:20px 16px 40px; }
-      h1 { font-size:21px; }
+      h1 { font-size:26px; }
       .grid2 { grid-template-columns:1fr; }
       table { font-size:12px; }
       .usage-stats { gap:18px; }
@@ -172,7 +171,7 @@ const SHELL_CSS = `
 
 function shell(o: {
   title: string; description: string; canonical: string;
-  jsonLd?: string[]; backHref?: string; backLabel?: string; body: string;
+  jsonLd?: string[]; section: NavSection; body: string;
 }): string {
   // JSON.stringify does NOT escape "<", so a model description containing
   // "</script>" would close the tag and inject markup. Escaping "<" as \u003c
@@ -193,22 +192,20 @@ function shell(o: {
   <meta property="og:type" content="article" />
   <meta property="og:url" content="${esc(o.canonical)}" />
   <meta property="og:site_name" content="token.app" />
-  <meta property="og:image" content="https://token.app/og.png?v=2" />
+  <meta property="og:image" content="https://token.app/og.png?v=3" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:image" content="https://token.app/og.png?v=2" />
+  <meta name="twitter:image" content="https://token.app/og.png?v=3" />
   <link rel="canonical" href="${esc(o.canonical)}" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔷</text></svg>" />
   ${ld}
   <script>(function(){var t=localStorage.getItem('theme')||(window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);})();</script>
-  <style>${SHELL_CSS}</style>
+  ${FONT_PRELOAD}
+  <style>${FONT_FACE_CSS}${SHELL_CSS}</style>
 </head>
 <body>
-<nav>
-  <a href="/" class="nav-brand"><span class="diamond">◈</span> token.app</a>
-  <a href="${esc(o.backHref ?? '/')}" class="nav-back">← ${esc(o.backLabel ?? 'Back to token.app')}</a>
-</nav>
+${siteNav(o.section)}
 <main>
 ${o.body}
 </main>
@@ -541,8 +538,7 @@ export function getModelHtml(params: {
       (m.contextWindow ? ` ${fmtCtx(m.contextWindow)} context.` : '') +
       (myScore !== null ? ` Scores ${(myScore * 100).toFixed(1)}% on GPQA Diamond.` : ''),
     canonical: url,
-    backHref: '/',
-    backLabel: 'All models',
+    section: 'api',
     jsonLd: [faqJsonLd(faqs), JSON.stringify({
       '@context': 'https://schema.org',
       '@type': 'Product',
@@ -881,8 +877,7 @@ export function getSubCompareHtml(params: {
     title: `${a.name} vs ${b.name}: pricing & plans compared — token.app`,
     description: `${a.name} vs ${b.name} — every tier, monthly and annual pricing, and what each plan includes. ${verdictBits[0] ?? ''}`.trim(),
     canonical: url,
-    backHref: '/',
-    backLabel: 'All subscriptions',
+    section: 'subscriptions',
     jsonLd: [faqJsonLd(faqs)],
     body,
   });
@@ -1039,8 +1034,7 @@ export function getModelCompareHtml(params: {
     title: `${an} vs ${bn}: price, context & benchmarks — token.app`,
     description: `${an} vs ${bn} compared on price per token, context window and independently-run benchmarks. ${verdict[0] ?? ''}`.trim(),
     canonical: url,
-    backHref: '/',
-    backLabel: 'All models',
+    section: 'api',
     jsonLd: [faqJsonLd(faqs)],
     body,
   });

@@ -195,10 +195,13 @@ test('the cheaper-than-prompt multiple is stated, not left to the reader', () =>
 
 test('the Cached column is sortable and the empty-state colspan matches it', () => {
   assert.match(html, /data-sort="cacheReadPer1M"/);
-  // A colspan left at 9 after adding a tenth column misaligns every empty state.
+  // A colspan left behind when the column count changes misaligns every empty
+  // state. Nine since the Provider column folded into the Model cell.
   const headerCount = (html.match(/<th scope="col"/g) || []).length;
-  assert.equal(headerCount, 10);
-  assert.doesNotMatch(html, /colspan="9"/);
+  assert.equal(headerCount, 9);
+  const spans = [...html.matchAll(/colspan="(\d+)"/g)].map((m) => Number(m[1]));
+  assert.ok(spans.length > 0);
+  for (const n of spans) assert.equal(n, headerCount);
 });
 
 test('the row renderer actually emits a cell for every header', () => {
