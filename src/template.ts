@@ -1,4 +1,4 @@
-import { MONO_LOGO_SLUGS, LOGO_ASSET_VERSION } from './logos';
+import { MONO_LOGO_SLUGS, LOGO_ASSET_VERSION, PROVIDER_LOGOS } from './logos';
 import { PROVIDERS, PROVIDER_ALIASES } from './providers';
 
 import { FONT_PRELOAD, FONT_FACE_CSS } from './typeface';
@@ -17,6 +17,7 @@ export function getHtml(params: {
   // Which vendored marks are flat black and need inverting on the dark theme. Comes
   // from the generated asset module so the list cannot drift from the assets.
   const monoLogoSlugsLiteral = JSON.stringify(MONO_LOGO_SLUGS);
+  const markLogoSlugsLiteral = JSON.stringify(Object.keys(PROVIDER_LOGOS).sort());
   const logoAssetVersionLiteral = JSON.stringify(LOGO_ASSET_VERSION);
 
   // Provider slug -> display name, for the client-side renderers.
@@ -57,13 +58,28 @@ export function getHtml(params: {
     name: string;
     inputPer1M?: number | null;
     outputPer1M?: number | null;
+    contextWindow?: number | null;
+    createdAt?: number | null;
+    isDeprecated?: boolean;
   }>;
   const modelCount = parsedModels.length;
   const providerCount = new Set(parsedModels.map(m => m.providerId)).size;
 
   // Extract specific model prices for FAQ answers
   const gpt4o = parsedModels.find(m => m.id === 'openai/gpt-4o');
-  const claude35sonnet = parsedModels.find(m => m.id === 'anthropic/claude-3-5-sonnet');
+  // The newest Claude Sonnet, found in the data rather than named here: a hard-coded
+  // id (claude-3-5-sonnet, which the catalogue never carried) answered "varies" for
+  // as long as it shipped, including in the FAQPage markup.
+  const claudeSonnet = parsedModels
+    .filter(m => m.id?.startsWith('anthropic/') && /sonnet/i.test(m.name) && !/batch/i.test(m.id + ' ' + m.name) && !m.isDeprecated && m.inputPer1M != null)
+    .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0];
+  const claudeSonnetRaw = claudeSonnet ? claudeSonnet.name.replace(/^[^:]+: /, '') : '';
+  // The name comes from OpenRouter, so it is escaped for each place it lands.
+  const claudeSonnetName = claudeSonnetRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const claudeSonnetJson = JSON.stringify(claudeSonnetRaw).slice(1, -1).replace(/</g, '\\u003c');
+  const claudeSonnetCtx = claudeSonnet?.contextWindow
+    ? (claudeSonnet.contextWindow >= 1_000_000 ? +(claudeSonnet.contextWindow / 1_000_000).toFixed(1) + 'M' : Math.round(claudeSonnet.contextWindow / 1000) + 'K')
+    : '';
   const gemini15pro = parsedModels.find(m => m.id === 'google/gemini-pro-1.5' || m.id === 'google/gemini-1.5-pro');
   const deepseekV3 = parsedModels.find(m => m.id?.includes('deepseek') && m.id?.includes('chat'));
 
@@ -130,15 +146,15 @@ export function getHtml(params: {
           "text": "GPT-4o costs ${fmtPriceSsr(gpt4o?.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(gpt4o?.outputPer1M)} per 1M output tokens. These prices are sourced from OpenRouter and updated hourly."
         }
       },
-      {
+${claudeSonnet ? `      {
         "@type": "Question",
-        "name": "How much does Claude 3.5 Sonnet cost per 1M tokens?",
+        "name": "How much does ${claudeSonnetJson} cost per 1M tokens?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Claude 3.5 Sonnet costs ${fmtPriceSsr(claude35sonnet?.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(claude35sonnet?.outputPer1M)} per 1M output tokens as listed by Anthropic."
+          "text": "${claudeSonnetJson} costs ${fmtPriceSsr(claudeSonnet.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(claudeSonnet.outputPer1M)} per 1M output tokens, as listed on OpenRouter."
         }
       },
-      {
+` : ''}      {
         "@type": "Question",
         "name": "What is the cheapest AI API for text generation?",
         "acceptedAnswer": {
@@ -677,6 +693,8 @@ ${SITE_NAV_CSS}
       background: var(--surface2);
     }
     .logo-tile .provider-logo { width: 14px; height: 14px; }
+    .logo-tile:has(.provider-logo--initial) { background: none; }
+    .logo-tile .provider-logo--initial { width: 100%; height: 100%; border-radius: 6px; }
 
     /* Mobile-only compact meta row (context + capability badges) */
     .mobile-meta {
@@ -1877,10 +1895,10 @@ ${SITE_NAV_CSS}
       <summary>How much does GPT-4o cost per 1M tokens?</summary>
       <p>GPT-4o costs ${fmtPriceSsr(gpt4o?.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(gpt4o?.outputPer1M)} per 1M output tokens. These prices are sourced from OpenRouter and updated hourly. Always verify with OpenAI's official pricing page before billing decisions.</p>
     </details>
-    <details class="faq-item">
-      <summary>How much does Claude 3.5 Sonnet cost per 1M tokens?</summary>
-      <p>Claude 3.5 Sonnet from Anthropic costs ${fmtPriceSsr(claude35sonnet?.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(claude35sonnet?.outputPer1M)} per 1M output tokens. It supports a 200K context window, making it one of the best-value frontier models for long-document tasks.</p>
-    </details>
+${claudeSonnet ? `    <details class="faq-item">
+      <summary>How much does ${claudeSonnetName} cost per 1M tokens?</summary>
+      <p>${claudeSonnetName}, Anthropic's newest Sonnet, costs ${fmtPriceSsr(claudeSonnet.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(claudeSonnet.outputPer1M)} per 1M output tokens${claudeSonnetCtx ? `, with a ${claudeSonnetCtx}-token context window` : ''}.</p>
+    </details>` : ''}
     <details class="faq-item">
       <summary>What is a token in AI models?</summary>
       <p>A token is a chunk of text processed by an AI language model. In English, roughly 1 token equals 4 characters or 0.75 words. AI APIs charge separately for input tokens (your prompt) and output tokens (the model's response). Prices are quoted per 1 million tokens ($/1M). A typical ChatGPT-length exchange uses 300–500 tokens total.</p>
@@ -2268,6 +2286,8 @@ function providerLabel(id, fallbackName) {
 // inverting on the dark theme. Generated alongside the assets themselves so the two
 // cannot drift — see scripts/build-provider-logos.mjs.
 const MONO_LOGO_SLUGS = new Set(${monoLogoSlugsLiteral});
+// Slugs with a real brand mark. Everything else is served a generated letter tile.
+const MARK_LOGO_SLUGS = new Set(${markLogoSlugsLiteral});
 const LOGO_ASSET_VERSION = ${logoAssetVersionLiteral};
 
 // ── Provider AI product pages (for provider chip links) ─────────────────────
@@ -2464,8 +2484,11 @@ function providerLogoImg(providerId) {
   // Mono marks are flat black so they read on the light theme and on the treemap's
   // white chip; CSS inverts them for the dark theme. currentColor cannot do this
   // job — it does not inherit into an SVG loaded through <img>.
-  const mono = MONO_LOGO_SLUGS.has(canonicalLogoSlug(providerId)) ? ' provider-logo--mono' : '';
-  return \`<img src="\${escape(getProviderLogo(providerId))}" class="provider-logo\${mono}" alt="" width="13" height="13" loading="lazy">\`;
+  const slug = canonicalLogoSlug(providerId);
+  const mono = MONO_LOGO_SLUGS.has(slug) ? ' provider-logo--mono' : '';
+  // A letter tile is already a tile, so it fills the slot rather than shrinking inside another.
+  const initial = MARK_LOGO_SLUGS.has(slug) ? '' : ' provider-logo--initial';
+  return \`<img src="\${escape(getProviderLogo(providerId))}" class="provider-logo\${mono}\${initial}" alt="" width="13" height="13" loading="lazy">\`;
 }
 
 // Benchmark filter chips. Each one narrows the table to the models Epoch has
@@ -4511,36 +4534,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ── Provider page descriptions ────────────────────────────────────────────────
 
-const PROVIDER_META: Record<string, { name: string; description: string; about: string }> = {
+// Company facts only. Model names go stale within months (this block still named
+// GPT-4o, Gemini 1.5 and Claude 3.5 Sonnet as flagships in late 2026), so the models
+// a page mentions come from the catalogue at render time instead; see
+// newestModelNames() in getProviderHtml.
+const PROVIDER_META: Record<string, { name: string; about: string }> = {
   openai: {
     name: 'OpenAI',
-    description: 'Real-time API token pricing for all OpenAI models including GPT-4o, GPT-4o mini, o1, o3, and GPT-3.5. Compare input/output costs and context windows.',
-    about: `OpenAI is the San Francisco-based AI lab behind the GPT series and ChatGPT. Their model lineup spans the cost spectrum from the ultra-affordable GPT-4o mini to the flagship GPT-4o and the advanced reasoning models o1 and o3. OpenAI pioneered the pay-per-token API model and remains one of the most widely integrated AI providers in production applications. Their pricing is generally quoted via the OpenAI API and aggregated on OpenRouter.`,
+    about: `OpenAI is the San Francisco AI lab behind the GPT models and ChatGPT. Its API lineup runs from small, low-cost models to large reasoning models, and it is one of the most widely integrated AI providers in production software.`,
   },
   anthropic: {
     name: 'Anthropic',
-    description: 'Real-time API token pricing for all Anthropic Claude models including Claude 3.5 Sonnet, Claude 3.5 Haiku, and Claude 3 Opus. Compare input/output costs and context windows.',
-    about: `Anthropic builds the Claude family of large language models with a strong emphasis on AI safety and reliability. Claude 3.5 Sonnet is widely regarded as one of the best-value frontier models, combining high capability with a 200K context window. Anthropic offers a tiered lineup from the fast and affordable Claude Haiku to the powerful Claude Opus, designed for enterprise reasoning and long-document analysis.`,
+    about: `Anthropic is the San Francisco AI company behind the Claude models, built with a strong emphasis on safety and reliability. Its lineup is tiered, from fast, low-cost Haiku models up to its most capable ones for hard reasoning and long-document work.`,
   },
   google: {
     name: 'Google',
-    description: 'Real-time API token pricing for all Google AI models including Gemini 1.5 Pro, Gemini 1.5 Flash, Gemini 2.0 Flash, and PaLM. Compare input/output costs and context windows.',
-    about: `Google DeepMind produces the Gemini family of multimodal AI models available through Google AI Studio and Vertex AI. Gemini 1.5 Pro and Flash support industry-leading context windows of up to 2 million tokens. Google also offers several models with generous free-tier quotas, making them popular for experimentation. Their models support text, vision, audio, and video modalities.`,
+    about: `Google DeepMind builds the Gemini family of multimodal models, available through Google AI Studio and Vertex AI. Gemini models handle text, images, audio and video, and several carry very long context windows.`,
   },
   'meta-llama': {
     name: 'Meta Llama',
-    description: 'Real-time API token pricing for Meta Llama models including Llama 3.1, Llama 3.2, and Llama 3.3. Many Llama models are available free via OpenRouter.',
-    about: `Meta AI's Llama series are open-weight models released under a permissive research licence, making them the most widely deployed open-source AI models in the world. Llama 3 models are available in multiple sizes (8B, 70B, 405B) with strong performance across coding, reasoning, and instruction following. Many providers host Llama models at zero cost via OpenRouter, making them the default choice for budget-conscious developers.`,
+    about: `Meta's Llama models are open-weight, which is why so many providers host them, often at very low cost and sometimes free through OpenRouter.`,
   },
   mistralai: {
     name: 'Mistral AI',
-    description: 'Real-time API token pricing for Mistral AI models including Mistral Large, Mistral Small, Mixtral 8x7B, and Codestral. Compare input/output costs.',
-    about: `Mistral AI is a Paris-based AI company known for releasing highly efficient open-weight models. Their Mixtral 8x22B model uses a mixture-of-experts architecture to deliver frontier-quality performance at a fraction of the cost. Mistral also offers Codestral, a specialized coding model, and Le Chat, their consumer assistant. Mistral models are popular for European data sovereignty requirements.`,
+    about: `Mistral AI is a Paris-based company known for efficient open-weight models alongside its commercial ones, and for Le Chat, its consumer assistant. Its models are a common choice where European data residency matters.`,
   },
   deepseek: {
     name: 'DeepSeek',
-    description: 'Real-time API token pricing for DeepSeek models including DeepSeek V3, DeepSeek R1, and DeepSeek Coder. DeepSeek offers some of the lowest prices among frontier AI models.',
-    about: `DeepSeek is a Chinese AI research lab that has released highly capable models at remarkably low prices, disrupting the AI pricing landscape in 2025. DeepSeek V3 and R1 match or exceed many frontier models on benchmarks while costing a fraction of comparable OpenAI or Anthropic models. Their models are open-weight and widely available through OpenRouter and other providers.`,
+    about: `DeepSeek is a Chinese AI lab whose open-weight models have been among the lowest-priced capable models on the market. They are widely hosted through OpenRouter and other providers.`,
   },
   // Keyed on the canonical slug. `index.ts` canonicalizes before calling, so there is no
   // 'x-ai' entry here — unlike the client-side maps above, this one is only ever reached
@@ -4549,23 +4570,19 @@ const PROVIDER_META: Record<string, { name: string; description: string; about: 
   // heading keeps it: nobody searches for the holding company.
   spacexai: {
     name: 'SpaceXAI (Grok)',
-    description: 'Real-time API token pricing for SpaceXAI Grok models including Grok 4.6, Grok 4.5 and Grok 4.20. Compare Grok input/output costs and context windows.',
-    about: `SpaceXAI — formerly xAI — is Elon Musk's AI company, best known for the Grok series of large language models. Grok models are available through the company's own API and through X Premium subscriptions. Grok 4.6 is the current flagship; the catalogue also carries Grok 4.5, Grok 4.3, the Grok 4.20 line including a multi-agent variant, and Grok Build. The company emphasises real-time information access and integration with the X platform.`,
+    about: `SpaceXAI, formerly xAI, is Elon Musk's AI company, best known for the Grok models. Grok is available through the company's own API and through X Premium subscriptions, with an emphasis on real-time information and integration with X.`,
   },
   qwen: {
     name: 'Qwen (Alibaba)',
-    description: 'Real-time API token pricing for Qwen models from Alibaba Cloud including Qwen 2.5, Qwen 2, and QwQ reasoning models. Compare input/output costs.',
-    about: `Qwen is Alibaba Cloud's family of large language models, released under the Qwen series. Qwen 2.5 models span sizes from 0.5B to 72B parameters and include specialized variants for coding, math, and instruction following. QwQ is Alibaba's reasoning-focused model competitive with o1-mini. Many Qwen models are open-weight and available at very low cost via OpenRouter.`,
+    about: `Qwen is Alibaba Cloud's family of large language models. Many are open-weight, the range runs from small models to large mixture-of-experts ones with variants for coding, maths and vision, and many are available at very low cost through OpenRouter.`,
   },
   nvidia: {
     name: 'NVIDIA',
-    description: 'Real-time API token pricing for NVIDIA AI models including Llama Nemotron and other NVIDIA-hosted models. Compare input/output costs via OpenRouter.',
-    about: `NVIDIA hosts and fine-tunes AI models through NVIDIA NIM (NVIDIA Inference Microservices) and makes them available via API. Their offerings include fine-tuned variants of Meta Llama and other open-weight models optimized for NVIDIA hardware. NVIDIA also produces their own models like Nemotron, designed for enterprise workloads on NVIDIA GPU infrastructure.`,
+    about: `NVIDIA serves models through NVIDIA NIM and publishes its own Nemotron models, many fine-tuned from open-weight bases and optimised for NVIDIA hardware.`,
   },
   cohere: {
     name: 'Cohere',
-    description: 'Real-time API token pricing for Cohere models including Command R+, Command R, and Embed. Cohere specialises in enterprise RAG and embeddings.',
-    about: `Cohere is a Toronto-based AI company specializing in enterprise language models, particularly for retrieval-augmented generation (RAG) and embeddings. Command R+ is their flagship model optimized for multi-step reasoning and tool use in enterprise RAG pipelines. Cohere also produces industry-leading embedding models and a reranker, making them a popular choice for search and knowledge management applications.`,
+    about: `Cohere is a Toronto-based company focused on enterprise language models, particularly for retrieval-augmented generation, with its Command models alongside embedding and reranking models.`,
   },
 };
 
@@ -4593,10 +4610,26 @@ export function getProviderHtml(params: {
   }>;
 }): string {
   const { providerId, models } = params;
-  const meta = PROVIDER_META[providerId] ?? {
+  const company = PROVIDER_META[providerId] ?? {
     name: providerId,
-    description: `AI token pricing for ${providerId} models.`,
     about: `${providerId} offers AI language models available via API.`,
+  };
+  // The three newest live models, named as the table names them. Batch and free
+  // twins are the same model at another price, so they don't take a slot.
+  const newestModelNames = models
+    .filter((m) => {
+      const n = (m.name + ' ' + m.id).toLowerCase();
+      return !m.isDeprecated && !['(batch)', '(free)', ':batch', ':free'].some((t) => n.includes(t));
+    })
+    .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+    .slice(0, 3)
+    .map((m) => m.name.replace(/^[^:]+: /, ''));
+  const newestList = newestModelNames.length > 1
+    ? newestModelNames.slice(0, -1).join(', ') + ' and ' + newestModelNames[newestModelNames.length - 1]
+    : newestModelNames[0] ?? '';
+  const meta = {
+    ...company,
+    description: `Live API token pricing for every ${company.name} model on OpenRouter${newestList ? `, newest first: ${newestList}` : ''}. Compare input and output costs and context windows.`,
   };
 
   function fmtCtx(n: number | null): string {
