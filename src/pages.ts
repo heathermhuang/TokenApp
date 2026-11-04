@@ -83,14 +83,16 @@ function shortName(name: string): string {
 const SHELL_CSS = `
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
+      color-scheme:dark;
       --bg:#0c0c0e; --surface:#141418; --surface2:#1c1c22;
       --border:#27272f; --border2:#33333d;
-      --text:#f0f0f4; --text2:#9090a0; --text3:#606070;
+      --text:#f0f0f4; --text2:#a3a3b3; --text3:#80808f;
       --accent:#6366f1; --accent-dim:rgba(99,102,241,0.15);
       --green:#22c55e; --red:#ef4444; --radius:8px; --radius-sm:5px;
       --nav-bg:rgba(12,12,14,0.88);
     }
     html[data-theme="light"] {
+      color-scheme:light;
       --bg:#f4f4f8; --surface:#ffffff; --surface2:#ebebf2;
       --border:#dcdce8; --border2:#c8c8d8;
       --text:#111118; --text2:#3d3d52; --text3:#62627a;
@@ -123,6 +125,7 @@ const SHELL_CSS = `
     .num { font-variant-numeric:tabular-nums; }
     .win { color:var(--green); font-weight:600; }
     .muted { color:var(--text3); }
+    .muted a { color:var(--text2); }
     .chip { display:inline-block; padding:2px 7px; border-radius:20px; font-size:11px; font-weight:600; background:var(--surface2); color:var(--text2); }
     .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
     .stat-row { display:flex; justify-content:space-between; gap:12px; padding:7px 0; border-bottom:1px solid var(--border); font-size:13px; }
@@ -190,11 +193,11 @@ function shell(o: {
   <meta property="og:type" content="article" />
   <meta property="og:url" content="${esc(o.canonical)}" />
   <meta property="og:site_name" content="token.app" />
-  <meta property="og:image" content="https://token.app/og.png" />
+  <meta property="og:image" content="https://token.app/og.png?v=2" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:image" content="https://token.app/og.png" />
+  <meta name="twitter:image" content="https://token.app/og.png?v=2" />
   <link rel="canonical" href="${esc(o.canonical)}" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔷</text></svg>" />
   ${ld}

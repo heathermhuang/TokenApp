@@ -84,13 +84,13 @@ export function getHtml(params: {
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://token.app/" />
   <meta property="og:site_name" content="token.app" />
-  <meta property="og:image" content="https://token.app/og.png" />
+  <meta property="og:image" content="https://token.app/og.png?v=2" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="token.app — AI Pricing Tracker" />
   <meta name="twitter:description" content="Real-time token pricing and usage rankings for ${modelCount}+ AI models. Compare costs, context windows, subscriptions, and see trending models and agents by 24H/7D/30D usage." />
-  <meta name="twitter:image" content="https://token.app/og.png" />
+  <meta name="twitter:image" content="https://token.app/og.png?v=2" />
   <meta name="author" content="Measurable AI" />
   <link rel="canonical" href="https://token.app/" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔷</text></svg>" />
@@ -193,14 +193,15 @@ export function getHtml(params: {
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
+      color-scheme: dark;
       --bg: #0c0c0e;
       --surface: #141418;
       --surface2: #1c1c22;
       --border: #27272f;
       --border2: #33333d;
       --text: #f0f0f4;
-      --text2: #9090a0;
-      --text3: #606070;
+      --text2: #a3a3b3;
+      --text3: #80808f;
       --accent: #6366f1;
       --accent-dim: rgba(99,102,241,0.15);
       --green: #22c55e;
@@ -215,6 +216,7 @@ export function getHtml(params: {
     }
 
     html[data-theme="light"] {
+      color-scheme: light;
       --bg: #f4f4f8;
       --surface: #ffffff;
       --surface2: #ebebf2;
@@ -235,6 +237,8 @@ export function getHtml(params: {
     }
 
     html { scroll-behavior: smooth; }
+
+    button, input, select, textarea { font-family: inherit; }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
@@ -438,6 +442,7 @@ export function getHtml(params: {
     .sup-m { font-size: 12px; color: var(--text2); display: block; margin-top: 3px; font-variant-numeric: tabular-nums; }
     @media (max-width: 600px) {
       .superlatives { grid-template-columns: repeat(2, 1fr); margin-top: 18px; }
+      .sup:last-child:nth-child(odd) { grid-column: 1 / -1; }
     }
 
     /* ── Controls ─────────────────────────────────────────────────────────── */
@@ -470,7 +475,7 @@ export function getHtml(params: {
     @media (max-width: 700px) {
       .pareto-header { flex-direction:column; align-items:stretch; }
     }
-    .pareto-wrap { position:relative; width:100%; overflow-x:auto; padding:8px 12px 0; box-sizing:border-box; }
+    .pareto-wrap { position:relative; width:100%; overflow-x:auto; overflow-y:hidden; padding:8px 12px 0; box-sizing:border-box; }
     .pareto-svg { display:block; width:100%; min-width:520px; height:auto; }
     .pareto-axis { stroke:var(--border); stroke-width:1; }
     .pareto-grid { stroke:var(--border); stroke-width:1; stroke-dasharray:2 4; opacity:0.55; }
@@ -1681,6 +1686,12 @@ export function getHtml(params: {
 
       /* Table: all columns visible, swipe right to see all */
       .table-wrap { padding: 0 0 32px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      /* Only the table runs edge to edge; the chart card and the table's meta line
+         keep the page's 16px gutter. */
+      .pareto-shell { padding: 0 16px 24px; overflow-x: visible; }
+      #api-section .table-meta { padding-left: 16px; padding-right: 16px; }
+      #api-section tbody td:first-child,
+      #api-section thead th:first-child .th-sort { padding-left: 16px; }
       table { min-width: 720px; table-layout: auto; }
       table th, table td { padding: 6px 8px; }
       /* Sortable headers delegate their padding to the inner button, so the tighter
@@ -4752,11 +4763,11 @@ export function getProviderHtml(params: {
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://token.app/${encodeURIComponent(providerId)}" />
   <meta property="og:site_name" content="token.app" />
-  <meta property="og:image" content="https://token.app/og.png" />
+  <meta property="og:image" content="https://token.app/og.png?v=2" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:image" content="https://token.app/og.png" />
+  <meta name="twitter:image" content="https://token.app/og.png?v=2" />
   <link rel="canonical" href="https://token.app/${encodeURIComponent(providerId)}" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔷</text></svg>" />
   <script type="application/ld+json">
@@ -4777,14 +4788,16 @@ export function getProviderHtml(params: {
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
+      color-scheme: dark;
       --bg: #0c0c0e; --surface: #141418; --surface2: #1c1c22;
       --border: #27272f; --border2: #33333d;
-      --text: #f0f0f4; --text2: #9090a0; --text3: #606070;
+      --text: #f0f0f4; --text2: #a3a3b3; --text3: #80808f;
       --accent: #6366f1; --accent-dim: rgba(99,102,241,0.15);
       --green: #22c55e; --radius: 8px; --radius-sm: 5px;
       --nav-bg: rgba(12,12,14,0.88);
     }
     html[data-theme="light"] {
+      color-scheme: light;
       --bg: #f4f4f8; --surface: #ffffff; --surface2: #ebebf2;
       --border: #dcdce8; --border2: #c8c8d8;
       --text: #111118; --text2: #3d3d52; --text3: #62627a;
@@ -4876,7 +4889,7 @@ export function getAboutHtml(): string {
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://token.app/about" />
   <meta property="og:site_name" content="token.app" />
-  <meta property="og:image" content="https://token.app/og.png" />
+  <meta property="og:image" content="https://token.app/og.png?v=2" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <link rel="canonical" href="https://token.app/about" />
@@ -4899,11 +4912,13 @@ export function getAboutHtml(): string {
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
+      color-scheme: dark;
       --bg: #0c0c0e; --surface: #141418; --surface2: #1c1c22;
-      --border: #27272f; --text: #f0f0f4; --text2: #9090a0; --text3: #606070;
+      --border: #27272f; --text: #f0f0f4; --text2: #a3a3b3; --text3: #80808f;
       --accent: #6366f1; --radius: 8px; --nav-bg: rgba(12,12,14,0.88);
     }
     html[data-theme="light"] {
+      color-scheme: light;
       --bg: #f4f4f8; --surface: #ffffff; --surface2: #ebebf2;
       --border: #dcdce8; --text: #111118; --text2: #3d3d52; --text3: #62627a;
       --accent: #4746b8; --nav-bg: rgba(244,244,248,0.92);
