@@ -1,0 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap');
+
+/* token.app's own tokens (Ticker), per theme */
+.tab .ss-stage {
+  --t-bg: #0a0a0a; --t-surface: #111111; --t-raised: #191919; --t-line: #1f1f1f; --t-line2: #2e2e2e;
+  --t-text: #ededed; --t-text2: #a1a1a1; --t-text3: #8b8b8b; --t-accent: #ffb224; --t-cheap: #3dd68c;
+  --ss-accent: var(--t-accent);
+  overflow: hidden;
+  background: var(--t-bg);
+  color: var(--t-text);
+  font-family: Geist, system-ui, sans-serif;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+.tab .ss-stage[data-theme="light"] {
+  --t-bg: #fafafa; --t-surface: #ffffff; --t-raised: #ffffff; --t-line: #ececec; --t-line2: #d9d9d9;
+  --t-text: #171717; --t-text2: #454545; --t-text3: #666666; --t-accent: #b45309; --t-cheap: #15803d;
+}
+
+/* Sources: the left column, top and bottom */
+.tab-src {
+  position: absolute; left: 32px; width: 268px;
+  padding: 12px 14px 13px;
+  background: var(--t-surface);
+  border: 1px solid var(--t-line2);
+  border-radius: 10px;
+  display: grid; gap: 6px;
+}
+.tab-src--or { top: 32px; }
+.tab-src--ep { bottom: 32px; }
+.tab-src-name { font-size: 12px; font-weight: 600; color: var(--t-text); }
+.tab-src-name span { font-weight: 400; color: var(--t-text3); margin-left: 4px; }
+.tab-code { font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; line-height: 1.35; color: var(--t-text3); white-space: pre; }
+.tab-code .v { color: var(--t-text); }
+
+/* The result: the model's figures as token.app shows them */
+.tab-card {
+  position: absolute; right: 32px; top: 32px; bottom: 32px; width: 300px;
+  background: var(--t-raised);
+  border: 1px solid var(--t-line2);
+  border-radius: 12px;
+  padding: 0 16px;
+  display: flex; flex-direction: column;
+}
+.tab .ss-stage[data-theme="light"] .tab-card { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06); }
+.tab-head { display: flex; align-items: center; gap: 12px; height: 64px; border-bottom: 1px solid var(--t-line2); flex: none; }
+.tab-logo { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border-radius: 7px; background: var(--t-bg); }
+.tab-logo img { width: 16px; height: 16px; display: block; }
+.tab-model-text { display: grid; gap: 1px; }
+.tab-name { font-size: 14px; font-weight: 600; color: var(--t-text); white-space: nowrap; }
+.tab-prov { font-size: 12px; color: var(--t-text3); }
+.tab-row { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--t-line); color: var(--t-text2); }
+.tab-row:last-child { border-bottom: 0; }
+.tab-dim { color: var(--t-text3); margin-left: 4px; }
+.num { font-family: 'Geist Mono', ui-monospace, monospace; font-size: 14px; color: var(--t-text); font-variant-numeric: tabular-nums; }
+.num.strong { font-weight: 600; }
+.num.cheap { color: var(--t-cheap); }

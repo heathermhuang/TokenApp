@@ -1,16 +1,18 @@
-/* token.app's dark tokens, mapped onto the stage */
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap');
+
+/* token.app's dark tokens (Ticker), mapped onto the stage */
 .og .ss-stage {
-  --og-bg: #0c0c0e;
-  --og-surface: #141418;
-  --og-border: #27272f;
-  --og-text: #f0f0f4;
-  --og-text2: #a3a3b3;
-  --og-text3: #80808f;
-  --og-accent: #6366f1;
-  --og-cheap: #86efac;
+  --og-bg: #0a0a0a;
+  --og-surface: #111111;
+  --og-border: #2e2e2e;
+  --og-text: #ededed;
+  --og-text2: #a1a1a1;
+  --og-text3: #8b8b8b;
+  --og-accent: #ffb224;
+  --og-cheap: #3dd68c;
   overflow: hidden;
   background: var(--og-bg);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-family: Geist, system-ui, sans-serif;
 }
 
 /* Wordmark: top-left at the gutter */
@@ -46,15 +48,14 @@
   gap: 3px;
 }
 .og-k {
-  color: var(--og-text3);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  color: var(--og-accent);
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 500;
 }
 .og-name { color: var(--og-text); font-size: 15px; font-weight: 650; line-height: 1.3; }
 .og-price { display: flex; align-items: baseline; gap: 7px; margin-top: 2px; }
-.og-amount { color: var(--og-cheap); font-size: 26px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.og-amount { color: var(--og-cheap); font-family: 'Geist Mono', ui-monospace, monospace; font-size: 26px; font-weight: 500; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .og-unit { color: var(--og-text2); font-size: 12px; }
 .og-score {
   margin-left: 4px;
@@ -64,13 +65,13 @@
   font-variant-numeric: tabular-nums;
   padding: 2px 7px;
   border-radius: 999px;
-  background: rgba(99, 102, 241, 0.18);
+  background: rgba(255, 178, 36, 0.16);
 }
 
 .og-plot { display: block; width: 100%; flex: 1; min-height: 0; }
 .og-grid { stroke: var(--og-border); stroke-width: 1; stroke-dasharray: 2 5; }
 .og-axis { stroke: var(--og-border); stroke-width: 1.5; }
-.og-tick { fill: var(--og-text3); font-size: 15px; font-family: inherit; }
+.og-tick { fill: var(--og-text3); font-size: 15px; font-family: 'Geist Mono', ui-monospace, monospace; }
 .og-frontier { fill: none; stroke: #22c55e; stroke-width: 2.5; stroke-dasharray: 6 5; }
 .og-leader { stroke: var(--og-text3); stroke-width: 1.5; }
 .og-dot { opacity: 0.72; }
@@ -86,5 +87,5 @@
   gap: 10px;
 }
 .og-title, .og-line { white-space: normal; }
-.og-title { color: var(--og-text); font-size: 30px; font-weight: 750; line-height: 1.1; letter-spacing: -0.02em; text-wrap: balance; }
+.og-title { color: var(--og-text); font-size: 31px; font-weight: 600; line-height: 1.06; letter-spacing: -0.04em; text-wrap: balance; }
 .og-line { color: var(--og-text2); font-size: 12.5px; line-height: 1.45; }

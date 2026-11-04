@@ -1,5 +1,9 @@
-import { MONO_LOGO_SLUGS, LOGO_ASSET_VERSION } from './logos';
+import { MONO_LOGO_SLUGS, LOGO_ASSET_VERSION, PROVIDER_LOGOS } from './logos';
 import { PROVIDERS, PROVIDER_ALIASES } from './providers';
+
+import { FONT_PRELOAD, FONT_FACE_CSS } from './typeface';
+import { siteNav, SITE_NAV_CSS } from './site-nav';
+import { IMAGE_ASSET_VERSION } from './assets';
 
 export function getHtml(params: {
   initialModels?: string;
@@ -13,6 +17,7 @@ export function getHtml(params: {
   // Which vendored marks are flat black and need inverting on the dark theme. Comes
   // from the generated asset module so the list cannot drift from the assets.
   const monoLogoSlugsLiteral = JSON.stringify(MONO_LOGO_SLUGS);
+  const markLogoSlugsLiteral = JSON.stringify(Object.keys(PROVIDER_LOGOS).sort());
   const logoAssetVersionLiteral = JSON.stringify(LOGO_ASSET_VERSION);
 
   // Provider slug -> display name, for the client-side renderers.
@@ -53,13 +58,28 @@ export function getHtml(params: {
     name: string;
     inputPer1M?: number | null;
     outputPer1M?: number | null;
+    contextWindow?: number | null;
+    createdAt?: number | null;
+    isDeprecated?: boolean;
   }>;
   const modelCount = parsedModels.length;
   const providerCount = new Set(parsedModels.map(m => m.providerId)).size;
 
   // Extract specific model prices for FAQ answers
   const gpt4o = parsedModels.find(m => m.id === 'openai/gpt-4o');
-  const claude35sonnet = parsedModels.find(m => m.id === 'anthropic/claude-3-5-sonnet');
+  // The newest Claude Sonnet, found in the data rather than named here: a hard-coded
+  // id (claude-3-5-sonnet, which the catalogue never carried) answered "varies" for
+  // as long as it shipped, including in the FAQPage markup.
+  const claudeSonnet = parsedModels
+    .filter(m => m.id?.startsWith('anthropic/') && /sonnet/i.test(m.name) && !/batch/i.test(m.id + ' ' + m.name) && !m.isDeprecated && m.inputPer1M != null)
+    .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0];
+  const claudeSonnetRaw = claudeSonnet ? claudeSonnet.name.replace(/^[^:]+: /, '') : '';
+  // The name comes from OpenRouter, so it is escaped for each place it lands.
+  const claudeSonnetName = claudeSonnetRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const claudeSonnetJson = JSON.stringify(claudeSonnetRaw).slice(1, -1).replace(/</g, '\\u003c');
+  const claudeSonnetCtx = claudeSonnet?.contextWindow
+    ? (claudeSonnet.contextWindow >= 1_000_000 ? +(claudeSonnet.contextWindow / 1_000_000).toFixed(1) + 'M' : Math.round(claudeSonnet.contextWindow / 1000) + 'K')
+    : '';
   const gemini15pro = parsedModels.find(m => m.id === 'google/gemini-pro-1.5' || m.id === 'google/gemini-1.5-pro');
   const deepseekV3 = parsedModels.find(m => m.id?.includes('deepseek') && m.id?.includes('chat'));
 
@@ -84,13 +104,13 @@ export function getHtml(params: {
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://token.app/" />
   <meta property="og:site_name" content="token.app" />
-  <meta property="og:image" content="https://token.app/og.png?v=2" />
+  <meta property="og:image" content="https://token.app/og.png?v=3" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="token.app — AI Pricing Tracker" />
   <meta name="twitter:description" content="Real-time token pricing and usage rankings for ${modelCount}+ AI models. Compare costs, context windows, subscriptions, and see trending models and agents by 24H/7D/30D usage." />
-  <meta name="twitter:image" content="https://token.app/og.png?v=2" />
+  <meta name="twitter:image" content="https://token.app/og.png?v=3" />
   <meta name="author" content="Measurable AI" />
   <link rel="canonical" href="https://token.app/" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔷</text></svg>" />
@@ -126,15 +146,15 @@ export function getHtml(params: {
           "text": "GPT-4o costs ${fmtPriceSsr(gpt4o?.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(gpt4o?.outputPer1M)} per 1M output tokens. These prices are sourced from OpenRouter and updated hourly."
         }
       },
-      {
+${claudeSonnet ? `      {
         "@type": "Question",
-        "name": "How much does Claude 3.5 Sonnet cost per 1M tokens?",
+        "name": "How much does ${claudeSonnetJson} cost per 1M tokens?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Claude 3.5 Sonnet costs ${fmtPriceSsr(claude35sonnet?.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(claude35sonnet?.outputPer1M)} per 1M output tokens as listed by Anthropic."
+          "text": "${claudeSonnetJson} costs ${fmtPriceSsr(claudeSonnet.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(claudeSonnet.outputPer1M)} per 1M output tokens, as listed on OpenRouter."
         }
       },
-      {
+` : ''}      {
         "@type": "Question",
         "name": "What is the cheapest AI API for text generation?",
         "acceptedAnswer": {
@@ -189,49 +209,51 @@ export function getHtml(params: {
     }
     gtag('config', 'G-Z59RHGWMWD');
   </script>
+  ${FONT_PRELOAD}
   <style>
+${FONT_FACE_CSS}
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
       color-scheme: dark;
-      --bg: #0c0c0e;
-      --surface: #141418;
-      --surface2: #1c1c22;
-      --border: #27272f;
-      --border2: #33333d;
-      --text: #f0f0f4;
-      --text2: #a3a3b3;
-      --text3: #80808f;
-      --accent: #6366f1;
-      --accent-dim: rgba(99,102,241,0.15);
-      --green: #22c55e;
+      --bg: #0a0a0a;
+      --surface: #111111;
+      --surface2: #191919;
+      --border: #1f1f1f;
+      --border2: #2e2e2e;
+      --text: #ededed;
+      --text2: #a1a1a1;
+      --text3: #8b8b8b;
+      --accent: #ffb224; --on-accent: #0a0a0a;
+      --accent-dim: rgba(255,178,36,0.14);
+      --green: #3dd68c;
       --yellow: #eab308;
       --orange: #f97316;
       --red: #ef4444;
       --radius: 8px;
       --radius-sm: 5px;
-      --nav-bg: rgba(12,12,14,0.88);
+      --nav-bg: rgba(10,10,10,0.85);
       --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
       --shadow-md: 0 4px 16px rgba(0,0,0,0.4);
     }
 
     html[data-theme="light"] {
       color-scheme: light;
-      --bg: #f4f4f8;
+      --bg: #fafafa;
       --surface: #ffffff;
-      --surface2: #ebebf2;
-      --border: #dcdce8;
-      --border2: #c8c8d8;
-      --text: #111118;
-      --text2: #3d3d52;
-      --text3: #62627a;
-      --accent: #4746b8;
-      --accent-dim: rgba(71,70,184,0.1);
+      --surface2: #f2f2f2;
+      --border: #e6e6e6;
+      --border2: #d1d1d1;
+      --text: #171717;
+      --text2: #454545;
+      --text3: #666666;
+      --accent: #b45309; --on-accent: #ffffff;
+      --accent-dim: rgba(180,83,9,0.1);
       --green: #15803d;
       --yellow: #a16207;
       --orange: #c2410c;
       --red: #b91c1c;
-      --nav-bg: rgba(244,244,248,0.92);
+      --nav-bg: rgba(250,250,250,0.88);
       --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
       --shadow-md: 0 4px 16px rgba(0,0,0,0.12);
     }
@@ -241,7 +263,7 @@ export function getHtml(params: {
     button, input, select, textarea { font-family: inherit; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-family: var(--font);
       background: var(--bg);
       color: var(--text);
       font-size: 14px;
@@ -252,115 +274,7 @@ export function getHtml(params: {
       -moz-osx-font-smoothing: grayscale;
     }
 
-    /* ── Nav ──────────────────────────────────────────────────────────────── */
-    nav {
-      position: sticky;
-      top: 0;
-      z-index: 100;
-      background: var(--nav-bg);
-      backdrop-filter: blur(14px);
-      -webkit-backdrop-filter: blur(14px);
-      border-bottom: 1px solid var(--border);
-      padding: 0 24px;
-      height: 52px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-    }
-
-    .nav-brand {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 16px;
-      font-weight: 700;
-      color: var(--text);
-      text-decoration: none;
-      letter-spacing: -0.3px;
-    }
-
-    .nav-brand .diamond { color: var(--accent); font-size: 18px; }
-
-    .nav-links {
-      display: flex;
-      align-items: center;
-      gap: 18px;
-      margin-left: 8px;
-      font-size: 13px;
-    }
-
-    .nav-link {
-      color: var(--text3);
-      text-decoration: none;
-      font-weight: 500;
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      transition: color 0.15s;
-    }
-    .nav-link:hover { color: var(--text); }
-
-    .nav-meta {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      font-size: 12px;
-      color: var(--text3);
-    }
-
-    .nav-meta .dot { color: var(--border2); }
-
-    .updated-badge {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      font-size: 11px;
-      color: var(--text3);
-    }
-
-    .updated-badge .pulse {
-      width: 6px; height: 6px;
-      background: var(--green);
-      border-radius: 50%;
-      animation: pulse 2s ease-in-out infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
-    }
-
-    /* ── Theme Toggle ──────────────────────────────────────────────────────── */
-    .theme-btn {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      border: 1px solid var(--border2);
-      background: var(--surface2);
-      color: var(--text2);
-      cursor: pointer;
-      flex-shrink: 0;
-      transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.15s;
-    }
-
-    .theme-btn:hover {
-      background: var(--border);
-      border-color: var(--text3);
-      color: var(--text);
-      transform: rotate(15deg);
-    }
-
-    .theme-btn svg { display: block; pointer-events: none; }
-
-    /* Show correct icon per theme */
-    .theme-btn .icon-moon { display: block; }
-    .theme-btn .icon-sun  { display: none; }
-    html[data-theme="light"] .theme-btn .icon-moon { display: none; }
-    html[data-theme="light"] .theme-btn .icon-sun  { display: block; }
+${SITE_NAV_CSS}
 
     /* Smooth theme transition */
     html { transition: background 0.2s, color 0.2s; }
@@ -370,86 +284,75 @@ export function getHtml(params: {
 
     /* ── Hero ─────────────────────────────────────────────────────────────── */
     .hero {
-      padding: 48px 24px 36px;
+      padding: 56px 24px 0;
       max-width: 1200px;
       margin: 0 auto;
     }
 
     .hero h1 {
-      font-size: clamp(24px, 4vw, 38px);
-      font-weight: 800;
-      letter-spacing: -0.8px;
-      line-height: 1.15;
+      font-size: clamp(34px, 4.6vw, 56px);
+      font-weight: 600;
+      letter-spacing: -0.04em;
+      line-height: 1.04;
       color: var(--text);
-      margin-bottom: 10px;
+      text-wrap: balance;
     }
 
-    .hero h1 span { color: var(--accent); }
+    .hero h1 span { color: var(--text3); white-space: nowrap; }
 
     .hero p {
-      font-size: 15px;
+      margin-top: 14px;
+      font-size: 16px;
+      line-height: 1.5;
       color: var(--text2);
-      max-width: 560px;
-      margin-bottom: 24px;
-    }
-
-    .stats-row {
-      display: flex;
-      gap: 24px;
-      flex-wrap: wrap;
-    }
-
-    .stat {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-
-    .stat-value {
-      font-size: 22px;
-      font-weight: 700;
-      letter-spacing: -0.5px;
-      color: var(--text);
-    }
-
-    .stat-label {
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.6px;
-      color: var(--text3);
+      max-width: 620px;
     }
 
     /* ── Superlative strip ────────────────────────────────────────────────── */
+    /* One ruled strip, a column per pick, each led by its one number. --sup-n is
+       set by renderSuperlatives(), so three to five picks always share one row. */
     .superlatives {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
-      gap: 10px;
-      margin-top: 26px;
+      grid-template-columns: repeat(var(--sup-n, 3), minmax(0, 1fr));
+      margin-top: 40px;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
     }
     .sup {
-      display: block; padding: 11px 13px;
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius); text-decoration: none;
-      transition: border-color .12s ease;
+      display: block;
+      padding: 20px 24px 22px;
+      color: inherit;
+      text-decoration: none;
     }
-    .sup:hover { border-color: var(--border2); }
-    .sup-k {
-      font-size: 10px; font-weight: 600; text-transform: uppercase;
-      letter-spacing: .06em; color: var(--text3); display: block; margin-bottom: 5px;
+    .sup:first-child { padding-left: 0; }
+    .sup + .sup { border-left: 1px solid var(--border); }
+    body[data-view]:not([data-view="api"]) .superlatives { display: none; }
+    .sup:hover .sup-v { text-decoration: underline; text-underline-offset: 3px; }
+    .sup:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+    .sup-k { display: block; font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--accent); }
+    .sup-big {
+      display: block; margin-top: 10px;
+      font-family: var(--mono); font-size: 30px; font-weight: 500;
+      letter-spacing: -0.03em; line-height: 1; color: var(--text);
     }
-    .sup-v { font-size: 14px; font-weight: 650; color: var(--text); display: block; line-height: 1.3; }
-    .sup-m { font-size: 12px; color: var(--text2); display: block; margin-top: 3px; font-variant-numeric: tabular-nums; }
-    @media (max-width: 600px) {
-      .superlatives { grid-template-columns: repeat(2, 1fr); margin-top: 18px; }
+    .sup-big.is-price { color: var(--green); }
+    .sup-v { display: block; margin-top: 10px; font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.3; }
+    .sup-m { display: block; margin-top: 2px; font-size: 13px; color: var(--text2); }
+    @media (max-width: 768px) {
+      .superlatives { grid-template-columns: 1fr 1fr; margin-top: 28px; }
+      .sup { padding: 16px 16px 18px; }
+      .sup:nth-child(odd) { padding-left: 0; border-left: 0; }
+      .sup:nth-child(even) { border-left: 1px solid var(--border); }
+      .sup:nth-child(n+3) { border-top: 1px solid var(--border); }
       .sup:last-child:nth-child(odd) { grid-column: 1 / -1; }
+      .sup-big { font-size: 24px; }
     }
 
     /* ── Controls ─────────────────────────────────────────────────────────── */
     .controls {
       max-width: 1200px;
       margin: 0 auto;
-      padding: 0 24px 16px;
+      padding: 32px 24px 16px;
     }
 
     /* ── Quality column ─────────────────────────────────────────────────── */
@@ -500,58 +403,45 @@ export function getHtml(params: {
     .pareto-credit { padding:10px 16px 14px; font-size:11px; color:var(--text3); line-height:1.5; }
     .pareto-credit a { color:var(--text2); }
 
-    .main-tabs {
+    /* One toolbar: search, the type filter, then providers and the benchmark. */
+    .toolbar {
       display: flex;
-      gap: 4px;
-      border-bottom: 1px solid var(--border);
-      margin-bottom: 16px;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
     }
-
-    .main-tab {
-      padding: 8px 16px;
-      background: none;
-      border: none;
-      border-bottom: 2px solid transparent;
-      color: var(--text2);
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: color 0.15s, border-color 0.15s;
-      margin-bottom: -1px;
-    }
-
-    .main-tab:hover { color: var(--text); }
-    .main-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+    .toolbar-end { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 
     .filter-row {
       display: flex;
-      gap: 10px;
+      gap: 6px;
       flex-wrap: wrap;
       align-items: center;
     }
+    .provider-row { margin-top: 12px; }
+    .provider-row[hidden] { display: none; }
 
     .search-wrap {
       position: relative;
-      flex: 1;
-      min-width: 200px;
-      max-width: 320px;
+      flex: 0 1 240px;
+      min-width: 180px;
     }
 
     .search-icon {
       position: absolute;
-      left: 10px; top: 50%;
+      left: 11px; top: 50%;
       transform: translateY(-50%);
       color: var(--text3);
       pointer-events: none;
-      font-size: 13px;
     }
 
     #search {
       width: 100%;
-      padding: 7px 10px 7px 32px;
+      height: 34px;
+      padding: 0 12px 0 32px;
       background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
       color: var(--text);
       font-size: 13px;
       outline: none;
@@ -561,6 +451,35 @@ export function getHtml(params: {
     #search:focus { border-color: var(--accent); }
     #search::placeholder { color: var(--text3); }
 
+    .tool-btn, .tool-select select {
+      height: 34px;
+      padding: 0 12px;
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .tool-btn { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+    .tool-btn:hover, .tool-select select:hover { border-color: var(--text3); }
+    .tool-btn.active { border-color: var(--accent); color: var(--accent); }
+    .tool-btn:focus-visible, .tool-select select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .tool-select { position: relative; display: inline-flex; }
+    .tool-select select { appearance: none; -webkit-appearance: none; padding-right: 32px; }
+    .tool-select::after, .caret {
+      content: '';
+      width: 6px; height: 6px;
+      border-right: 1.5px solid var(--text3);
+      border-bottom: 1.5px solid var(--text3);
+      transform: translateY(-2px) rotate(45deg);
+    }
+    .caret { display: inline-block; }
+    .tool-select::after { position: absolute; right: 13px; top: 13px; pointer-events: none; }
+    .tool-btn[aria-expanded="true"] .caret { transform: translateY(1px) rotate(225deg); }
+
     .filter-group {
       display: flex;
       gap: 5px;
@@ -568,22 +487,23 @@ export function getHtml(params: {
     }
 
     .filter-pill {
-      padding: 5px 11px;
+      height: 30px;
+      padding: 0 11px;
       background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 20px;
+      border: 1px solid var(--border2);
+      border-radius: 999px;
       color: var(--text2);
-      font-size: 12px;
+      font-size: 13px;
       cursor: pointer;
       transition: all 0.15s;
       white-space: nowrap;
       user-select: none;
       display: inline-flex;
       align-items: center;
-      gap: 5px;
+      gap: 6px;
     }
 
-    .filter-pill:hover { border-color: var(--border2); color: var(--text); }
+    .filter-pill:hover { border-color: var(--text3); color: var(--text); }
 
     .filter-pill.active {
       background: var(--accent-dim);
@@ -591,46 +511,52 @@ export function getHtml(params: {
       color: var(--accent);
     }
 
-    .filter-divider {
-      width: 1px;
-      height: 20px;
-      background: var(--border);
-      align-self: center;
-    }
-
     /* ── Category Tabs ─────────────────────────────────────────────────────── */
     .cat-tabs {
       display: flex;
-      gap: 5px;
+      gap: 6px;
       flex-wrap: wrap;
     }
 
     .cat-tab {
-      padding: 5px 13px;
+      padding: 5px 12px;
       background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
+      border: 1px solid var(--border2);
+      border-radius: 6px;
       color: var(--text2);
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 500;
+      white-space: nowrap;
       cursor: pointer;
-      transition: all 0.15s;
+      transition: color 0.15s, background-color 0.15s, border-color 0.15s;
     }
 
-    .cat-tab:hover { border-color: var(--border2); color: var(--text); }
-    .cat-tab.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+    .cat-tab:hover { color: var(--text); }
+    .cat-tab.active { background: var(--text); border-color: var(--text); color: var(--bg); }
+    .cat-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    /* Segmented: one well, the chosen segment lifted out of it. Scrolls inside
+       itself rather than wrapping, so it stays one control at every width. */
+    .cat-tabs.seg {
+      gap: 2px;
+      padding: 3px;
+      background: var(--surface2);
+      border-radius: 8px;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      scrollbar-width: none;
+      min-width: 0;
+    }
+    .cat-tabs.seg::-webkit-scrollbar { display: none; }
+    .seg .cat-tab { border: 0; background: none; padding: 4px 11px; border-radius: 5px; }
+    .seg .cat-tab:hover { color: var(--text); }
+    .seg .cat-tab.active { background: var(--text); color: var(--bg); }
 
     .filter-label {
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 600;
       color: var(--text3);
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
     }
-    /* Coverage count. Epoch runs some evals on 70 models and some on a dozen, and
-       that gap decides whether a filter is useful — so it is on the chip, not in a
-       tooltip nobody opens. */
-    .bench-n { opacity: 0.6; font-variant-numeric: tabular-nums; }
 
     /* ── Table ─────────────────────────────────────────────────────────────── */
     .table-wrap {
@@ -661,9 +587,6 @@ export function getHtml(params: {
       #api-section thead th:not([data-sort]),
       #api-section thead th .th-sort { padding-left: 10px; padding-right: 10px; }
     }
-    @media (min-width: 1232px) {
-      #api-section { max-width: min(1296px, calc(100vw - 32px)); }
-    }
 
     .table-meta {
       display: flex;
@@ -685,12 +608,10 @@ export function getHtml(params: {
     thead th {
       text-align: left;
       padding: 10px 12px;
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
+      font-size: 12px;
+      font-weight: 500;
       color: var(--text3);
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid var(--border2);
       white-space: nowrap;
       user-select: none;
       transition: color 0.15s;
@@ -724,16 +645,18 @@ export function getHtml(params: {
     thead th.sorted .sort-icon { opacity: 1; }
 
     tbody tr {
-      border-bottom: 1px solid rgba(39,39,47,0.6);
+      border-bottom: 1px solid var(--border);
       transition: background 0.1s;
     }
 
-    tbody tr:hover { background: rgba(255,255,255,0.025); }
+    tbody tr:hover { background: var(--surface); }
 
     tbody td {
-      padding: 11px 12px;
+      padding: 10px 12px;
       vertical-align: middle;
+      line-height: 1.35;
     }
+    td.num, th.num, thead th.num .th-sort { text-align: right; }
 
     td.model-cell {
       min-width: 200px;
@@ -741,7 +664,7 @@ export function getHtml(params: {
     }
 
     .model-name {
-      font-weight: 500;
+      font-weight: 600;
       color: var(--text);
       white-space: nowrap;
       overflow: hidden;
@@ -750,10 +673,9 @@ export function getHtml(params: {
       display: block;
     }
 
-    .model-id {
-      font-size: 11px;
+    .model-provider {
+      font-size: 12px;
       color: var(--text3);
-      font-family: 'Menlo', 'Monaco', 'Cascadia Code', monospace;
       margin-top: 1px;
       white-space: nowrap;
       overflow: hidden;
@@ -761,6 +683,18 @@ export function getHtml(params: {
       max-width: 260px;
       display: block;
     }
+
+    /* The provider's mark, on a tile so flat and coloured marks sit at one weight. */
+    .logo-tile {
+      flex: none;
+      width: 24px; height: 24px;
+      display: grid; place-items: center;
+      border-radius: 6px;
+      background: var(--surface2);
+    }
+    .logo-tile .provider-logo { width: 14px; height: 14px; }
+    .logo-tile:has(.provider-logo--initial) { background: none; }
+    .logo-tile .provider-logo--initial { width: 100%; height: 100%; border-radius: 6px; }
 
     /* Mobile-only compact meta row (context + capability badges) */
     .mobile-meta {
@@ -780,56 +714,46 @@ export function getHtml(params: {
     .cache-dagger { color: var(--text3); font-size: 0.85em; margin-left: 2px; vertical-align: super; }
 
     .ctx {
-      font-family: 'Menlo', 'Monaco', monospace;
-      font-size: 12px;
-      color: var(--text2);
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--text);
     }
 
+    .released { color: var(--text3); white-space: nowrap; }
+
+    /* Figures in mono. Only cheap reads in colour; a heat scale across every cell
+       turned the table into noise, and the sort already answers "most expensive". */
     .price {
-      font-family: 'Menlo', 'Monaco', monospace;
-      font-size: 12px;
-      font-weight: 600;
+      font-family: var(--mono);
+      font-size: 13px;
+      font-weight: 400;
       white-space: nowrap;
+      color: var(--text);
     }
+    .price-blended { font-weight: 600; }
 
     .price-free { color: var(--green); }
-    .price-cheap { color: #86efac; }
-    .price-mid { color: var(--yellow); }
-    .price-high { color: var(--orange); }
-    .price-expensive { color: var(--red); }
+    .price-cheap { color: var(--green); }
+    .price-mid, .price-high, .price-expensive { color: var(--text); }
 
     html[data-theme="light"] .price-cheap { color: #16a34a; }
 
+    /* Capability tags: one quiet outline for all of them. Colour is kept for the two
+       that change a decision — free, and deprecated. */
     .badge {
       display: inline-flex;
       align-items: center;
-      padding: 2px 7px;
+      padding: 1px 6px;
+      border: 1px solid var(--border2);
       border-radius: 4px;
-      font-size: 10px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.3px;
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 16px;
+      color: var(--text2);
+      white-space: nowrap;
     }
-
-    .badge-free { background: rgba(34,197,94,0.15); color: var(--green); }
-    .badge-vision { background: rgba(96,165,250,0.15); color: #60a5fa; }
-    .badge-reasoning { background: rgba(167,139,250,0.15); color: #a78bfa; }
-    .badge-audio       { background: rgba(251,191,36,0.15); color: #fbbf24; }
-    .badge-text        { background: rgba(148,163,184,0.10); color: #94a3b8; border-color: rgba(148,163,184,0.2); }
-    .badge-image-gen   { background: rgba(232,121,249,0.12); color: #e879f9; border-color: rgba(232,121,249,0.25); }
-    .badge-video       { background: rgba(99,102,241,0.12);  color: #818cf8; border-color: rgba(99,102,241,0.25); }
-    .badge-deprecated  { background: rgba(100,116,139,0.12); color: #64748b; border-color: rgba(100,116,139,0.25); font-style: italic; }
-    .badge-active      { background: rgba(34,197,94,0.10);   color: #22c55e; border-color: rgba(34,197,94,0.25); }
-
-    /* Light-mode badge contrast overrides */
-    html[data-theme="light"] .badge-text       { color: #64748b; background: rgba(100,116,139,0.10); border-color: rgba(100,116,139,0.25); }
-    html[data-theme="light"] .badge-vision     { color: #2563eb; background: rgba(37,99,235,0.08); }
-    html[data-theme="light"] .badge-reasoning  { color: #7c3aed; background: rgba(124,58,237,0.08); }
-    html[data-theme="light"] .badge-audio      { color: #a16207; background: rgba(161,98,7,0.10); }
-    html[data-theme="light"] .badge-active     { color: #15803d; background: rgba(21,128,61,0.08); border-color: rgba(21,128,61,0.2); }
-    html[data-theme="light"] .badge-image-gen  { color: #a21caf; background: rgba(162,28,175,0.08); border-color: rgba(162,28,175,0.2); }
-    html[data-theme="light"] .badge-video      { color: #4338ca; background: rgba(67,56,202,0.08); border-color: rgba(67,56,202,0.2); }
-    html[data-theme="light"] .badge-deprecated { color: #475569; background: rgba(71,85,105,0.08); border-color: rgba(71,85,105,0.2); }
+    .badge-free { color: var(--green); border-color: color-mix(in srgb, var(--green) 40%, transparent); }
+    .badge-deprecated { color: var(--text3); font-style: italic; }
 
     /* ── Provider logos ─────────────────────────────────────────────────── */
     .provider-chip { display: inline-flex; align-items: center; gap: 5px; }
@@ -857,7 +781,7 @@ export function getHtml(params: {
        339 of those pages existed for a week reachable only from the 4 superlative
        cards, because this cell linked straight off-site. The vendor/HF link is
        still one click away, demoted to the icon. */
-    .model-cell-head { display: flex; align-items: center; gap: 5px; min-width: 0; }
+    .model-cell-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
     .model-cell-head .model-link { min-width: 0; flex: 1 1 auto; }
     a.model-out {
       flex: 0 0 auto;
@@ -888,7 +812,7 @@ export function getHtml(params: {
     tr.row-deprecated td { opacity: 0.45; }
     tr.row-deprecated .model-name { text-decoration: line-through; text-decoration-color: #64748b; }
 
-    .modality-icons { display: flex; gap: 4px; flex-wrap: wrap; }
+    .modality-icons { display: flex; gap: 4px; flex-wrap: nowrap; }
 
     .empty-state {
       text-align: center;
@@ -1013,7 +937,7 @@ export function getHtml(params: {
     .tier-badge {
       display: inline-block;
       background: var(--accent);
-      color: #fff;
+      color: var(--on-accent);
       font-size: 9px;
       font-weight: 700;
       padding: 2px 7px;
@@ -1509,7 +1433,7 @@ export function getHtml(params: {
       padding: 9px 14px;
       border-radius: 8px;
       background: var(--accent);
-      color: #fff;
+      color: var(--on-accent);
       font-size: 13px;
       font-weight: 600;
       text-decoration: none;
@@ -1580,7 +1504,7 @@ export function getHtml(params: {
       white-space: nowrap;
     }
 
-    .consent-btn-accept { background: var(--accent); border-color: var(--accent); color: white; }
+    .consent-btn-accept { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
     .consent-btn-accept:hover { background: #4f52e5; }
     .consent-btn-decline { background: transparent; color: var(--text2); }
     .consent-btn-decline:hover { background: var(--surface2); color: var(--text); }
@@ -1653,38 +1577,29 @@ export function getHtml(params: {
     .modal-body a { color: var(--accent); }
 
     /* ── Responsive ───────────────────────────────────────────────────────── */
+    @media (max-width: 900px) {
+      /* The toolbar's end group drops to its own row before anything squeezes. */
+      .toolbar-end { margin-left: 0; }
+    }
+
     @media (max-width: 768px) {
-      /* Nav */
-      .nav-meta { display: none; }
-      .nav-links { gap: 12px; font-size: 12px; margin-left: 0; }
+      /* Hero */
+      .hero { padding: 28px 16px 0; }
+      .hero h1 { font-size: 32px; }
+      .hero p { font-size: 15px; }
 
-      /* Hero: tighter vertical rhythm */
-      .hero { padding: 16px 16px 14px; }
-      .hero h1 { font-size: 21px; margin-bottom: 6px; }
-      .hero p { font-size: 13px; margin-bottom: 16px; }
+      /* Controls: search full width, then the type filter, then providers and benchmark */
+      .controls { padding: 24px 16px 10px; }
+      .toolbar { gap: 8px; }
+      .search-wrap { flex: 1 1 100%; }
+      #search { font-size: 16px; }
+      .cat-tabs.seg { flex: 1 1 100%; }
+      .toolbar-end { flex: 1 1 100%; }
+      .toolbar-end > * { flex: 1 1 0; }
+      .tool-btn { justify-content: space-between; }
+      .tool-select select { width: 100%; }
 
-      /* Stats: compact 2×2 grid */
-      .stats-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-      .stat { padding: 8px 10px; }
-      .stat-value { font-size: 17px; }
-      .stat-label { font-size: 10px; }
-
-      /* Controls */
-      .controls { padding: 0 12px 10px; }
-
-      /* Search: full width on its own row */
-      .filter-row { gap: 6px; }
-      .search-wrap { min-width: unset; max-width: unset; flex: 1 1 100%; margin-bottom: 0; }
-      #search { max-width: unset; font-size: 14px; }
-      /* Hide the desktop vertical separator — it orphans on its own row on mobile */
-      .filter-divider { display: none; }
-
-      /* Category + filter pills: tighter */
-      .cat-tabs { gap: 4px; }
-      .cat-tab { padding: 4px 10px; font-size: 12px; }
-      .filter-pill { font-size: 11px; padding: 3px 7px; }
-
-      /* Table: all columns visible, swipe right to see all */
+      /* Table: the model column stays put while the figures scroll beside it */
       .table-wrap { padding: 0 0 32px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
       /* Only the table runs edge to edge; the chart card and the table's meta line
          keep the page's 16px gutter. */
@@ -1692,18 +1607,25 @@ export function getHtml(params: {
       #api-section .table-meta { padding-left: 16px; padding-right: 16px; }
       #api-section tbody td:first-child,
       #api-section thead th:first-child .th-sort { padding-left: 16px; }
+      #api-section td.model-cell, #api-section thead th:first-child {
+        position: sticky; left: 0; z-index: 1;
+        background: var(--bg);
+        min-width: 0; max-width: 46vw;
+        box-shadow: 1px 0 0 var(--border);
+      }
+      #api-section tbody tr:hover td.model-cell { background: var(--surface); }
+      .model-name, .model-provider { max-width: calc(46vw - 56px); }
       table { min-width: 720px; table-layout: auto; }
-      table th, table td { padding: 6px 8px; }
+      table th, table td { padding: 8px; }
       /* Sortable headers delegate their padding to the inner button, so the tighter
          mobile cell padding has to follow it there or the header columns stay at the
          desktop width while the body cells shrink. */
       table thead th[data-sort] { padding: 0; }
-      table thead th .th-sort { padding: 6px 8px; }
-      .model-name { font-size: 12px; }
-      .model-id { font-size: 10px; }
-      .provider-chip { font-size: 11px; padding: 2px 6px; gap: 3px; }
-      .provider-chip img { width: 13px; height: 13px; }
-      .price { font-size: 12px; }
+      table thead th .th-sort { padding: 8px; }
+      .model-name { font-size: 13px; }
+      .model-cell-head { gap: 10px; }
+      .logo-tile { width: 22px; height: 22px; }
+      .price, .ctx { font-size: 12px; }
 
       /* Subscriptions: tiers wrap to 2-up, never horizontal-scroll */
       #subs-section { padding: 0 16px 32px; }
@@ -1730,18 +1652,16 @@ export function getHtml(params: {
     <span>token.app</span>
   </a>
   <div class="nav-links">
+    <button type="button" class="nav-link main-tab active" data-view="api" aria-pressed="true">Models</button>
+    <button type="button" class="nav-link main-tab" data-view="subscriptions" aria-pressed="false">Subscriptions</button>
+    <button type="button" class="nav-link main-tab" data-view="rankings" aria-pressed="false">Rankings</button>
     <a href="/about" class="nav-link">About</a>
   </div>
   <div class="nav-meta">
-    <span id="nav-model-count">Loading…</span>
-    <span class="dot">·</span>
-    <span id="nav-providers">— providers</span>
-    <span class="dot">·</span>
     <div class="updated-badge">
       <div class="pulse"></div>
-      <span id="nav-updated">checking…</span>
+      <span>Updated <span id="nav-updated">checking…</span></span>
     </div>
-  </div>
   <button class="theme-btn" onclick="toggleTheme()" title="Toggle light/dark theme" aria-label="Toggle light/dark theme">
     <!-- Moon (shown in dark mode) -->
     <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1756,6 +1676,7 @@ export function getHtml(params: {
       <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
     </svg>
   </button>
+  </div>
 </nav>
 
 <!-- The page had no main landmark at all, so there was nothing for a skip link to
@@ -1766,26 +1687,8 @@ export function getHtml(params: {
 
 <!-- ── Hero ─────────────────────────────────────────────────────────────────── -->
 <section class="hero">
-  <h1>AI Token &amp; Subscription<br/><span>Pricing Tracker</span></h1>
-  <p>Real-time token costs and subscription pricing across the AI ecosystem. Compare <span id="stat-desc-models">—</span> models from <span id="stat-desc-providers">—</span> providers.</p>
-  <div class="stats-row">
-    <div class="stat">
-      <span class="stat-value" id="stat-models">—</span>
-      <span class="stat-label">Models tracked</span>
-    </div>
-    <div class="stat">
-      <span class="stat-value" id="stat-providers">—</span>
-      <span class="stat-label">Providers</span>
-    </div>
-    <div class="stat">
-      <span class="stat-value" id="stat-free">—</span>
-      <span class="stat-label">Free models</span>
-    </div>
-    <div class="stat">
-      <span class="stat-value" id="stat-subs">—</span>
-      <span class="stat-label">Subscriptions</span>
-    </div>
-  </div>
+  <h1>AI model pricing, <span>side by side</span></h1>
+  <p>Live per-token prices for <span id="stat-desc-models">—</span> models from <span id="stat-desc-providers">—</span> providers, next to benchmarks Epoch AI runs itself.</p>
   <!-- Superlative strip (llm-stats pattern, re-pointed at value rather than raw
        capability). Hidden until benchmarks load, since three of the five cards
        need a score to be honest. -->
@@ -1794,20 +1697,13 @@ export function getHtml(params: {
 
 <!-- ── Controls ─────────────────────────────────────────────────────────────── -->
 <div class="controls">
-  <div class="main-tabs">
-    <button class="main-tab active" data-view="api">API Pricing</button>
-    <button class="main-tab" data-view="subscriptions">Subscriptions</button>
-    <button class="main-tab" data-view="rankings">Rankings</button>
-  </div>
-
   <div id="api-controls">
-    <div class="filter-row" style="margin-bottom: 10px;">
+    <div class="toolbar">
       <div class="search-wrap">
-        <span class="search-icon">⌕</span>
-        <input type="search" id="search" placeholder="Search models…" autocomplete="off" />
+        <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="search" id="search" placeholder="Search models…" autocomplete="off" aria-label="Search models" />
       </div>
-      <div class="filter-divider"></div>
-      <div class="cat-tabs" id="cat-tabs">
+      <div class="cat-tabs seg" id="cat-tabs">
         <button class="cat-tab active" data-cat="all">All</button>
         <button class="cat-tab" data-cat="text">Text</button>
         <button class="cat-tab" data-cat="vision">Vision</button>
@@ -1817,23 +1713,26 @@ export function getHtml(params: {
         <button class="cat-tab" data-cat="opensource">Open Source</button>
         <button class="cat-tab" data-cat="deprecated">Deprecated</button>
       </div>
+      <div class="toolbar-end">
+        <button type="button" class="tool-btn" id="provider-toggle" aria-expanded="false" aria-controls="provider-filters">Providers <span class="caret" aria-hidden="true"></span></button>
+        <!-- Benchmark filter. Its options are injected, not authored: which evals are
+             worth offering depends on how many models Epoch has actually scored, which
+             we only know once /api/benchmarks lands. Hidden until then, and hidden for
+             good if nothing clears the coverage floor. -->
+        <label class="tool-select" id="bench-filters" style="display:none;">
+          <span class="sr-only">Benchmark filter</span>
+          <select id="bench-select"></select>
+        </label>
+      </div>
     </div>
-    <!-- Benchmark chips. Injected, not authored: which evals are worth offering
-         depends on how many models Epoch has actually scored, which we only know
-         once /api/benchmarks lands. Hidden until then, and hidden for good if
-         nothing clears the coverage floor. -->
-    <div class="filter-row" id="bench-filters" style="display:none;">
-      <span class="filter-label">Benchmark</span>
-      <div class="cat-tabs" id="bench-chips"></div>
-    </div>
-    <div class="filter-row" id="provider-filters">
+    <div class="filter-row provider-row" id="provider-filters" hidden>
       <!-- provider pills injected by JS -->
     </div>
   </div>
 
   <div id="subs-controls" style="display:none;">
     <div class="filter-row">
-      <div class="cat-tabs">
+      <div class="cat-tabs seg">
         <button class="cat-tab active" data-subcat="all">All</button>
         <button class="cat-tab" data-subcat="chat">Chat AI</button>
         <button class="cat-tab" data-subcat="coding">Coding</button>
@@ -1880,19 +1779,18 @@ export function getHtml(params: {
     <thead>
       <tr>
         <th scope="col" data-sort="name" aria-sort="none"><button type="button" class="th-sort">Model <span class="sort-icon" aria-hidden="true">↕</span></button></th>
-        <th scope="col" data-sort="provider" aria-sort="none"><button type="button" class="th-sort">Provider <span class="sort-icon" aria-hidden="true">↕</span></button></th>
         <th scope="col" data-sort="createdAt" class="sorted" aria-sort="descending"><button type="button" class="th-sort">Released <span class="sort-icon" aria-hidden="true">↓</span></button></th>
-        <th scope="col" data-sort="contextWindow" aria-sort="none"><button type="button" class="th-sort" title="Context window">Context <span class="sort-icon" aria-hidden="true">↕</span></button></th>
-        <th scope="col" data-sort="inputPer1M" aria-sort="none"><button type="button" class="th-sort" title="Uncached input, USD per 1M tokens">Input <span class="sort-icon" aria-hidden="true">↕</span></button></th>
-        <th scope="col" data-sort="outputPer1M" aria-sort="none"><button type="button" class="th-sort" title="Output, USD per 1M tokens">Output <span class="sort-icon" aria-hidden="true">↕</span></button></th>
-        <th scope="col" data-sort="blendedPer1M" aria-sort="none"><button type="button" class="th-sort" title="Blended cost in USD per 1M tokens at a 3:1 input:output mix — one number to sort real spend by">Blended <span class="sort-icon" aria-hidden="true">↕</span></button></th>
-        <th scope="col" data-sort="cacheReadPer1M" aria-sort="none"><button type="button" class="th-sort" title="Price per 1M cached input tokens. Deliberately NOT folded into Blended: that would need a cache hit rate we would be inventing. A dagger marks a model whose cache WRITE costs more than its uncached prompt.">Cached <span class="sort-icon" aria-hidden="true">↕</span></button></th>
+        <th scope="col" data-sort="contextWindow" class="num" aria-sort="none"><button type="button" class="th-sort" title="Context window">Context <span class="sort-icon" aria-hidden="true">↕</span></button></th>
+        <th scope="col" data-sort="inputPer1M" class="num" aria-sort="none"><button type="button" class="th-sort" title="Uncached input, USD per 1M tokens">Input <span class="sort-icon" aria-hidden="true">↕</span></button></th>
+        <th scope="col" data-sort="outputPer1M" class="num" aria-sort="none"><button type="button" class="th-sort" title="Output, USD per 1M tokens">Output <span class="sort-icon" aria-hidden="true">↕</span></button></th>
+        <th scope="col" data-sort="blendedPer1M" class="num" aria-sort="none"><button type="button" class="th-sort" title="Blended cost in USD per 1M tokens at a 3:1 input:output mix — one number to sort real spend by">Blended <span class="sort-icon" aria-hidden="true">↕</span></button></th>
+        <th scope="col" data-sort="cacheReadPer1M" class="num" aria-sort="none"><button type="button" class="th-sort" title="Price per 1M cached input tokens. Deliberately NOT folded into Blended: that would need a cache hit rate we would be inventing. A dagger marks a model whose cache WRITE costs more than its uncached prompt.">Cached <span class="sort-icon" aria-hidden="true">↕</span></button></th>
         <th scope="col" data-sort="quality" id="quality-col-head" aria-sort="none"><button type="button" class="th-sort" title="Independently-run benchmark score (Epoch AI)">Quality <span class="sort-icon" aria-hidden="true">↕</span></button></th>
         <th scope="col">Modalities</th>
       </tr>
     </thead>
     <tbody id="models-tbody">
-      <tr><td colspan="10"><div class="loading"><div class="spinner"></div> Loading models…</div></td></tr>
+      <tr><td colspan="9"><div class="loading"><div class="spinner"></div> Loading models…</div></td></tr>
     </tbody>
   </table>
 </div>
@@ -1997,10 +1895,10 @@ export function getHtml(params: {
       <summary>How much does GPT-4o cost per 1M tokens?</summary>
       <p>GPT-4o costs ${fmtPriceSsr(gpt4o?.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(gpt4o?.outputPer1M)} per 1M output tokens. These prices are sourced from OpenRouter and updated hourly. Always verify with OpenAI's official pricing page before billing decisions.</p>
     </details>
-    <details class="faq-item">
-      <summary>How much does Claude 3.5 Sonnet cost per 1M tokens?</summary>
-      <p>Claude 3.5 Sonnet from Anthropic costs ${fmtPriceSsr(claude35sonnet?.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(claude35sonnet?.outputPer1M)} per 1M output tokens. It supports a 200K context window, making it one of the best-value frontier models for long-document tasks.</p>
-    </details>
+${claudeSonnet ? `    <details class="faq-item">
+      <summary>How much does ${claudeSonnetName} cost per 1M tokens?</summary>
+      <p>${claudeSonnetName}, Anthropic's newest Sonnet, costs ${fmtPriceSsr(claudeSonnet.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(claudeSonnet.outputPer1M)} per 1M output tokens${claudeSonnetCtx ? `, with a ${claudeSonnetCtx}-token context window` : ''}.</p>
+    </details>` : ''}
     <details class="faq-item">
       <summary>What is a token in AI models?</summary>
       <p>A token is a chunk of text processed by an AI language model. In English, roughly 1 token equals 4 characters or 0.75 words. AI APIs charge separately for input tokens (your prompt) and output tokens (the model's response). Prices are quoted per 1 million tokens ($/1M). A typical ChatGPT-length exchange uses 300–500 tokens total.</p>
@@ -2388,6 +2286,8 @@ function providerLabel(id, fallbackName) {
 // inverting on the dark theme. Generated alongside the assets themselves so the two
 // cannot drift — see scripts/build-provider-logos.mjs.
 const MONO_LOGO_SLUGS = new Set(${monoLogoSlugsLiteral});
+// Slugs with a real brand mark. Everything else is served a generated letter tile.
+const MARK_LOGO_SLUGS = new Set(${markLogoSlugsLiteral});
 const LOGO_ASSET_VERSION = ${logoAssetVersionLiteral};
 
 // ── Provider AI product pages (for provider chip links) ─────────────────────
@@ -2584,8 +2484,11 @@ function providerLogoImg(providerId) {
   // Mono marks are flat black so they read on the light theme and on the treemap's
   // white chip; CSS inverts them for the dark theme. currentColor cannot do this
   // job — it does not inherit into an SVG loaded through <img>.
-  const mono = MONO_LOGO_SLUGS.has(canonicalLogoSlug(providerId)) ? ' provider-logo--mono' : '';
-  return \`<img src="\${escape(getProviderLogo(providerId))}" class="provider-logo\${mono}" alt="" width="13" height="13" loading="lazy">\`;
+  const slug = canonicalLogoSlug(providerId);
+  const mono = MONO_LOGO_SLUGS.has(slug) ? ' provider-logo--mono' : '';
+  // A letter tile is already a tile, so it fills the slot rather than shrinking inside another.
+  const initial = MARK_LOGO_SLUGS.has(slug) ? '' : ' provider-logo--initial';
+  return \`<img src="\${escape(getProviderLogo(providerId))}" class="provider-logo\${mono}\${initial}" alt="" width="13" height="13" loading="lazy">\`;
 }
 
 // Benchmark filter chips. Each one narrows the table to the models Epoch has
@@ -2594,19 +2497,19 @@ function providerLogoImg(providerId) {
 // looking blank.
 function renderBenchChips() {
   var row = document.getElementById('bench-filters');
-  var host = document.getElementById('bench-chips');
+  var host = document.getElementById('bench-select');
   if (!row || !host) return;
   var avail = availableBenchmarks();
   if (!avail.length) { row.style.display = 'none'; return; }
   row.style.display = '';
 
-  var html = '<button class="cat-tab' + (state.benchFilter ? '' : ' active') +
-    '" data-benchfilter="" title="Every model in the catalogue, scored or not">All</button>';
+  // The coverage count stays on every option: Epoch runs some evals on 70 models and
+  // some on a dozen, and that gap decides whether a filter is useful.
+  var html = '<option value=""' + (state.benchFilter ? '' : ' selected') + '>All benchmarks</option>';
   html += avail.map(function (x) {
-    return '<button class="cat-tab' + (state.benchFilter === x.b.id ? ' active' : '') +
-      '" data-benchfilter="' + escape(x.b.id) + '" title="' + escape(x.b.label) + ' — ' +
-      escape(x.b.blurb) + ' Independently run by Epoch AI; ' + x.n + ' of our models have a score.">' +
-      escape(x.b.label) + ' <span class="bench-n">' + x.n + '</span></button>';
+    return '<option value="' + escape(x.b.id) + '"' + (state.benchFilter === x.b.id ? ' selected' : '') +
+      ' title="' + escape(x.b.blurb) + ' Independently run by Epoch AI.">' +
+      escape(x.b.label) + ' (' + x.n + ')</option>';
   }).join('');
   host.innerHTML = html;
 }
@@ -2678,20 +2581,17 @@ function renderTable() {
   document.getElementById('filtered-count').textContent = list.length.toLocaleString();
 
   if (list.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="10"><div class="empty-state"><h3>No models found</h3><p>Try adjusting your filters or search query.</p></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><h3>No models found</h3><p>Try adjusting your filters or search query.</p></div></td></tr>';
     return;
   }
 
   tbody.innerHTML = list.map(m => {
-    const ps = getProviderStyle(m.providerId);
     const modIcons = buildModIcons(m);
     const inPClass = priceClass(m.inputPer1M, 'input');
     const outPClass = priceClass(m.outputPer1M, 'output');
     const depClass = m.isDeprecated ? ' row-deprecated' : '';
     const logoImg = providerLogoImg(m.providerId);
     const modelUrl = getModelUrl(m);
-    const providerUrl = getProviderUrl(m.providerId);
-    const providerChip = \`<span class="provider-chip" style="background:\${ps.bg};color:\${ps.color}">\${logoImg}\${escape(providerLabel(m.providerId, m.provider))}</span>\`;
 
     const ctxTag = m.contextWindow ? \`<span class="ctx-tag">\${fmtCtx(m.contextWindow)}</span>\` : '';
     const mobileBadges = buildMobileMeta(m);
@@ -2700,25 +2600,21 @@ function renderTable() {
     return \`<tr class="model-row\${depClass}">
       <td class="model-cell">
         <div class="model-cell-head">
+          <span class="logo-tile" aria-hidden="true">\${logoImg}</span>
           <a href="/model/\${encodeURIComponent(m.slug || m.id)}" class="model-link">
-            <span class="model-name">\${escape(m.name)}</span>
-            <span class="model-id">\${escape(m.slug || m.id)}</span>
+            <span class="model-name">\${escape(shortModelName(m))}</span>
+            <span class="model-provider">\${escape(providerLabel(m.providerId, m.provider))}</span>
           </a>
           <a href="\${escape(modelUrl)}" target="_blank" rel="noopener" class="model-out" title="Open \${escape(m.name)} on the vendor's site" aria-label="Open \${escape(m.name)} on the vendor's site">\${OUT_ICON}</a>
         </div>
         \${mobileMeta}
       </td>
-      <td>
-        \${providerUrl
-          ? \`<a href="\${providerUrl}" target="_blank" rel="noopener" class="provider-link">\${providerChip}</a>\`
-          : providerChip}
-      </td>
-      <td class="ctx">\${fmtDate(m.createdAt)}</td>
-      <td class="ctx">\${fmtCtx(m.contextWindow)}</td>
-      <td><span class="price \${inPClass}">\${fmtPrice(m.inputPer1M)}</span></td>
-      <td><span class="price \${outPClass}">\${fmtPrice(m.outputPer1M)}</span></td>
-      <td><span class="price \${priceClass(m.blendedPer1M, 'input')}">\${fmtPrice(m.blendedPer1M)}</span></td>
-      <td>\${cachedCell(m)}</td>
+      <td class="released">\${fmtDate(m.createdAt)}</td>
+      <td class="ctx num">\${fmtCtx(m.contextWindow)}</td>
+      <td class="num"><span class="price \${inPClass}">\${fmtPrice(m.inputPer1M)}</span></td>
+      <td class="num"><span class="price \${outPClass}">\${fmtPrice(m.outputPer1M)}</span></td>
+      <td class="num"><span class="price price-blended \${priceClass(m.blendedPer1M, 'input')}">\${fmtPrice(m.blendedPer1M)}</span></td>
+      <td class="num">\${cachedCell(m)}</td>
       <td>\${qualityCell(m)}</td>
       <td><div class="modality-icons">\${modIcons}</div></td>
     </tr>\`;
@@ -2824,12 +2720,8 @@ function qualityCell(m) {
 
 function buildModIcons(m) {
   const badges = [];
-  // Status
-  if (m.isDeprecated) {
-    badges.push('<span class="badge badge-deprecated">Deprecated</span>');
-  } else {
-    badges.push('<span class="badge badge-active">Active</span>');
-  }
+  // Status: only the exception is tagged
+  if (m.isDeprecated) badges.push('<span class="badge badge-deprecated">Deprecated</span>');
   // Modalities
   const hasText = m.outputModalities?.includes('text');
   const hasImageOut = m.outputModalities?.includes('image');
@@ -2840,7 +2732,7 @@ function buildModIcons(m) {
   if (hasImageOut) badges.push('<span class="badge badge-image-gen">Image</span>');
   if (hasVideoOut) badges.push('<span class="badge badge-video">Video</span>');
   if (hasAudio)    badges.push('<span class="badge badge-audio">Audio</span>');
-  if (m.isReasoning) badges.push('<span class="badge badge-reasoning">Think</span>');
+  if (m.isReasoning) badges.push('<span class="badge badge-reasoning">Reasoning</span>');
   if (m.isFree)    badges.push('<span class="badge badge-free">Free</span>');
   return badges.join('');
 }
@@ -2849,7 +2741,7 @@ function buildMobileMeta(m) {
   const b = [];
   if (m.isFree)    b.push('<span class="badge badge-free">Free</span>');
   if (m.isVision)  b.push('<span class="badge badge-vision">Vision</span>');
-  if (m.isReasoning) b.push('<span class="badge badge-reasoning">Think</span>');
+  if (m.isReasoning) b.push('<span class="badge badge-reasoning">Reasoning</span>');
   if (m.outputModalities?.includes('image')) b.push('<span class="badge badge-image-gen">Image</span>');
   if (m.outputModalities?.includes('video')) b.push('<span class="badge badge-video">Video</span>');
   if (m.inputModalities?.includes('audio') || m.outputModalities?.includes('audio')) b.push('<span class="badge badge-audio">Audio</span>');
@@ -2892,9 +2784,19 @@ function renderProviderFilters() {
         btn.classList.add('active');
         btn.style.cssText = \`background:\${ps.bg};border-color:\${ps.color};color:\${ps.color}\`;
       }
+      updateProviderToggle();
       renderTable();
     });
   });
+  updateProviderToggle();
+}
+
+function updateProviderToggle() {
+  var btn = document.getElementById('provider-toggle');
+  if (!btn) return;
+  var n = state.providers.size;
+  btn.classList.toggle('active', n > 0);
+  btn.firstChild.textContent = n ? 'Providers · ' + n + ' ' : 'Providers ';
 }
 
 // ── Render Subscriptions ───────────────────────────────────────────────────────
@@ -3001,11 +2903,14 @@ function renderSuperlatives() {
   // resolve to the same model whenever the value leader is also the cheapest
   // capable one — which is exactly what the current data does.
   var used = {};
-  function add(key, m, meta, title) {
+  // big: the card's one number. price: true when that number is a price, which is
+  // the only case it takes the cheap-price colour.
+  function add(key, m, big, price, meta, title) {
     if (!m || used[m.slug]) return;
     used[m.slug] = 1;
-    cards.push({ k: key, name: m.name, meta: meta, slug: m.slug, title: title || '' });
+    cards.push({ k: key, name: m.name, big: big, price: price, meta: meta, slug: m.slug, title: title || '' });
   }
+  var primaryLabel = (state.benchmarks.benchmarks.find(function (b) { return b.id === state.benchPrimary; }) || {}).label || '';
 
   // Best value: highest score per dollar among models scoring in the top half.
   // Restricting to the top half stops a cheap-but-weak model winning on ratio
@@ -3015,7 +2920,7 @@ function renderSuperlatives() {
   var capable = pts.filter(function (p) { return p.score >= median; });
   if (capable.length) {
     var best = capable.reduce(function (x, y) { return (y.score / y.price) > (x.score / x.price) ? y : x; });
-    add('best value', best.m, fmtPrice(best.price) + '/1M · ' + best.score.toFixed(1) + '%');
+    add('best value', best.m, fmtPrice(best.price), true, 'per 1M blended · ' + best.score.toFixed(1) + '% ' + primaryLabel);
   }
 
   // Top score — but ONLY from a benchmark whose leader is actually separated from
@@ -3050,8 +2955,8 @@ function renderSuperlatives() {
       shortModelName(lead.runnerUp) + ' — ' + lead.sigma.toFixed(1) +
       '× the combined error bars. A benchmark is only used here when its leader clears ' +
       BENCH_LEAD_SIGMA + '×; where the top models overlap, we show no winner at all.';
-    add(outcome, lead.m,
-        (lead.score * 100).toFixed(1) + '% ' + lead.label + ' · ' + fmtPrice(blendedPrice(lead.m)) + '/1M',
+    add(outcome, lead.m, (lead.score * 100).toFixed(1) + '%', false,
+        lead.label + ' · ' + fmtPrice(blendedPrice(lead.m)) + ' per 1M',
         why);
   }
 
@@ -3061,30 +2966,32 @@ function renderSuperlatives() {
   var oss = pts.filter(function (p) { return p.m.isOpenSource; });
   if (oss.length) {
     var bestOss = oss.reduce(function (x, y) { return y.score > x.score ? y : x; });
-    add('best open weights', bestOss.m, bestOss.score.toFixed(1) + '% · ' + fmtPrice(bestOss.price) + '/1M');
+    add('best open weights', bestOss.m, bestOss.score.toFixed(1) + '%', false, primaryLabel + ' · ' + fmtPrice(bestOss.price) + ' per 1M');
   }
 
   // Cheapest model that still clears 85% — "the cheapest thing you can ship on".
   var strong = pts.filter(function (p) { return p.score >= 85; });
   if (strong.length) {
     var cheapStrong = strong.reduce(function (x, y) { return y.price < x.price ? y : x; });
-    add('cheapest ≥85%', cheapStrong.m, fmtPrice(cheapStrong.price) + '/1M · ' + cheapStrong.score.toFixed(1) + '%');
+    add('cheapest ≥85%', cheapStrong.m, fmtPrice(cheapStrong.price), true, 'per 1M blended · ' + cheapStrong.score.toFixed(1) + '% ' + primaryLabel);
   }
 
   // Largest context among priced models.
   var ctx = live.filter(function (m) { return m.contextWindow && blendedPrice(m) !== null; });
   if (ctx.length) {
     var big = ctx.reduce(function (x, y) { return y.contextWindow > x.contextWindow ? y : x; });
-    add('largest context', big, fmtCtx(big.contextWindow) + ' tokens');
+    add('largest context', big, fmtCtx(big.contextWindow), false, 'tokens · ' + fmtPrice(blendedPrice(big)) + ' per 1M');
   }
 
   el.innerHTML = cards.slice(0, 5).map(function (c) {
     return '<a class="sup" href="/model/' + encodeURIComponent(c.slug) + '"' +
       (c.title ? ' title="' + escape(c.title) + '"' : '') + '>' +
-      '<span class="sup-k">' + escape(c.k) + '</span>' +
+      '<span class="sup-k">' + escape(c.k.charAt(0).toUpperCase() + c.k.slice(1)) + '</span>' +
+      '<span class="sup-big' + (c.price ? ' is-price' : '') + '">' + escape(c.big) + '</span>' +
       '<span class="sup-v">' + escape(shortModelName({ name: c.name })) + '</span>' +
       '<span class="sup-m">' + escape(c.meta) + '</span></a>';
   }).join('');
+  el.style.setProperty('--sup-n', String(Math.min(cards.length, 5)));
   el.hidden = cards.length === 0;
 }
 
@@ -3793,14 +3700,6 @@ function emptyAppsMessage() {
 // ── Stats ──────────────────────────────────────────────────────────────────────
 function updateStats() {
   const providers = new Set(state.models.map(m => m.providerId));
-  const free = state.models.filter(m => m.isFree).length;
-
-  document.getElementById('stat-models').textContent = state.models.length.toLocaleString();
-  document.getElementById('stat-providers').textContent = providers.size;
-  document.getElementById('stat-free').textContent = free;
-  document.getElementById('stat-subs').textContent = state.subscriptions.length;
-  document.getElementById('nav-model-count').textContent = state.models.length.toLocaleString() + ' models';
-  document.getElementById('nav-providers').textContent = providers.size + ' providers';
   document.getElementById('stat-desc-models').textContent = state.models.length.toLocaleString();
   document.getElementById('stat-desc-providers').textContent = providers.size;
 }
@@ -3838,14 +3737,19 @@ function bindSortHeaders() {
 // ── View Switch ────────────────────────────────────────────────────────────────
 function switchView(view) {
   state.view = view;
+  // The picks are about models, so they follow the Models view like the chart does.
+  document.body.dataset.view = view;
   var apiSection = document.getElementById('api-section');
   var subsSection = document.getElementById('subs-section');
   var rankingsSection = document.getElementById('rankings-section');
   var apiControls = document.getElementById('api-controls');
   var subsControls = document.getElementById('subs-controls');
 
-  document.querySelectorAll('.main-tab').forEach(t => t.classList.remove('active'));
-  document.querySelector(\`.main-tab[data-view="\${view}"]\`).classList.add('active');
+  document.querySelectorAll('.main-tab').forEach(t => {
+    const on = t.dataset.view === view;
+    t.classList.toggle('active', on);
+    t.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
 
   var paretoSection = document.getElementById('pareto-section');
 
@@ -4000,6 +3904,9 @@ async function init() {
       updateStats();
       renderProviderFilters();
       renderTable();
+      // A view opened from the URL hash rendered before this data arrived; draw it again.
+      if (state.view === 'subscriptions') renderSubscriptions();
+      else if (state.view === 'rankings') renderRankings();
       loadBenchmarks();
       if (lu) {
         var upd2 = fmtUpdated(lu);
@@ -4008,7 +3915,7 @@ async function init() {
       }
     } catch (err) {
       document.getElementById('models-tbody').innerHTML =
-        '<tr><td colspan="10"><div class="empty-state"><h3>Failed to load data</h3><p>' + err.message + '</p></div></td></tr>';
+        '<tr><td colspan="9"><div class="empty-state"><h3>Failed to load data</h3><p>' + err.message + '</p></div></td></tr>';
     }
   }
 }
@@ -4032,11 +3939,25 @@ document.addEventListener('DOMContentLoaded', () => {
   initConsent();
 
   // Main view tabs
+  // The other pages link to /#subscriptions and /#rankings, and a view's URL is
+  // shareable, so the hash and the view follow each other.
+  function openView(view) {
+    switchView(view);
+    if (view === 'rankings') ensureRankingsAux();
+  }
   document.querySelectorAll('.main-tab').forEach(tab => {
     tab.addEventListener('click', () => {
-      switchView(tab.dataset.view);
-      if (tab.dataset.view === 'rankings') ensureRankingsAux();
+      openView(tab.dataset.view);
+      history.replaceState(null, '', tab.dataset.view === 'api' ? location.pathname + location.search : '#' + tab.dataset.view);
     });
+  });
+
+
+  var providerToggle = document.getElementById('provider-toggle');
+  providerToggle.addEventListener('click', () => {
+    var panel = document.getElementById('provider-filters');
+    panel.hidden = !panel.hidden;
+    providerToggle.setAttribute('aria-expanded', panel.hidden ? 'false' : 'true');
   });
 
   // Category tabs
@@ -4068,14 +3989,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Benchmark filter chips. Delegated for the same reason: injected once we know
-  // which evals have coverage.
-  var benchChips = document.getElementById('bench-chips');
-  if (benchChips) {
-    benchChips.addEventListener('click', e => {
-      const btn = e.target.closest('[data-benchfilter]');
-      if (!btn) return;
-      const id = btn.dataset.benchfilter || null;
+  // Benchmark filter. Its options are injected once we know which evals have coverage.
+  var benchSelect = document.getElementById('bench-select');
+  if (benchSelect) {
+    benchSelect.addEventListener('change', () => {
+      const id = benchSelect.value || null;
       if (id === state.benchFilter) return;
       state.benchFilter = id;
       if (id) setBenchPrimary(id);
@@ -4607,6 +4525,10 @@ document.addEventListener('DOMContentLoaded', () => {
       renderTable();
     }, 150);
   });
+
+  // Last, once everything the views read is set up.
+  var hashView = location.hash.slice(1);
+  if (hashView === 'subscriptions' || hashView === 'rankings') openView(hashView);
 });
 </script>
 </body>
@@ -4615,36 +4537,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ── Provider page descriptions ────────────────────────────────────────────────
 
-const PROVIDER_META: Record<string, { name: string; description: string; about: string }> = {
+// Company facts only. Model names go stale within months (this block still named
+// GPT-4o, Gemini 1.5 and Claude 3.5 Sonnet as flagships in late 2026), so the models
+// a page mentions come from the catalogue at render time instead; see
+// newestModelNames() in getProviderHtml.
+const PROVIDER_META: Record<string, { name: string; about: string }> = {
   openai: {
     name: 'OpenAI',
-    description: 'Real-time API token pricing for all OpenAI models including GPT-4o, GPT-4o mini, o1, o3, and GPT-3.5. Compare input/output costs and context windows.',
-    about: `OpenAI is the San Francisco-based AI lab behind the GPT series and ChatGPT. Their model lineup spans the cost spectrum from the ultra-affordable GPT-4o mini to the flagship GPT-4o and the advanced reasoning models o1 and o3. OpenAI pioneered the pay-per-token API model and remains one of the most widely integrated AI providers in production applications. Their pricing is generally quoted via the OpenAI API and aggregated on OpenRouter.`,
+    about: `OpenAI is the San Francisco AI lab behind the GPT models and ChatGPT. Its API lineup runs from small, low-cost models to large reasoning models, and it is one of the most widely integrated AI providers in production software.`,
   },
   anthropic: {
     name: 'Anthropic',
-    description: 'Real-time API token pricing for all Anthropic Claude models including Claude 3.5 Sonnet, Claude 3.5 Haiku, and Claude 3 Opus. Compare input/output costs and context windows.',
-    about: `Anthropic builds the Claude family of large language models with a strong emphasis on AI safety and reliability. Claude 3.5 Sonnet is widely regarded as one of the best-value frontier models, combining high capability with a 200K context window. Anthropic offers a tiered lineup from the fast and affordable Claude Haiku to the powerful Claude Opus, designed for enterprise reasoning and long-document analysis.`,
+    about: `Anthropic is the San Francisco AI company behind the Claude models, built with a strong emphasis on safety and reliability. Its lineup is tiered, from fast, low-cost Haiku models up to its most capable ones for hard reasoning and long-document work.`,
   },
   google: {
     name: 'Google',
-    description: 'Real-time API token pricing for all Google AI models including Gemini 1.5 Pro, Gemini 1.5 Flash, Gemini 2.0 Flash, and PaLM. Compare input/output costs and context windows.',
-    about: `Google DeepMind produces the Gemini family of multimodal AI models available through Google AI Studio and Vertex AI. Gemini 1.5 Pro and Flash support industry-leading context windows of up to 2 million tokens. Google also offers several models with generous free-tier quotas, making them popular for experimentation. Their models support text, vision, audio, and video modalities.`,
+    about: `Google DeepMind builds the Gemini family of multimodal models, available through Google AI Studio and Vertex AI. Gemini models handle text, images, audio and video, and several carry very long context windows.`,
   },
   'meta-llama': {
     name: 'Meta Llama',
-    description: 'Real-time API token pricing for Meta Llama models including Llama 3.1, Llama 3.2, and Llama 3.3. Many Llama models are available free via OpenRouter.',
-    about: `Meta AI's Llama series are open-weight models released under a permissive research licence, making them the most widely deployed open-source AI models in the world. Llama 3 models are available in multiple sizes (8B, 70B, 405B) with strong performance across coding, reasoning, and instruction following. Many providers host Llama models at zero cost via OpenRouter, making them the default choice for budget-conscious developers.`,
+    about: `Meta's Llama models are open-weight, which is why so many providers host them, often at very low cost and sometimes free through OpenRouter.`,
   },
   mistralai: {
     name: 'Mistral AI',
-    description: 'Real-time API token pricing for Mistral AI models including Mistral Large, Mistral Small, Mixtral 8x7B, and Codestral. Compare input/output costs.',
-    about: `Mistral AI is a Paris-based AI company known for releasing highly efficient open-weight models. Their Mixtral 8x22B model uses a mixture-of-experts architecture to deliver frontier-quality performance at a fraction of the cost. Mistral also offers Codestral, a specialized coding model, and Le Chat, their consumer assistant. Mistral models are popular for European data sovereignty requirements.`,
+    about: `Mistral AI is a Paris-based company known for efficient open-weight models alongside its commercial ones, and for Le Chat, its consumer assistant. Its models are a common choice where European data residency matters.`,
   },
   deepseek: {
     name: 'DeepSeek',
-    description: 'Real-time API token pricing for DeepSeek models including DeepSeek V3, DeepSeek R1, and DeepSeek Coder. DeepSeek offers some of the lowest prices among frontier AI models.',
-    about: `DeepSeek is a Chinese AI research lab that has released highly capable models at remarkably low prices, disrupting the AI pricing landscape in 2025. DeepSeek V3 and R1 match or exceed many frontier models on benchmarks while costing a fraction of comparable OpenAI or Anthropic models. Their models are open-weight and widely available through OpenRouter and other providers.`,
+    about: `DeepSeek is a Chinese AI lab whose open-weight models have been among the lowest-priced capable models on the market. They are widely hosted through OpenRouter and other providers.`,
   },
   // Keyed on the canonical slug. `index.ts` canonicalizes before calling, so there is no
   // 'x-ai' entry here — unlike the client-side maps above, this one is only ever reached
@@ -4653,23 +4573,19 @@ const PROVIDER_META: Record<string, { name: string; description: string; about: 
   // heading keeps it: nobody searches for the holding company.
   spacexai: {
     name: 'SpaceXAI (Grok)',
-    description: 'Real-time API token pricing for SpaceXAI Grok models including Grok 4.6, Grok 4.5 and Grok 4.20. Compare Grok input/output costs and context windows.',
-    about: `SpaceXAI — formerly xAI — is Elon Musk's AI company, best known for the Grok series of large language models. Grok models are available through the company's own API and through X Premium subscriptions. Grok 4.6 is the current flagship; the catalogue also carries Grok 4.5, Grok 4.3, the Grok 4.20 line including a multi-agent variant, and Grok Build. The company emphasises real-time information access and integration with the X platform.`,
+    about: `SpaceXAI, formerly xAI, is Elon Musk's AI company, best known for the Grok models. Grok is available through the company's own API and through X Premium subscriptions, with an emphasis on real-time information and integration with X.`,
   },
   qwen: {
     name: 'Qwen (Alibaba)',
-    description: 'Real-time API token pricing for Qwen models from Alibaba Cloud including Qwen 2.5, Qwen 2, and QwQ reasoning models. Compare input/output costs.',
-    about: `Qwen is Alibaba Cloud's family of large language models, released under the Qwen series. Qwen 2.5 models span sizes from 0.5B to 72B parameters and include specialized variants for coding, math, and instruction following. QwQ is Alibaba's reasoning-focused model competitive with o1-mini. Many Qwen models are open-weight and available at very low cost via OpenRouter.`,
+    about: `Qwen is Alibaba Cloud's family of large language models. Many are open-weight, the range runs from small models to large mixture-of-experts ones with variants for coding, maths and vision, and many are available at very low cost through OpenRouter.`,
   },
   nvidia: {
     name: 'NVIDIA',
-    description: 'Real-time API token pricing for NVIDIA AI models including Llama Nemotron and other NVIDIA-hosted models. Compare input/output costs via OpenRouter.',
-    about: `NVIDIA hosts and fine-tunes AI models through NVIDIA NIM (NVIDIA Inference Microservices) and makes them available via API. Their offerings include fine-tuned variants of Meta Llama and other open-weight models optimized for NVIDIA hardware. NVIDIA also produces their own models like Nemotron, designed for enterprise workloads on NVIDIA GPU infrastructure.`,
+    about: `NVIDIA serves models through NVIDIA NIM and publishes its own Nemotron models, many fine-tuned from open-weight bases and optimised for NVIDIA hardware.`,
   },
   cohere: {
     name: 'Cohere',
-    description: 'Real-time API token pricing for Cohere models including Command R+, Command R, and Embed. Cohere specialises in enterprise RAG and embeddings.',
-    about: `Cohere is a Toronto-based AI company specializing in enterprise language models, particularly for retrieval-augmented generation (RAG) and embeddings. Command R+ is their flagship model optimized for multi-step reasoning and tool use in enterprise RAG pipelines. Cohere also produces industry-leading embedding models and a reranker, making them a popular choice for search and knowledge management applications.`,
+    about: `Cohere is a Toronto-based company focused on enterprise language models, particularly for retrieval-augmented generation, with its Command models alongside embedding and reranking models.`,
   },
 };
 
@@ -4697,10 +4613,26 @@ export function getProviderHtml(params: {
   }>;
 }): string {
   const { providerId, models } = params;
-  const meta = PROVIDER_META[providerId] ?? {
+  const company = PROVIDER_META[providerId] ?? {
     name: providerId,
-    description: `AI token pricing for ${providerId} models.`,
     about: `${providerId} offers AI language models available via API.`,
+  };
+  // The three newest live models, named as the table names them. Batch and free
+  // twins are the same model at another price, so they don't take a slot.
+  const newestModelNames = models
+    .filter((m) => {
+      const n = (m.name + ' ' + m.id).toLowerCase();
+      return !m.isDeprecated && !['(batch)', '(free)', ':batch', ':free'].some((t) => n.includes(t));
+    })
+    .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+    .slice(0, 3)
+    .map((m) => m.name.replace(/^[^:]+: /, ''));
+  const newestList = newestModelNames.length > 1
+    ? newestModelNames.slice(0, -1).join(', ') + ' and ' + newestModelNames[newestModelNames.length - 1]
+    : newestModelNames[0] ?? '';
+  const meta = {
+    ...company,
+    description: `Live API token pricing for every ${company.name} model on OpenRouter${newestList ? `, newest first: ${newestList}` : ''}. Compare input and output costs and context windows.`,
   };
 
   function fmtCtx(n: number | null): string {
@@ -4741,12 +4673,12 @@ export function getProviderHtml(params: {
     if (m.isDeprecated) mods.push('Deprecated');
 
     return `<tr${m.isDeprecated ? ' class="deprecated-row"' : ''}>
-      <td><a href="/model/${encodeURIComponent(m.slug || m.id)}" class="model-name-link"><span class="model-name">${escape(m.name)}</span></a></td>
-      <td style="font-size:11px;color:var(--text3);">${fmtDate(m.createdAt)}</td>
-      <td style="font-size:12px;">${fmtCtx(m.contextWindow)}</td>
-      <td class="${m.inputPer1M === 0 ? 'price-free' : m.inputPer1M && m.inputPer1M < 0.5 ? 'price-cheap' : m.inputPer1M && m.inputPer1M < 3 ? 'price-mid' : ''}">${fmtP(m.inputPer1M)}</td>
-      <td class="${m.outputPer1M === 0 ? 'price-free' : m.outputPer1M && m.outputPer1M < 2 ? 'price-cheap' : m.outputPer1M && m.outputPer1M < 12 ? 'price-mid' : ''}">${fmtP(m.outputPer1M)}</td>
-      <td style="font-size:11px;">${mods.join(', ') || 'Text'}</td>
+      <td><a href="/model/${encodeURIComponent(m.slug || m.id)}" class="model-name-link"><span class="model-name">${escape(m.name.replace(/^[^:]+: /, ''))}</span></a></td>
+      <td class="dim">${fmtDate(m.createdAt)}</td>
+      <td class="num">${fmtCtx(m.contextWindow)}</td>
+      <td class="num ${m.inputPer1M === 0 ? 'price-free' : m.inputPer1M && m.inputPer1M < 0.5 ? 'price-cheap' : m.inputPer1M && m.inputPer1M < 3 ? 'price-mid' : ''}">${fmtP(m.inputPer1M)}</td>
+      <td class="num ${m.outputPer1M === 0 ? 'price-free' : m.outputPer1M && m.outputPer1M < 2 ? 'price-cheap' : m.outputPer1M && m.outputPer1M < 12 ? 'price-mid' : ''}">${fmtP(m.outputPer1M)}</td>
+      <td class="dim">${mods.join(', ') || 'Text'}</td>
     </tr>`;
   }).join('\n');
 
@@ -4763,11 +4695,11 @@ export function getProviderHtml(params: {
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://token.app/${encodeURIComponent(providerId)}" />
   <meta property="og:site_name" content="token.app" />
-  <meta property="og:image" content="https://token.app/og.png?v=2" />
+  <meta property="og:image" content="https://token.app/og.png?v=3" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:image" content="https://token.app/og.png?v=2" />
+  <meta name="twitter:image" content="https://token.app/og.png?v=3" />
   <link rel="canonical" href="https://token.app/${encodeURIComponent(providerId)}" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔷</text></svg>" />
   <script type="application/ld+json">
@@ -4785,48 +4717,49 @@ export function getProviderHtml(params: {
   }
   </script>
   <script>(function(){var t=localStorage.getItem('theme')||(window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);})();</script>
+  ${FONT_PRELOAD}
   <style>
+${FONT_FACE_CSS}
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
       color-scheme: dark;
-      --bg: #0c0c0e; --surface: #141418; --surface2: #1c1c22;
-      --border: #27272f; --border2: #33333d;
-      --text: #f0f0f4; --text2: #a3a3b3; --text3: #80808f;
-      --accent: #6366f1; --accent-dim: rgba(99,102,241,0.15);
-      --green: #22c55e; --radius: 8px; --radius-sm: 5px;
-      --nav-bg: rgba(12,12,14,0.88);
+      --bg: #0a0a0a; --surface: #111111; --surface2: #191919;
+      --border: #1f1f1f; --border2: #2e2e2e;
+      --text: #ededed; --text2: #a1a1a1; --text3: #8b8b8b;
+      --accent: #ffb224; --on-accent: #0a0a0a; --accent-dim: rgba(255,178,36,0.14);
+      --green: #3dd68c; --radius: 8px; --radius-sm: 5px;
+      --nav-bg: rgba(10,10,10,0.85);
     }
     html[data-theme="light"] {
       color-scheme: light;
-      --bg: #f4f4f8; --surface: #ffffff; --surface2: #ebebf2;
-      --border: #dcdce8; --border2: #c8c8d8;
-      --text: #111118; --text2: #3d3d52; --text3: #62627a;
-      --accent: #4746b8; --accent-dim: rgba(71,70,184,0.1);
-      --green: #15803d; --nav-bg: rgba(244,244,248,0.92);
+      --bg: #fafafa; --surface: #ffffff; --surface2: #f2f2f2;
+      --border: #e6e6e6; --border2: #d1d1d1;
+      --text: #171717; --text2: #454545; --text3: #666666;
+      --accent: #b45309; --on-accent: #ffffff; --accent-dim: rgba(180,83,9,0.1);
+      --green: #15803d; --nav-bg: rgba(250,250,250,0.88);
     }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; min-height: 100vh; }
-    nav { position: sticky; top: 0; z-index: 100; background: var(--nav-bg); backdrop-filter: blur(14px); border-bottom: 1px solid var(--border); padding: 0 24px; height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-    .nav-brand { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; color: var(--text); text-decoration: none; letter-spacing: -0.3px; }
-    .nav-brand .diamond { color: var(--accent); font-size: 18px; }
-    .nav-back { font-size: 13px; color: var(--text2); text-decoration: none; }
-    .nav-back:hover { color: var(--text); }
-    main { max-width: 1100px; margin: 0 auto; padding: 32px 24px 60px; }
-    h1 { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+    body { font-family: var(--font); background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; min-height: 100vh; }
+${SITE_NAV_CSS}
+    main { max-width: 1200px; margin: 0 auto; padding: 32px 24px 64px; }
+    h1 { font-size: 34px; font-weight: 600; letter-spacing: -0.035em; line-height: 1.1; margin-bottom: 12px; }
     .provider-desc { color: var(--text2); font-size: 14px; line-height: 1.6; max-width: 680px; margin-bottom: 8px; }
     .provider-count { font-size: 12px; color: var(--text3); margin-bottom: 24px; }
     .about-block { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; margin-bottom: 24px; font-size: 13px; color: var(--text2); line-height: 1.7; }
-    .about-block h2 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text3); margin-bottom: 8px; }
+    .about-block h2 { font-size: 12px; font-weight: 600; color: var(--text3); margin-bottom: 8px; }
+    /* The table scrolls inside itself on a phone; the page never does. */
+    .tbl-wrap { overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    thead th { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+    thead th { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border2); font-size: 12px; font-weight: 500; color: var(--text3); white-space: nowrap; }
     tbody tr { border-bottom: 1px solid var(--border); }
     tbody tr:hover { background: var(--surface2); }
     tbody td { padding: 10px 12px; }
-    .model-name { font-weight: 500; color: var(--text); }
+    .model-name { font-weight: 600; color: var(--text); }
     a.model-name-link { text-decoration: none; }
     a.model-name-link:hover .model-name { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
-    .price-free { color: #22c55e; font-weight: 600; }
-    .price-cheap { color: #4ade80; }
+    .price-free, .price-cheap { color: var(--green); }
     .price-mid { color: var(--text); }
+    .num { font-family: var(--mono); font-size: 13px; white-space: nowrap; }
+    .dim { color: var(--text3); }
     .deprecated-row { opacity: 0.5; }
     footer { border-top: 1px solid var(--border); padding: 20px 24px; text-align: center; font-size: 12px; color: var(--text3); }
     footer a { color: var(--text3); text-decoration: none; }
@@ -4835,10 +4768,7 @@ export function getProviderHtml(params: {
   </style>
 </head>
 <body>
-<nav>
-  <a href="/" class="nav-brand"><span class="diamond">◈</span> token.app</a>
-  <a href="/" class="nav-back">← All providers</a>
-</nav>
+${siteNav(null)}
 <main>
   <h1>${escape(meta.name)} API Pricing</h1>
   <p class="provider-desc">${escape(meta.description)}</p>
@@ -4849,6 +4779,7 @@ export function getProviderHtml(params: {
     <p>${escape(meta.about)}</p>
   </div>
 
+  <div class="tbl-wrap">
   <table>
     <thead>
       <tr>
@@ -4864,6 +4795,7 @@ export function getProviderHtml(params: {
       ${rows || '<tr><td colspan="6" style="padding:40px;text-align:center;color:var(--text3);">No models found</td></tr>'}
     </tbody>
   </table>
+  </div>
 </main>
 <footer>
   <p>Data sourced from <a href="https://openrouter.ai">OpenRouter</a> and provider pricing pages. Always verify with official sources.</p>
@@ -4889,7 +4821,7 @@ export function getAboutHtml(): string {
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://token.app/about" />
   <meta property="og:site_name" content="token.app" />
-  <meta property="og:image" content="https://token.app/og.png?v=2" />
+  <meta property="og:image" content="https://token.app/og.png?v=3" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <link rel="canonical" href="https://token.app/about" />
@@ -4909,29 +4841,36 @@ export function getAboutHtml(): string {
   }
   </script>
   <script>(function(){var t=localStorage.getItem('theme')||(window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);})();</script>
+  ${FONT_PRELOAD}
   <style>
+${FONT_FACE_CSS}
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
       color-scheme: dark;
-      --bg: #0c0c0e; --surface: #141418; --surface2: #1c1c22;
-      --border: #27272f; --text: #f0f0f4; --text2: #a3a3b3; --text3: #80808f;
-      --accent: #6366f1; --radius: 8px; --nav-bg: rgba(12,12,14,0.88);
+      --bg: #0a0a0a; --surface: #111111; --surface2: #191919;
+      --border: #1f1f1f; --text: #ededed; --text2: #a1a1a1; --text3: #8b8b8b;
+      --accent: #ffb224; --on-accent: #0a0a0a; --radius: 8px; --nav-bg: rgba(10,10,10,0.85);
     }
     html[data-theme="light"] {
       color-scheme: light;
-      --bg: #f4f4f8; --surface: #ffffff; --surface2: #ebebf2;
-      --border: #dcdce8; --text: #111118; --text2: #3d3d52; --text3: #62627a;
-      --accent: #4746b8; --nav-bg: rgba(244,244,248,0.92);
+      --bg: #fafafa; --surface: #ffffff; --surface2: #f2f2f2;
+      --border: #e6e6e6; --text: #171717; --text2: #454545; --text3: #666666;
+      --accent: #b45309; --on-accent: #ffffff; --nav-bg: rgba(250,250,250,0.88);
     }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.65; min-height: 100vh; }
-    nav { position: sticky; top: 0; z-index: 100; background: var(--nav-bg); backdrop-filter: blur(14px); border-bottom: 1px solid var(--border); padding: 0 24px; height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-    .nav-brand { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; color: var(--text); text-decoration: none; letter-spacing: -0.3px; }
-    .nav-brand .diamond { color: var(--accent); font-size: 18px; }
-    .nav-back { font-size: 13px; color: var(--text2); text-decoration: none; }
-    .nav-back:hover { color: var(--text); }
-    main { max-width: 720px; margin: 0 auto; padding: 48px 24px 80px; }
-    h1 { font-size: 28px; font-weight: 700; margin-bottom: 6px; }
-    .subtitle { font-size: 16px; color: var(--text2); margin-bottom: 40px; }
+    body { font-family: var(--font); background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.65; min-height: 100vh; }
+${SITE_NAV_CSS}
+    main { max-width: 720px; margin: 0 auto; padding: 56px 24px 80px; }
+    h1 { font-size: 40px; font-weight: 600; letter-spacing: -0.035em; line-height: 1.1; margin-bottom: 10px; }
+    .subtitle { font-size: 17px; color: var(--text2); margin-bottom: 36px; }
+    /* The figure is drawn on the page's own ground, one still per theme, so it sits
+       in the page with no frame around it. */
+    /* -32px: the figure's own 32px inset lands its cards on the text column. */
+    .about-figure { margin: 0 -32px 8px; }
+    .about-figure img { display: block; width: 100%; height: auto; }
+    .about-figure .fig-light { display: none; }
+    html[data-theme="light"] .about-figure .fig-dark { display: none; }
+    html[data-theme="light"] .about-figure .fig-light { display: block; }
+    .about-figure figcaption { padding: 0 32px; font-size: 13px; line-height: 1.55; color: var(--text3); }
     h2 { font-size: 16px; font-weight: 600; margin: 32px 0 12px; color: var(--text); }
     p { color: var(--text2); margin-bottom: 14px; }
     p:last-child { margin-bottom: 0; }
@@ -4943,24 +4882,35 @@ export function getAboutHtml(): string {
     footer { border-top: 1px solid var(--border); padding: 20px 24px; text-align: center; font-size: 12px; color: var(--text3); }
     footer a { color: var(--text3); text-decoration: none; }
     footer a:hover { color: var(--text2); }
-    @media (max-width: 600px) { main { padding: 32px 16px 60px; } }
+    @media (max-width: 600px) {
+      main { padding: 32px 16px 60px; }
+      h1 { font-size: 32px; }
+      /* At phone width the figure's type would shrink below reading size; the caption
+         carries the same story in words. */
+      .about-figure img { display: none !important; }
+      .about-figure { margin: 0 0 8px; }
+      .about-figure figcaption { padding: 0; }
+    }
   </style>
 </head>
 <body>
-<nav>
-  <a href="/" class="nav-brand"><span class="diamond">◈</span> token.app</a>
-  <a href="/" class="nav-back">← Back to pricing</a>
-</nav>
+${siteNav('about')}
 <main>
   <h1>About token.app</h1>
   <p class="subtitle">AI token and subscription pricing tracker, built by Measurable AI.</p>
+
+  <figure class="about-figure">
+    <img class="fig-dark" src="/img/about-dark.png?v=${IMAGE_ASSET_VERSION}" width="720" height="300" loading="lazy" alt="" />
+    <img class="fig-light" src="/img/about-light.png?v=${IMAGE_ASSET_VERSION}" width="720" height="300" loading="lazy" alt="" />
+    <figcaption>OpenRouter publishes each price per token; Epoch AI publishes the scores it runs itself. token.app turns the prices into dollars per million tokens, adds a blended price at a 3:1 input-to-output mix, and puts the score beside them.</figcaption>
+  </figure>
 
   <h2>What is token.app?</h2>
   <p>
     token.app is a real-time pricing tracker for AI language model APIs and subscriptions.
     We aggregate token pricing data from <a href="https://openrouter.ai" target="_blank" rel="noopener">OpenRouter</a>
     and official provider pricing pages, making it easy to compare costs across the rapidly growing
-    AI provider landscape. The site covers 350+ models from 55+ providers and updates every hour.
+    AI provider landscape. It covers every model OpenRouter lists and updates every hour.
   </p>
 
   <h2>Data Sources &amp; Methodology</h2>
@@ -4974,6 +4924,10 @@ export function getAboutHtml(): string {
     input token price ($/1M tokens), output token price ($/1M tokens), context window size,
     model release date, and supported input/output modalities (text, vision, audio, reasoning).
     All prices are in US dollars unless otherwise noted.
+  </p>
+  <p>
+    Benchmark scores come from <a href="https://epoch.ai/benchmarks" target="_blank" rel="noopener">Epoch AI's Benchmarking Hub</a>:
+    evaluations Epoch runs itself rather than figures vendors report about their own models, used under CC BY 4.0.
   </p>
   <p>
     <strong>Important:</strong> Prices shown are for reference only. AI providers can change pricing

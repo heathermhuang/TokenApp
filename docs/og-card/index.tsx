@@ -88,7 +88,7 @@ export default function TokenAppOg() {
           </div>
 
           <div className="og-copy">
-            <Text className="og-title">AI model prices, side by side</Text>
+            <Text className="og-title">AI model pricing, side by side</Text>
             <Text className="og-line">Live per-token pricing beside independently-run benchmarks.</Text>
           </div>
         </>

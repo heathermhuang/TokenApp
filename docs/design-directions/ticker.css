@@ -1,0 +1,21 @@
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap');
+
+.tad-ticker .ss-stage {
+  --t-bg: #0a0a0a; --t-text: #ededed; --t-text2: #a1a1a1; --t-text3: #8b8b8b;
+  --t-line: #1c1c1c; --t-line-strong: #2a2a2a; --t-fill: #161616; --t-field: #0f0f0f;
+  --t-accent: #ffb224; --t-accent-text: #ffb224; --t-cheap: #3dd68c;
+  --t-font: Geist, system-ui, sans-serif; --t-display: var(--t-font);
+  --t-figure: 'Geist Mono', ui-monospace, monospace;
+  --t-h1: 54px; --t-h1-w: 600; --t-h1-track: -0.04em; --t-em-style: normal; --t-em: #8b8b8b;
+  --t-pick-gap: 0; --t-pick-bg: transparent; --t-pick-border: none; --t-big-w: 500;
+  --t-r-sm: 6px; --t-r-md: 8px; --t-r-lg: 0;
+  --t-seg-on: #ededed; --t-seg-on-text: #0a0a0a; --t-seg-shadow: none;
+  --t-table-top: none; --t-th-rule: 1px solid #2a2a2a; --t-num-size: 13px;
+  --t-logo-bg: #1a1a1a;
+}
+.tad-ticker .tad-picks { border-top: 1px solid var(--t-line); border-bottom: 1px solid var(--t-line); }
+.tad-ticker .tad-pick { padding: 20px 24px 22px; }
+.tad-ticker .tad-pick:first-child { padding-left: 0; }
+.tad-ticker .tad-pick + .tad-pick { border-left: 1px solid var(--t-line); }
+.tad-ticker .tad-k { font-family: var(--t-figure); font-weight: 500; font-size: 12px; color: var(--t-accent); }
+.tad-ticker .tad-logo img.is-mono { filter: invert(1); }
