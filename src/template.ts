@@ -256,11 +256,12 @@ export function getHtml(params: {
     window.dataLayer = window.dataLayer || [];
     function gtag(){dataLayer.push(arguments);}
     gtag('js', new Date());
-    gtag('consent', 'default', { analytics_storage: 'denied' });
-    if (localStorage.getItem('cookie_consent') === 'accepted') {
-      gtag('consent', 'update', { analytics_storage: 'granted' });
-    }
-    gtag('config', 'G-Z59RHGWMWD');
+    var tokenAnalyticsChoice = null;
+    try { tokenAnalyticsChoice = localStorage.getItem('cookie_consent'); } catch (_) {}
+    window.tokenAnalyticsAllowed = ['token.app', 'www.token.app', 'token-app.measurable.workers.dev'].includes(location.hostname) && tokenAnalyticsChoice !== 'declined' && navigator.doNotTrack !== '1' && navigator.globalPrivacyControl !== true;
+    window['ga-disable-G-Z59RHGWMWD'] = !window.tokenAnalyticsAllowed;
+    gtag('consent', 'default', { analytics_storage: window.tokenAnalyticsAllowed ? 'granted' : 'denied', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied' });
+    gtag('config', 'G-Z59RHGWMWD', { allow_google_signals: false, allow_ad_personalization_signals: false, page_location: location.origin + location.pathname, page_referrer: '' });
   </script>
   ${FONT_PRELOAD}
   <style>
@@ -4211,17 +4212,17 @@ function switchView(view) {
 
 // ── Consent ────────────────────────────────────────────────────────────────────
 function setConsent(choice) {
-  localStorage.setItem('cookie_consent', choice);
-  if (choice === 'accepted' && window.gtag) {
-    gtag('consent', 'update', { analytics_storage: 'granted' });
-  }
+  try { localStorage.setItem('cookie_consent', choice); } catch (_) {}
+  window.tokenAnalyticsAllowed = ['token.app', 'www.token.app', 'token-app.measurable.workers.dev'].includes(location.hostname) && choice === 'accepted' && navigator.doNotTrack !== '1' && navigator.globalPrivacyControl !== true;
+  window['ga-disable-G-Z59RHGWMWD'] = !window.tokenAnalyticsAllowed;
+  if (window.gtag) gtag('consent', 'update', { analytics_storage: window.tokenAnalyticsAllowed ? 'granted' : 'denied' });
   const bar = document.getElementById('consent-bar');
   bar.style.display = 'none';
   document.body.style.paddingBottom = '';
 }
 
-function initConsent() {
-  if (localStorage.getItem('cookie_consent')) return;
+function initConsent(force) {
+  if (!force) return;
   const bar = document.getElementById('consent-bar');
   bar.style.display = 'flex';
   const sync = () => { document.body.style.paddingBottom = bar.offsetHeight + 'px'; };
@@ -4249,15 +4250,15 @@ const TERMS_HTML = \`
 
 const PRIVACY_HTML = \`
 <h3>What We Collect</h3>
-<p>With your consent, we use Google Analytics (GA4) to collect anonymous usage data — pages visited, session duration, and general geographic region. No personally identifiable information is collected or stored by us.</p>
+<p>We automatically use Google Analytics (GA4) to measure limited public site usage — pages visited, session duration, and general geographic region. Advertising signals and personalization are disabled.</p>
 <h3>Cookies</h3>
-<p>Google Analytics uses cookies to distinguish visitors and track sessions. These cookies are only activated after you accept via the consent banner. You can withdraw consent at any time by clearing your browser cookies.</p>
+<p>Google Analytics uses cookies to distinguish visitors and track sessions. Page statistics start automatically without an initial opt-in prompt. Existing explicit declines and browser privacy signals remain effective. <button onclick="initConsent(true)">Analytics settings</button></p>
 <h3>Third-Party Services</h3>
 <p>Pricing data is fetched from <a href="https://openrouter.ai" target="_blank" rel="noopener">OpenRouter's public API</a>. Analytics data is governed by <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google's Privacy Policy</a>.</p>
 <h3>Data Retention</h3>
 <p>Analytics data is retained in Google Analytics for 14 months. We do not store any personal data on our own servers.</p>
 <h3>Your Rights</h3>
-<p>You may decline analytics cookies using the banner on this site. You can also opt out globally using the <a href="https://tools.google.com/dlpage/gaoptout" target="_blank" rel="noopener">Google Analytics Opt-out Browser Add-on</a>.</p>
+<p>You may turn off analytics using Analytics settings above. You can also opt out globally using the <a href="https://tools.google.com/dlpage/gaoptout" target="_blank" rel="noopener">Google Analytics Opt-out Browser Add-on</a>.</p>
 <h3>Contact</h3>
 <p>For privacy inquiries, contact <a href="mailto:heathermhuang@gmail.com">heathermhuang@gmail.com</a>.</p>
 \`;

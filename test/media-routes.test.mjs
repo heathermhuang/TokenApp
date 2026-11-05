@@ -37,7 +37,8 @@ const MEDIA = {
 const stmt = { bind: () => stmt, all: async () => ({ results: [] }), first: async () => null, run: async () => ({}), raw: async () => [] };
 function env(kv) {
   return {
-    TOKEN_APP_KV: { get: async (k) => kv.get(k) ?? null, put: async () => {} },
+    // An absent models cache starts a live OpenRouter fetch during SSR.
+    TOKEN_APP_KV: { get: async (k) => kv.get(k) ?? (k === 'models:all' ? '[]' : null), put: async () => {} },
     // Rankings history: an empty D1, so the page renders with no snapshots.
     RANKINGS_DB: { prepare: () => stmt },
   };
