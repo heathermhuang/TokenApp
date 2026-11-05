@@ -11,3 +11,5 @@ test('an existing explicit refusal remains off and blocked storage does not requ
 test('the consent panel opens only on an explicit settings request',()=>{const source=html.slice(html.indexOf('function initConsent('),html.indexOf('// ── Legal Modals',html.indexOf('function initConsent(')));const bar={style:{display:'none'},offsetHeight:40};const c={document:{getElementById:()=>bar,body:{style:{}}},window:{addEventListener(){}}};vm.runInNewContext(source,c);c.initConsent();assert.equal(bar.style.display,'none');c.initConsent(true);assert.equal(bar.style.display,'flex');});
 
 test('development and preview hosts do not collect production analytics',()=>{assert.equal(boot(null,false,'http://localhost:8787/').tokenAnalyticsAllowed,false);assert.equal(boot(null,false,'https://preview.workers.dev/').tokenAnalyticsAllowed,false);});
+
+test('the documented stable public workers.dev endpoint remains measured',()=>{assert.equal(boot(null,false,'https://token-app.measurable.workers.dev/').tokenAnalyticsAllowed,true);});

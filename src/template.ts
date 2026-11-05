@@ -258,7 +258,7 @@ export function getHtml(params: {
     gtag('js', new Date());
     var tokenAnalyticsChoice = null;
     try { tokenAnalyticsChoice = localStorage.getItem('cookie_consent'); } catch (_) {}
-    window.tokenAnalyticsAllowed = ['token.app', 'www.token.app'].includes(location.hostname) && tokenAnalyticsChoice !== 'declined' && navigator.doNotTrack !== '1' && navigator.globalPrivacyControl !== true;
+    window.tokenAnalyticsAllowed = ['token.app', 'www.token.app', 'token-app.measurable.workers.dev'].includes(location.hostname) && tokenAnalyticsChoice !== 'declined' && navigator.doNotTrack !== '1' && navigator.globalPrivacyControl !== true;
     window['ga-disable-G-Z59RHGWMWD'] = !window.tokenAnalyticsAllowed;
     gtag('consent', 'default', { analytics_storage: window.tokenAnalyticsAllowed ? 'granted' : 'denied', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied' });
     gtag('config', 'G-Z59RHGWMWD', { allow_google_signals: false, allow_ad_personalization_signals: false, page_location: location.origin + location.pathname, page_referrer: '' });
@@ -4213,7 +4213,7 @@ function switchView(view) {
 // ── Consent ────────────────────────────────────────────────────────────────────
 function setConsent(choice) {
   try { localStorage.setItem('cookie_consent', choice); } catch (_) {}
-  window.tokenAnalyticsAllowed = ['token.app', 'www.token.app'].includes(location.hostname) && choice === 'accepted' && navigator.doNotTrack !== '1' && navigator.globalPrivacyControl !== true;
+  window.tokenAnalyticsAllowed = ['token.app', 'www.token.app', 'token-app.measurable.workers.dev'].includes(location.hostname) && choice === 'accepted' && navigator.doNotTrack !== '1' && navigator.globalPrivacyControl !== true;
   window['ga-disable-G-Z59RHGWMWD'] = !window.tokenAnalyticsAllowed;
   if (window.gtag) gtag('consent', 'update', { analytics_storage: window.tokenAnalyticsAllowed ? 'granted' : 'denied' });
   const bar = document.getElementById('consent-bar');
