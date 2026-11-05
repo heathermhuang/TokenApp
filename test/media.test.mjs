@@ -216,7 +216,7 @@ test('no endpoints means unpriced; an unknown unit or billable is reported', () 
 // A fetch stub that DERIVES every answer from the URL it is given (a stub that
 // ignored its input once let a real bug through; see CLAUDE.md). `down` lists
 // model ids whose page fails; `reads` records every page read.
-function stubFetch({ down = [] } = {}) {
+function stubFetch({ down = [], blank = [] } = {}) {
   const reads = [];
   globalThis.fetch = async (url) => {
     const u = String(url);
@@ -229,6 +229,7 @@ function stubFetch({ down = [] } = {}) {
     if (PAGE[id]) {
       reads.push(id);
       if (down.includes(id)) return { ok: false, status: 503 };
+      if (blank.includes(id)) return { ok: true, text: async () => '<html>Something went wrong</html>' };
       return { ok: true, text: async () => pageHtml(id) };
     }
     throw new Error(`unexpected fetch ${u}`);
@@ -282,6 +283,17 @@ test('a failed page keeps the last good price; a model never priced is retried',
   const r = await fetchMediaModels(old, { fullAudioPass: true });
   assert.deepEqual(r.failed, ['microsoft/mai-transcribe-2']);
   near(byId(r.payload.audio)['microsoft/mai-transcribe-2'].price, 0.1, 'carried forward');
+
+  // Found by Codex: a page that answers 200 with no offers is a failed read too.
+  // Whisper's catalogue has no token fallback, and MAI-Transcribe's page-priced
+  // $/hour must not give way to one.
+  stubFetch({ blank: ['openai/whisper-1', 'microsoft/mai-transcribe-2'] });
+  const b = await fetchMediaModels(old, { fullAudioPass: true });
+  assert.deepEqual(b.failed.sort(), ['microsoft/mai-transcribe-2', 'openai/whisper-1']);
+  near(byId(b.payload.audio)['openai/whisper-1'].price, 0.36, 'Whisper kept on a blank page');
+  near(byId(b.payload.audio)['microsoft/mai-transcribe-2'].price, 0.1, 'MAI kept on a blank page');
+  // Gemini TTS has no offer by design and stays token-priced, not "failed".
+  assert.ok(!b.failed.includes('google/gemini-3.8-flash-tts'));
 
   // Failed on its first ever read: stored empty, so retried next hour.
   stubFetch({ down: ['openai/whisper-1'] });

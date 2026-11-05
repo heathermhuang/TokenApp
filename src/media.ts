@@ -348,7 +348,15 @@ export async function fetchMediaModels(prev: MediaPayload | null, opts: { fullAu
       if (!res.ok) throw new Error(String(res.status));
       pagesFetched++;
       const offers = offersFromHtml(await res.text());
-      if (offers.length === 0) return { ...base, otherRates: catalogueTokenRates(raw) };
+      if (offers.length === 0) {
+        // No offer on a page that answered 200 is either a token-priced model
+        // (Gemini TTS) or a broken page. Only the first has a catalogue fallback,
+        // and a model we priced from its page before cannot have become the
+        // first: treat it as a failed read so its last good price stands.
+        const tokens = catalogueTokenRates(raw);
+        if (tokens.length === 0 || (prior && prior.price !== null)) throw new Error('no offers on page');
+        return { ...base, otherRates: tokens };
+      }
       return { ...base, ...normalizeAudioOffers(kind, offers) };
     } catch {
       failed.push(raw.id);
