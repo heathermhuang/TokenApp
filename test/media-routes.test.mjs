@@ -30,8 +30,9 @@ const MEDIA = {
   images: [{ id: 'recraft/recraft-v4', name: 'Recraft V4', provider: 'Recraft', providerId: 'recraft', createdAt: 1, edits: false, perImage: 0.04, otherRates: [], unparsed: [] }],
   audio: [{ id: 'microsoft/mai-transcribe-2', name: 'MAI-Transcribe 2', provider: 'Microsoft', providerId: 'microsoft', createdAt: 1, kind: 'transcription', price: 0.1, otherRates: [], unparsed: [], contextLength: null }],
   embeddings: [],
-  fetchedAt: '2026-11-05T00:00:00.000Z',
-  audioPricedAt: '2026-11-05T00:00:00.000Z',
+  // This wiring fixture must be fresh; stale-price policy has separate tests.
+  fetchedAt: new Date().toISOString(),
+  audioPricedAt: new Date().toISOString(),
 };
 
 const stmt = { bind: () => stmt, all: async () => ({ results: [] }), first: async () => null, run: async () => ({}), raw: async () => [] };
