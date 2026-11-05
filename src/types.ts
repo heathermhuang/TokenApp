@@ -287,6 +287,53 @@ export interface VideoPayload {
   fetchedAt: string;
 }
 
+// ── Image, audio and embedding models (src/media.ts) ──────────────────────────
+
+export interface MediaRate {
+  label: string;              // "2K", "input image", "" for the plain rate
+  price: number;              // USD per `unit`
+  unit: string;               // "image", "megapixel", "1M image tokens", "request"
+}
+
+export interface ImageModel {
+  id: string;
+  name: string;
+  provider: string;
+  providerId: string;
+  createdAt: number | null;
+  edits: boolean;             // takes an input image, so can edit as well as generate
+  perImage: number | null;    // USD per image at the model's standard size; null = not priced per image
+  otherRates: MediaRate[];    // sizes, quality tiers, megapixel or token rates, input fees
+  unparsed: string[];         // pricing entries we did not recognise (surfaced, never guessed)
+}
+
+export type MediaKind = 'speech' | 'transcription' | 'music' | 'embedding' | 'rerank' | 'classifier';
+
+// Audio and embedding models: one headline price, in the unit the kind implies
+// (MEDIA_UNITS in src/media.ts). null = OpenRouter publishes none in that unit.
+export interface MediaModel {
+  id: string;
+  name: string;
+  provider: string;
+  providerId: string;
+  createdAt: number | null;
+  kind: MediaKind;
+  price: number | null;
+  // Prices in any other unit, never converted into the headline one: Fish Audio
+  // bills UTF-8 bytes, Gemini TTS bills tokens, AssemblyAI has a "Prompted" rate.
+  otherRates: MediaRate[];
+  unparsed: string[];         // page units we did not recognise (surfaced, never guessed)
+  contextLength: number | null;
+}
+
+export interface MediaPayload {
+  images: ImageModel[];
+  audio: MediaModel[];
+  embeddings: MediaModel[];
+  fetchedAt: string;
+  audioPricedAt: string | null; // last full pass over the audio model pages (daily)
+}
+
 export interface BenchmarksPayload {
   models: ModelBenchmarks[];
   benchmarks: { id: string; label: string; blurb: string }[]; // the surfaced set, in display order
@@ -344,4 +391,5 @@ export const KV_KEYS = {
   TASK_SPEND: 'rankings:taskspend',// TaskSpend (top models by task treemap)
   BENCHMARKS: 'benchmarks:all',    // BenchmarksPayload (Epoch AI, CC BY)
   VIDEOS: 'videos:all',            // VideoPayload (OpenRouter /api/v1/videos/models)
+  MEDIA: 'media:all',              // MediaPayload (image, audio, embedding models)
 } as const;

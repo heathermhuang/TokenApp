@@ -63,6 +63,21 @@ interface RawVideoModel {
   pricing_skus?: Record<string, string> | null;
 }
 
+// Name without OpenRouter's "Vendor: " prefix, and the vendor as we label it:
+// our name for vendors we know, OpenRouter's ("Kling") for ones we don't, rather
+// than a capitalised slug ("Kwaivgi"). Shared with src/media.ts.
+export function modelIdentity(id: string, name: string) {
+  const [vendorId] = id.split('/');
+  const providerId = canonicalProviderId(vendorId ?? '');
+  const prefix = name.includes(': ') ? name.slice(0, name.indexOf(': ')) : null;
+  return {
+    id,
+    name: prefix ? name.slice(prefix.length + 2) : name,
+    provider: PROVIDERS[providerId]?.displayName ?? prefix ?? providerId,
+    providerId,
+  };
+}
+
 export function normalizeVideoModel(raw: RawVideoModel): VideoModel {
   const resolutions = (raw.supported_resolutions ?? []).map(canonRes);
   const single = resolutions.length === 1 ? resolutions[0] : null;
@@ -137,18 +152,10 @@ export function normalizeVideoModel(raw: RawVideoModel): VideoModel {
     if (base[res] !== undefined && allowed(res)) audioPerSecond[res] = round(Math.max(0, n - base[res]));
   }
 
-  const [vendorId] = raw.id.split('/');
-  const providerId = canonicalProviderId(vendorId ?? '');
-  const prefix = raw.name.includes(': ') ? raw.name.slice(0, raw.name.indexOf(': ')) : null;
   const durations = raw.supported_durations ?? [];
 
   return {
-    id: raw.id,
-    name: prefix ? raw.name.slice(prefix.length + 2) : raw.name,
-    // Our label for vendors we know; OpenRouter's ("Kling") for ones we don't,
-    // rather than a capitalised slug ("Kwaivgi").
-    provider: PROVIDERS[providerId]?.displayName ?? prefix ?? providerId,
-    providerId,
+    ...modelIdentity(raw.id, raw.name),
     createdAt: raw.created ?? null,
     resolutions,
     durations,

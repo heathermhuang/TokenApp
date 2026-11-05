@@ -11,6 +11,7 @@ export function getHtml(params: {
   initialRankings?: string;
   initialBenchmarks?: string;
   initialVideos?: string;
+  initialMedia?: string;
   lastUpdated?: string | null;
 }): string {
   const { lastUpdated = null } = params;
@@ -52,6 +53,7 @@ export function getHtml(params: {
   const initialRankings = safeLiteral(params.initialRankings ?? 'null');
   const initialBenchmarks = safeLiteral(params.initialBenchmarks ?? 'null');
   const initialVideos = safeLiteral(params.initialVideos ?? '[]');
+  const initialMedia = safeLiteral(params.initialMedia ?? 'null');
 
   // Compute counts server-side for accurate meta tags and hero description
   const parsedModels = JSON.parse(params.initialModels ?? '[]') as Array<{
@@ -644,19 +646,28 @@ ${SITE_NAV_CSS}
        picks step aside rather than share a column with a different unit. Driven by
        body[data-mtype] so switchView() and renderPareto() need not know about it. */
     .type-row { margin-bottom: 10px; }
-    .type-row .cat-tabs.seg { display: inline-flex; flex: 0 0 auto; }
+    /* Capped at the row so five types scroll inside the control on a phone
+       instead of widening the page. */
+    .type-row .cat-tabs.seg, #media-subtabs { display: inline-flex; flex: 0 0 auto; max-width: 100%; }
     .type-count { color: var(--text3); margin-left: 2px; }
-    #video-section { display: none; overflow-x: auto; }
+    #video-section, #media-section { display: none; overflow-x: auto; }
     body[data-mtype="video"]:not([data-view]) #video-section,
     body[data-mtype="video"][data-view="api"] #video-section { display: block; }
-    body[data-mtype="video"] #api-section,
-    body[data-mtype="video"] #pareto-section,
-    body[data-mtype="video"] .superlatives,
-    body[data-mtype="video"] #cat-tabs,
-    body[data-mtype="video"] .toolbar-end,
-    body[data-mtype="video"] #provider-filters { display: none !important; }
-    #video-section .table-meta { flex-wrap: wrap; gap: 4px 12px; }
-    #video-section .other-rates { color: var(--text3); font-size: 12px; white-space: nowrap; }
+    /* Image, Audio and Embeddings share one table (#media-section). */
+    body:is([data-mtype="image"], [data-mtype="audio"], [data-mtype="embeddings"]):not([data-view]) #media-section,
+    body:is([data-mtype="image"], [data-mtype="audio"], [data-mtype="embeddings"])[data-view="api"] #media-section { display: block; }
+    body[data-mtype]:not([data-mtype="language"]) #api-section,
+    body[data-mtype]:not([data-mtype="language"]) #pareto-section,
+    body[data-mtype]:not([data-mtype="language"]) .superlatives,
+    body[data-mtype]:not([data-mtype="language"]) #cat-tabs,
+    body[data-mtype]:not([data-mtype="language"]) .toolbar-end,
+    body[data-mtype]:not([data-mtype="language"]) #provider-filters { display: none !important; }
+    #video-section .table-meta, #media-section .table-meta { flex-wrap: wrap; gap: 4px 12px; }
+    #video-section .other-rates, #media-section .other-rates { color: var(--text3); font-size: 12px; }
+    #video-section .other-rates { white-space: nowrap; }
+    #media-section .other-rates { min-width: 180px; }
+    #media-subtabs { margin: 0 0 10px; }
+    #media-subtabs[hidden] { display: none; }
 
     .table-meta {
       display: flex;
@@ -1674,20 +1685,25 @@ ${SITE_NAV_CSS}
       /* Only the table runs edge to edge; the chart card and the table's meta line
          keep the page's 16px gutter. */
       .pareto-shell { padding: 0 16px 24px; overflow-x: visible; }
-      #api-section .table-meta, #video-section .table-meta { padding-left: 16px; padding-right: 16px; }
+      #api-section .table-meta, #video-section .table-meta, #media-section .table-meta { padding-left: 16px; padding-right: 16px; }
+      #media-subtabs { margin-left: 16px; }
       #api-section tbody td:first-child,
       #api-section thead th:first-child .th-sort,
       #video-section tbody td:first-child,
-      #video-section thead th:first-child .th-sort { padding-left: 16px; }
+      #video-section thead th:first-child .th-sort,
+      #media-section tbody td:first-child,
+      #media-section thead th:first-child .th-sort { padding-left: 16px; }
       #api-section td.model-cell, #api-section thead th:first-child,
-      #video-section td.model-cell, #video-section thead th:first-child {
+      #video-section td.model-cell, #video-section thead th:first-child,
+      #media-section td.model-cell, #media-section thead th:first-child {
         position: sticky; left: 0; z-index: 1;
         background: var(--bg);
         min-width: 0; max-width: 46vw;
         box-shadow: 1px 0 0 var(--border);
       }
       #api-section tbody tr:hover td.model-cell,
-      #video-section tbody tr:hover td.model-cell { background: var(--surface); }
+      #video-section tbody tr:hover td.model-cell,
+      #media-section tbody tr:hover td.model-cell { background: var(--surface); }
       .model-name, .model-provider { max-width: calc(46vw - 56px); }
       table { min-width: 720px; table-layout: auto; }
       table th, table td { padding: 8px; }
@@ -1775,7 +1791,10 @@ ${SITE_NAV_CSS}
     <div class="type-row" id="type-row" hidden>
       <div class="cat-tabs seg" id="type-tabs" role="group" aria-label="Model type">
         <button type="button" class="cat-tab active" data-mtype="language" aria-pressed="true">Language <span class="type-count" id="type-count-language"></span></button>
+        <button type="button" class="cat-tab" data-mtype="image" aria-pressed="false">Image <span class="type-count" id="type-count-image"></span></button>
         <button type="button" class="cat-tab" data-mtype="video" aria-pressed="false">Video <span class="type-count" id="type-count-video"></span></button>
+        <button type="button" class="cat-tab" data-mtype="audio" aria-pressed="false">Audio <span class="type-count" id="type-count-audio"></span></button>
+        <button type="button" class="cat-tab" data-mtype="embeddings" aria-pressed="false">Embeddings <span class="type-count" id="type-count-embeddings"></span></button>
       </div>
     </div>
     <div class="toolbar">
@@ -1899,6 +1918,23 @@ ${SITE_NAV_CSS}
       </tr>
     </thead>
     <tbody id="videos-tbody"></tbody>
+  </table>
+</div>
+
+<!-- ── Image / Audio / Embeddings Table ─────────────────────────────────────────
+     One table, re-headed per type by renderMediaTable(): each type (and each audio
+     or embedding kind, via the sub-tabs) is priced in its own unit, so no column
+     ever holds two units. Data from src/media.ts. -->
+<h2 class="sr-only">Image, Audio and Embedding Model Pricing</h2>
+<div class="table-wrap" id="media-section">
+  <div class="cat-tabs seg" id="media-subtabs" role="group" aria-label="Kind" hidden></div>
+  <div class="table-meta">
+    <span><strong id="media-count">—</strong> <span id="media-noun">models</span> shown <span class="unit-note" id="media-unit"></span></span>
+    <span>Rates from <a id="media-source" href="https://openrouter.ai/models" target="_blank" rel="noopener">OpenRouter</a></span>
+  </div>
+  <table>
+    <thead id="media-thead"></thead>
+    <tbody id="media-tbody"></tbody>
   </table>
 </div>
 
@@ -2095,9 +2131,14 @@ const state = {
   benchPrimary: 'gpqa_diamond', // benchmark driving the Quality column + chart
   benchFilter: null, // benchmarkId → show only models scored on it; null = all
   videos: [],          // VideoModel[] (src/videos.ts), SSR-embedded
-  modelType: 'language', // 'language' | 'video' — which table the Models view shows
+  media: { images: [], audio: [], embeddings: [] }, // src/media.ts, SSR-embedded
+  // 'language' | 'image' | 'video' | 'audio' | 'embeddings' — which table the Models view shows
+  modelType: 'language',
   vSortKey: 'p720',
   vSortDir: 1,
+  mediaKind: { audio: 'speech', embeddings: 'embedding' }, // sub-tab per type
+  mSortKey: 'price',
+  mSortDir: 1,
 };
 
 // ── Derived pricing/quality fields ─────────────────────────────────────────────
@@ -3937,15 +3978,179 @@ function bindVideoSortHeaders() {
   });
 }
 
-// The switch only appears once there is something to switch to.
+// ── Image, audio and embedding models ──────────────────────────────────────────
+// One table for all three (src/media.ts). Each view prices in ONE unit, so the
+// audio and embedding kinds get sub-tabs rather than a shared price column:
+// sorting dollars per hour of audio against dollars per million characters
+// would rank nothing.
+var MEDIA_VIEWS = {
+  image: { list: 'images', noun: 'image models', price: 'Per image', unit: 'USD per image at the model’s standard size', extra: 'image', source: 'image' },
+  speech: { list: 'audio', noun: 'speech models', price: 'Per 1M chars', unit: 'USD per 1M characters of text spoken', extra: 'rates', source: 'speech' },
+  transcription: { list: 'audio', noun: 'transcription models', price: 'Per hour', unit: 'USD per hour of audio transcribed', extra: 'rates', source: 'transcription' },
+  music: { list: 'audio', noun: 'music models', price: 'Per song', unit: 'USD per generated song', extra: 'rates', source: 'audio' },
+  embedding: { list: 'embeddings', noun: 'embedding models', price: 'Per 1M tokens', unit: 'USD per 1M input tokens', extra: 'context', source: 'embeddings' },
+  classifier: { list: 'embeddings', noun: 'classifiers', price: 'Per 1M tokens', unit: 'USD per 1M input tokens; output is free', extra: 'context', source: 'decisions' },
+  rerank: { list: 'embeddings', noun: 'rerankers', price: 'Price', unit: 'OpenRouter publishes a rerank price only for the free ones', extra: 'context', source: 'rerank' },
+};
+var MEDIA_KINDS = {
+  audio: [['speech', 'Speech'], ['transcription', 'Transcription'], ['music', 'Music']],
+  embeddings: [['embedding', 'Embeddings'], ['classifier', 'Classifiers'], ['rerank', 'Rerank']],
+};
+
+function mediaViewKey() {
+  var t = state.modelType;
+  return t === 'image' ? 'image' : state.mediaKind[t];
+}
+
+function mediaRows(viewKey) {
+  var view = MEDIA_VIEWS[viewKey];
+  var list = state.media[view.list] || [];
+  return viewKey === 'image' ? list : list.filter(function (m) { return m.kind === viewKey; });
+}
+
+function fmtMediaPrice(n) {
+  if (n === null || n === undefined) return '—';
+  if (n === 0) return 'Free';
+  return '$' + (n >= 0.1 ? n.toFixed(2) : String(Number(n.toFixed(4))));
+}
+
+// Rates in any other unit, as published — never converted into the headline one.
+function mediaOtherRates(m) {
+  var parts = (m.otherRates || []).map(function (r) {
+    return (r.label ? r.label + ' ' : '') + fmtMediaPrice(r.price) + '/' + r.unit;
+  });
+  return parts.length ? escape(parts.join(' · ')) : '<span class="muted">—</span>';
+}
+
+function mediaSortValue(m, key) {
+  if (key === 'name') return m.name.toLowerCase();
+  if (key === 'price') return m.perImage !== undefined ? m.perImage : m.price;
+  return m[key];
+}
+
+function mediaHeadCell(key, label, cls, title) {
+  var sorted = state.mSortKey === key;
+  var icon = sorted ? (state.mSortDir === 1 ? '↑' : '↓') : '↕';
+  return '<th scope="col" data-msort="' + key + '"' + (cls || sorted ? ' class="' + [cls, sorted ? 'sorted' : ''].filter(Boolean).join(' ') + '"' : '') +
+    ' aria-sort="' + (sorted ? (state.mSortDir === 1 ? 'ascending' : 'descending') : 'none') + '">' +
+    '<button type="button" class="th-sort"' + (title ? ' title="' + escape(title) + '"' : '') + '>' + label + ' <span class="sort-icon" aria-hidden="true">' + icon + '</span></button></th>';
+}
+
+function renderMediaTable() {
+  var tbody = document.getElementById('media-tbody');
+  if (!tbody) return;
+  var viewKey = mediaViewKey();
+  var view = MEDIA_VIEWS[viewKey];
+  if (!view) return;
+
+  var sub = document.getElementById('media-subtabs');
+  var kinds = MEDIA_KINDS[state.modelType];
+  sub.hidden = !kinds;
+  sub.innerHTML = kinds ? kinds.map(function (k) {
+    var n = mediaRows(k[0]).length;
+    if (n === 0) return '';
+    var on = k[0] === viewKey;
+    return '<button type="button" class="cat-tab' + (on ? ' active' : '') + '" data-mkind="' + k[0] + '" aria-pressed="' + on + '">' + k[1] + ' <span class="type-count">' + n.toLocaleString() + '</span></button>';
+  }).join('') : '';
+
+  var extraHead = view.extra === 'image'
+    ? '<th scope="col">Other rates</th><th scope="col" title="Whether the model also takes an input image to edit">Input</th>'
+    : view.extra === 'rates'
+      ? '<th scope="col">Other rates</th>'
+      : mediaHeadCell('contextLength', 'Context', 'num', 'Longest input, in tokens');
+  document.getElementById('media-thead').innerHTML = '<tr>' +
+    mediaHeadCell('name', 'Model') +
+    mediaHeadCell('createdAt', 'Released') +
+    mediaHeadCell('price', view.price, 'num', view.unit) +
+    extraHead + '</tr>';
+  document.getElementById('media-noun').textContent = view.noun;
+  document.getElementById('media-unit').textContent = '· ' + view.unit;
+  document.getElementById('media-source').href = 'https://openrouter.ai/models?output_modalities=' + view.source;
+
+  var q = state.search.trim().toLowerCase();
+  var list = mediaRows(viewKey).filter(function (m) {
+    return !q || m.name.toLowerCase().includes(q) || m.provider.toLowerCase().includes(q) || m.id.toLowerCase().includes(q);
+  });
+  var key = state.mSortKey, dir = state.mSortDir;
+  list.sort(function (a, b) {
+    var x = mediaSortValue(a, key), y = mediaSortValue(b, key);
+    // Unpriced rows sink in both directions: a missing price is not the cheapest.
+    var xm = x === null || x === undefined, ym = y === null || y === undefined;
+    if (xm || ym) return xm === ym ? 0 : (xm ? 1 : -1);
+    return (x < y ? -1 : x > y ? 1 : 0) * dir;
+  });
+  document.getElementById('media-count').textContent = list.length.toLocaleString();
+  var cols = view.extra === 'image' ? 5 : 4;
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="' + cols + '"><div class="empty-state"><h3>No models found</h3><p>Try a different search.</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map(function (m) {
+    var url = 'https://openrouter.ai/' + m.id;
+    var price = m.perImage !== undefined ? m.perImage : m.price;
+    var extra = view.extra === 'image'
+      ? '<td class="other-rates">' + mediaOtherRates(m) + '</td><td>' + (m.edits ? 'Text or image' : 'Text') + '</td>'
+      : view.extra === 'rates'
+        ? '<td class="other-rates">' + mediaOtherRates(m) + '</td>'
+        : '<td class="num">' + (m.contextLength ? fmtCtx(m.contextLength) : '<span class="muted">—</span>') + '</td>';
+    return '<tr class="model-row">' +
+      '<td class="model-cell"><div class="model-cell-head">' +
+        '<span class="logo-tile" aria-hidden="true">' + providerLogoImg(m.providerId) + '</span>' +
+        '<a href="' + escape(url) + '" target="_blank" rel="noopener" class="model-link" title="Open ' + escape(m.name) + ' on OpenRouter">' +
+          '<span class="model-name">' + escape(m.name) + '</span>' +
+          '<span class="model-provider">' + escape(providerLabel(m.providerId, m.provider)) + '</span>' +
+        '</a></div></td>' +
+      '<td class="released">' + fmtDate(m.createdAt) + '</td>' +
+      '<td class="num"><span class="price">' + fmtMediaPrice(price) + '</span></td>' +
+      extra +
+    '</tr>';
+  }).join('');
+}
+
+function bindMediaTable() {
+  var section = document.getElementById('media-section');
+  section.addEventListener('click', function (e) {
+    var kindBtn = e.target.closest('[data-mkind]');
+    if (kindBtn) {
+      state.mediaKind[state.modelType] = kindBtn.dataset.mkind;
+      renderMediaTable();
+      return;
+    }
+    var th = e.target.closest('th[data-msort]');
+    if (!th) return;
+    var key = th.dataset.msort;
+    if (state.mSortKey === key) state.mSortDir *= -1;
+    else { state.mSortKey = key; state.mSortDir = 1; }
+    renderMediaTable();
+  });
+}
+
+var MODEL_TYPES = ['language', 'image', 'video', 'audio', 'embeddings'];
+
+function modelTypeCount(type) {
+  if (type === 'language') return state.models.length;
+  if (type === 'video') return state.videos.length;
+  return (state.media[type === 'image' ? 'images' : type] || []).length;
+}
+
+// The switch only appears once there is something to switch to, and a type
+// with no models (its fetch has not run yet) has no tab.
 function renderTypeTabs() {
-  document.getElementById('type-row').hidden = state.videos.length === 0;
-  document.getElementById('type-count-language').textContent = state.models.length ? state.models.length.toLocaleString() : '';
-  document.getElementById('type-count-video').textContent = state.videos.length.toLocaleString();
+  var any = false;
+  MODEL_TYPES.forEach(function (t) {
+    var n = modelTypeCount(t);
+    var el = document.getElementById('type-count-' + t);
+    el.textContent = n ? n.toLocaleString() : '';
+    if (t !== 'language') {
+      el.parentElement.hidden = n === 0;
+      if (n > 0) any = true;
+    }
+  });
+  document.getElementById('type-row').hidden = !any;
 }
 
 function setModelType(type) {
-  if (type === 'video' && state.videos.length === 0) type = 'language';
+  if (MODEL_TYPES.indexOf(type) < 0 || (type !== 'language' && modelTypeCount(type) === 0)) type = 'language';
   state.modelType = type;
   document.body.dataset.mtype = type;
   document.querySelectorAll('#type-tabs [data-mtype]').forEach(function (b) {
@@ -3954,6 +4159,12 @@ function setModelType(type) {
     b.setAttribute('aria-pressed', on ? 'true' : 'false');
   });
   if (type === 'video') renderVideoTable();
+  else if (type !== 'language') renderMediaTable();
+}
+
+// Shareable as /#video, /#image, /#audio, /#embeddings; the language table is the bare URL.
+function modelTypeHash() {
+  return state.modelType === 'language' ? location.pathname + location.search : '#' + state.modelType;
 }
 
 // ── View Switch ────────────────────────────────────────────────────────────────
@@ -4084,6 +4295,8 @@ async function init() {
   var initialRankings = ${initialRankings};
   var initialBenchmarks = ${initialBenchmarks};
   state.videos = ${initialVideos};
+  var initialMedia = ${initialMedia};
+  if (initialMedia) state.media = initialMedia;
   var lastUpdated = ${lastUpdated ? JSON.stringify(lastUpdated) : 'null'};
 
   if (initialModels && initialModels.length > 0) {
@@ -4162,6 +4375,7 @@ document.addEventListener('DOMContentLoaded', () => {
   init();
   bindSortHeaders();
   bindVideoSortHeaders();
+  bindMediaTable();
   initConsent();
 
   // Main view tabs
@@ -4174,17 +4388,16 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.main-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       openView(tab.dataset.view);
-      var modelsHash = state.modelType === 'video' ? '#video' : location.pathname + location.search;
-      history.replaceState(null, '', tab.dataset.view === 'api' ? modelsHash : '#' + tab.dataset.view);
+      history.replaceState(null, '', tab.dataset.view === 'api' ? modelTypeHash() : '#' + tab.dataset.view);
     });
   });
 
-  // Language | Video. Shareable as /#video, like /#rankings.
+  // Language | Image | Video | Audio | Embeddings. Shareable as /#video etc., like /#rankings.
   document.getElementById('type-tabs').addEventListener('click', e => {
     const btn = e.target.closest('[data-mtype]');
     if (!btn) return;
     setModelType(btn.dataset.mtype);
-    history.replaceState(null, '', state.modelType === 'video' ? '#video' : location.pathname + location.search);
+    history.replaceState(null, '', modelTypeHash());
   });
 
 
@@ -4759,13 +4972,14 @@ document.addEventListener('DOMContentLoaded', () => {
       state.search = e.target.value;
       renderTable();
       if (state.modelType === 'video') renderVideoTable();
+      else if (state.modelType !== 'language') renderMediaTable();
     }, 150);
   });
 
   // Last, once everything the views read is set up.
   var hashView = location.hash.slice(1);
   if (hashView === 'subscriptions' || hashView === 'rankings') openView(hashView);
-  else if (hashView === 'video') setModelType('video');
+  else if (MODEL_TYPES.indexOf(hashView) > 0) setModelType(hashView);
 });
 </script>
 </body>

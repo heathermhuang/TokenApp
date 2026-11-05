@@ -7,6 +7,7 @@ import { SUBSCRIPTIONS } from './subscriptions';
 import { fetchShareSeries, fetchAppsBoards, fetchModelBoard, fetchTaskSpend } from './openrouter-json';
 import { fetchBenchmarks } from './benchmarks';
 import { fetchVideoModels } from './videos';
+import { fetchMediaModels, readMedia } from './media';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/models';
 
@@ -726,6 +727,7 @@ export async function refreshAllData(
   categories?: string; categoriesError?: string;
   benchmarks?: string; benchmarksError?: string;
   videos?: string; videosError?: string;
+  media?: string; mediaError?: string;
 }> {
   const models = await fetchModelsFromOpenRouter();
 
@@ -838,6 +840,28 @@ export async function refreshAllData(
     videosError = String(err);
   }
 
+  // ── Image, audio and embedding models. Same contract as videos. Audio prices
+  //    come from ~650 KB model pages, so the full pass over them is daily and
+  //    cron-only (includeCategories marks the cron); a model whose price request
+  //    fails keeps its last entry rather than going unpriced for an hour.
+  let mediaStatus: string | undefined;
+  let mediaError: string | undefined;
+  try {
+    const prev = await readMedia(env);
+    const { payload, failed, pagesFetched } = await fetchMediaModels(prev, { fullAudioPass: opts.includeCategories });
+    const total = payload.images.length + payload.audio.length + payload.embeddings.length;
+    if (total === 0) {
+      mediaStatus = 'empty — KV left unchanged';
+    } else {
+      await env.TOKEN_APP_KV.put(KV_KEYS.MEDIA, JSON.stringify(payload));
+      const unparsed = [...payload.images, ...payload.audio].reduce((n, m) => n + m.unparsed.length, 0);
+      mediaStatus = `${payload.images.length} image, ${payload.audio.length} audio, ${payload.embeddings.length} embedding models; ${pagesFetched} pages read, ${failed.length} failed, ${unparsed} unparsed`;
+    }
+  } catch (err) {
+    console.error('Media models fetch failed (non-fatal):', err);
+    mediaError = String(err);
+  }
+
   // ── Categories: scrape AT MOST once per calendar day. Long-running (~2-3 min,
   //    up to 15 Browser Rendering pages), so it ONLY runs when the caller has the
   //    wall-clock budget — the hourly scheduled handler (15-min cron limit) passes
@@ -876,6 +900,7 @@ export async function refreshAllData(
     categories: categoriesStatus, categoriesError,
     benchmarks: benchmarksStatus, benchmarksError,
     videos: videosStatus, videosError,
+    media: mediaStatus, mediaError,
   };
 }
 
