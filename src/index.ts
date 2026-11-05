@@ -6,6 +6,7 @@ import { KV_KEYS } from './types';
 import { getModels, getSubscriptions, getRankings, refreshAllData, readModelUsage } from './fetchers';
 import { readBenchmarks } from './benchmarks';
 import { readVideos } from './videos';
+import { readMedia } from './media';
 import { getModelHtml, getSubCompareHtml, getModelCompareHtml } from './pages';
 import { PROVIDER_PAGE_SLUGS, PROVIDER_SLUG_REDIRECTS, canonicalProviderId } from './providers';
 import { logoSvg } from './logos';
@@ -49,7 +50,7 @@ app.use('/api/*', cors({ origin: '*' }));
 //   • Freshness-sensitive fetches (/api/rankings, /api/market-share,
 //     /api/task-spend) are therefore cache-busted client-side with a 10-min time
 //     bucket — see withBust() in template.ts. "Slow" endpoints (/api/models,
-//     /api/subscriptions, /api/rankings/categories, /api/videos) change rarely, so the 4h edge
+//     /api/subscriptions, /api/rankings/categories, /api/videos, /api/media) change rarely, so the 4h edge
 //     cache is fine and they are left un-busted.
 //   • The SSR page "/" is NOT edge-cached (re-rendered per request from KV/D1),
 //     so the leaderboard + apps board are already fresh to within ~1 cron cycle.
@@ -155,6 +156,23 @@ app.get(
     } catch (err) {
       console.error('Failed to get video models:', err);
       return c.json({ error: 'Failed to load video models' }, 500);
+    }
+  }
+);
+
+app.get(
+  '/api/media',
+  cache({ cacheName: 'token-app-media', cacheControl: 'max-age=3600, stale-while-revalidate=86400' }),
+  async (c) => {
+    try {
+      // Image, audio and embedding models (src/media.ts). Embedded in the
+      // homepage like /api/videos; here for parity with /api/models.
+      const raw = await c.env.TOKEN_APP_KV.get(KV_KEYS.MEDIA);
+      if (!raw) return c.json({ error: 'Media models not yet available' }, 404);
+      return c.body(raw, 200, { 'Content-Type': 'application/json' });
+    } catch (err) {
+      console.error('Failed to get media models:', err);
+      return c.json({ error: 'Failed to load media models' }, 500);
     }
   }
 );
@@ -587,12 +605,13 @@ app.get('/compare/:pair', async (c) => {
 app.get('/', async (c) => {
   try {
     // Server-side render with initial data (avoids client-side waterfall)
-    const [{ models, lastUpdated }, subs, rankings, benchmarks, videos] = await Promise.all([
+    const [{ models, lastUpdated }, subs, rankings, benchmarks, videos, media] = await Promise.all([
       getModels(c.env),
       getSubscriptions(c.env),
       getRankings(c.env),
       readBenchmarks(c.env),
       readVideos(c.env),
+      readMedia(c.env),
     ]);
 
     const html = getHtml({
@@ -601,6 +620,7 @@ app.get('/', async (c) => {
       initialRankings: rankings ? JSON.stringify(rankings) : 'null',
       initialBenchmarks: benchmarks ? JSON.stringify(benchmarks) : 'null',
       initialVideos: videos ? JSON.stringify(videos.models) : '[]',
+      initialMedia: media ? JSON.stringify({ images: media.images, audio: media.audio, embeddings: media.embeddings }) : 'null',
       lastUpdated,
     });
 

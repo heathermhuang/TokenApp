@@ -1,6 +1,14 @@
 # Non-text models (video, image, audio, embeddings) + data-driven FAQ
 
-Status: **proposal, awaiting approval** (2026-11-05). Nothing implemented.
+Status: **implemented** in #58, #59, #60 and PR 3 (2026-11-05). Two corrections found while
+building PR 3, which supersede the table below:
+- **Image prices come from `/api/v1/images/models/{id}/endpoints`**, not page JSON-LD: it
+  lists per-image, per-megapixel and per-token prices with sizes and input fees. Token- and
+  megapixel-priced models get no per-image figure (the `× 4175` shortcut stays rejected).
+- **Audio units are per MODEL, not per type**, so the catalogue's `pricing.prompt` cannot be
+  converted by type: MAI-Transcribe's is per hour where Whisper's is per second, Fish Audio
+  bills UTF-8 bytes, Seed Audio bills minutes. Audio prices come from each page's JSON-LD.
+- Rerank (open question below) is listed with "—"; only the free rerankers have a price.
 
 ## Problem
 
