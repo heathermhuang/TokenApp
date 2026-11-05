@@ -61,27 +61,12 @@ export function getHtml(params: {
     contextWindow?: number | null;
     createdAt?: number | null;
     isDeprecated?: boolean;
+    isFree?: boolean;
+    provider?: string;
+    outputModalities?: string[];
   }>;
   const modelCount = parsedModels.length;
   const providerCount = new Set(parsedModels.map(m => m.providerId)).size;
-
-  // Extract specific model prices for FAQ answers
-  const gpt4o = parsedModels.find(m => m.id === 'openai/gpt-4o');
-  // The newest Claude Sonnet, found in the data rather than named here: a hard-coded
-  // id (claude-3-5-sonnet, which the catalogue never carried) answered "varies" for
-  // as long as it shipped, including in the FAQPage markup.
-  const claudeSonnet = parsedModels
-    .filter(m => m.id?.startsWith('anthropic/') && /sonnet/i.test(m.name) && !/batch/i.test(m.id + ' ' + m.name) && !m.isDeprecated && m.inputPer1M != null)
-    .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0];
-  const claudeSonnetRaw = claudeSonnet ? claudeSonnet.name.replace(/^[^:]+: /, '') : '';
-  // The name comes from OpenRouter, so it is escaped for each place it lands.
-  const claudeSonnetName = claudeSonnetRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  const claudeSonnetJson = JSON.stringify(claudeSonnetRaw).slice(1, -1).replace(/</g, '\\u003c');
-  const claudeSonnetCtx = claudeSonnet?.contextWindow
-    ? (claudeSonnet.contextWindow >= 1_000_000 ? +(claudeSonnet.contextWindow / 1_000_000).toFixed(1) + 'M' : Math.round(claudeSonnet.contextWindow / 1000) + 'K')
-    : '';
-  const gemini15pro = parsedModels.find(m => m.id === 'google/gemini-pro-1.5' || m.id === 'google/gemini-1.5-pro');
-  const deepseekV3 = parsedModels.find(m => m.id?.includes('deepseek') && m.id?.includes('chat'));
 
   function fmtPriceSsr(n: number | null | undefined): string {
     if (n === null || n === undefined) return 'varies';
@@ -91,6 +76,108 @@ export function getHtml(params: {
     if (n < 10) return '$' + n.toFixed(2);
     return '$' + n.toFixed(1);
   }
+
+  // ── Homepage FAQ ──────────────────────────────────────────────────────────────
+  // Every model the FAQ names is picked from the catalogue, never by id. Hard-coded
+  // ids fail silently: claude-3-5-sonnet (never in the catalogue) answered "varies",
+  // and openai/gpt-4o, deepseek-chat and "Gemini 1.5 Pro" kept the FAQ describing
+  // 2024 until 2026-11. A pick that finds nothing drops its question. One list feeds
+  // both the visible <details> and the FAQPage JSON-LD, which had drifted apart.
+  type FaqModel = (typeof parsedModels)[number];
+  const listed = (m: FaqModel) =>
+    !m.isDeprecated && !m.id.startsWith('~') && !m.id.endsWith(':free') && !/batch/i.test(m.id + ' ' + m.name);
+  const textOnly = (m: FaqModel) => (m.outputModalities ?? ['text']).every(o => o === 'text');
+  const priced = (m: FaqModel) =>
+    m.inputPer1M != null && m.inputPer1M > 0 && m.outputPer1M != null && m.outputPer1M >= 0;
+  const newest = (ms: FaqModel[]) => ms.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0];
+  const shortName = (m: FaqModel) => m.name.replace(/^[^:]+: /, '');
+  const fmtCtxSsr = (n: number) =>
+    n >= 1_000_000 ? +(n / 1_000_000).toFixed(2) + 'M' : Math.round(n / 1000) + 'K';
+  const andList = (xs: string[]) =>
+    xs.length < 3 ? xs.join(' and ') : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1];
+
+  // "Newest", not "flagship": the newest OpenAI release is not always the priciest
+  // tier (GPT-6.1 Terra Pro shipped at half Sol Pro's price), and newest is a claim
+  // the data can back.
+  const openai = newest(parsedModels.filter(m =>
+    m.id.startsWith('openai/') && listed(m) && textOnly(m) && priced(m) &&
+    !/mini|nano|oss|codex|search|deep-research/i.test(m.id)));
+  const deepseek = newest(parsedModels.filter(m =>
+    m.id.startsWith('deepseek/') && listed(m) && textOnly(m) && priced(m)));
+  const claudeSonnet = newest(parsedModels.filter(m =>
+    m.id.startsWith('anthropic/') && /sonnet/i.test(m.name) && listed(m) && m.inputPer1M != null));
+  // Routers (openrouter/auto, typesafe/jev-router) carry the -1 price sentinel and
+  // a 2M "context" that is just their largest backend's; they are not models.
+  const longest = parsedModels
+    .filter(m => listed(m) && m.providerId !== 'openrouter' && (m.inputPer1M ?? 0) >= 0 && m.contextWindow)
+    .sort((a, b) => (b.contextWindow ?? 0) - (a.contextWindow ?? 0))
+    .slice(0, 3);
+  const freeModels = parsedModels.filter(m => m.isFree && !m.isDeprecated && m.providerId !== 'openrouter');
+  const freeProviders = Object.entries(
+    freeModels.reduce<Record<string, number>>((acc, m) => {
+      const p = m.provider || m.providerId;
+      acc[p] = (acc[p] ?? 0) + 1;
+      return acc;
+    }, {}),
+  ).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([p]) => p);
+
+  const blend3to1 = (m: FaqModel) => (m.inputPer1M ?? 0) * 0.75 + (m.outputPer1M ?? 0) * 0.25;
+  const timesCheaper = (r: number) => (r >= 10 ? String(Math.round(r)) : r.toFixed(1)) + '×';
+  function deepseekVerdict(ds: FaqModel, oa: FaqModel): string {
+    const r = blend3to1(oa) / blend3to1(ds);
+    if (r >= 1.5) return ` At a 3:1 input-to-output mix, that makes DeepSeek about ${timesCheaper(r)} cheaper.`;
+    if (r <= 1 / 1.5) return ` At a 3:1 input-to-output mix, that makes OpenAI's model about ${timesCheaper(1 / r)} cheaper.`;
+    return ' At a 3:1 input-to-output mix, the two cost about the same.';
+  }
+
+  const faqs: { q: string; a: string }[] = [];
+  if (openai) faqs.push({
+    q: `How much does ${shortName(openai)} cost per 1M tokens?`,
+    a: `${shortName(openai)}, OpenAI's newest model, costs ${fmtPriceSsr(openai.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(openai.outputPer1M)} per 1M output tokens${openai.contextWindow ? `, with a ${fmtCtxSsr(openai.contextWindow)}-token context window` : ''}. These prices are sourced from OpenRouter and updated hourly. Always verify with OpenAI's official pricing page before billing decisions.`,
+  });
+  if (claudeSonnet) faqs.push({
+    q: `How much does ${shortName(claudeSonnet)} cost per 1M tokens?`,
+    a: `${shortName(claudeSonnet)}, Anthropic's newest Sonnet, costs ${fmtPriceSsr(claudeSonnet.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(claudeSonnet.outputPer1M)} per 1M output tokens${claudeSonnet.contextWindow ? `, with a ${fmtCtxSsr(claudeSonnet.contextWindow)}-token context window` : ''}.`,
+  });
+  faqs.push({
+    q: 'What is a token in AI models?',
+    a: 'A token is a chunk of text processed by an AI language model. In English, roughly 1 token equals 4 characters or 0.75 words. AI APIs charge separately for input tokens (your prompt) and output tokens (the model\'s response). Prices are quoted per 1 million tokens ($/1M). A typical ChatGPT-length exchange uses 300–500 tokens total.',
+  });
+  if (deepseek && openai) faqs.push({
+    q: 'How does DeepSeek compare in price to OpenAI?',
+    a: `${shortName(deepseek)}, DeepSeek's newest model, costs ${fmtPriceSsr(deepseek.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(deepseek.outputPer1M)} per 1M output tokens. ${shortName(openai)}, OpenAI's newest, costs ${fmtPriceSsr(openai.inputPer1M)} and ${fmtPriceSsr(openai.outputPer1M)}.${deepseekVerdict(deepseek, openai)}`,
+  });
+  if (freeModels.length) faqs.push({
+    q: 'What is the cheapest AI API available?',
+    a: `${freeModels.length} model${freeModels.length === 1 ? ' is' : 's are'} free to call right now ($0 per token), from providers including ${andList(freeProviders)}. Use the "Free" filter tab in the table above to see them all. Free tiers come and go, so check token.app for the latest pricing.`,
+  });
+  faqs.push({
+    q: 'How often are token prices updated?',
+    a: 'token.app refreshes pricing data every hour by automatically fetching from OpenRouter and official provider pricing pages. The "Updated" timestamp at the top of the table shows when data was last refreshed. Prices can change without notice — always confirm critical pricing with the official provider.',
+  }, {
+    q: 'What is the difference between input and output token pricing?',
+    a: 'Input tokens are the text you send to the model (your prompt, context, examples). Output tokens are the text the model generates in response. Output tokens typically cost 3–5× more than input tokens because generating text requires more compute than reading it. When optimising costs, reducing your prompt length and caching repeated context can significantly lower your bill.',
+  });
+  if (longest.length) faqs.push({
+    q: 'Which AI model has the largest context window?',
+    a: `The largest context windows on token.app right now belong to ${andList(longest.map(m => `${shortName(m)} (${fmtCtxSsr(m.contextWindow!)} tokens)`))}. Larger context windows allow processing longer documents, conversations, and codebases in a single request.`,
+  });
+  faqs.push({
+    q: 'Which AI models and agents are most popular right now?',
+    a: 'The Rankings tab shows real-time usage leaderboards for AI models and agents, sourced from OpenRouter. You can filter by time period — 24H (daily), 7D (weekly), or 30D (monthly) — to see which models are trending and which AI-powered apps and agents are consuming the most tokens. Rankings update hourly.',
+  });
+
+  // Model names come from OpenRouter, so they are escaped for each place they land.
+  const escFaq = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const faqItemsHtml = faqs.map(f => `    <details class="faq-item">
+      <summary>${escFaq(f.q)}</summary>
+      <p>${escFaq(f.a)}</p>
+    </details>`).join('\n');
+  const faqJsonLd = JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: faqs.map(f => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })),
+  }, null, 2).replace(/</g, '\\u003c');
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -134,68 +221,7 @@ export function getHtml(params: {
   }
   </script>
   <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    "mainEntity": [
-      {
-        "@type": "Question",
-        "name": "How much does GPT-4o cost per 1M tokens?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "GPT-4o costs ${fmtPriceSsr(gpt4o?.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(gpt4o?.outputPer1M)} per 1M output tokens. These prices are sourced from OpenRouter and updated hourly."
-        }
-      },
-${claudeSonnet ? `      {
-        "@type": "Question",
-        "name": "How much does ${claudeSonnetJson} cost per 1M tokens?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "${claudeSonnetJson} costs ${fmtPriceSsr(claudeSonnet.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(claudeSonnet.outputPer1M)} per 1M output tokens, as listed on OpenRouter."
-        }
-      },
-` : ''}      {
-        "@type": "Question",
-        "name": "What is the cheapest AI API for text generation?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Several AI models offer free API access with $0 per token pricing, including models from DeepSeek, Meta's Llama, and various open-source providers. token.app tracks ${modelCount}+ models so you can compare and find the lowest-cost option for your use case."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "How often are token prices updated?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "token.app updates pricing data every hour by fetching from OpenRouter and official provider pricing pages. The last update time is shown at the top of the pricing table."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "What is a token in AI models?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "A token is a unit of text processed by AI language models. Roughly 1 token equals 4 characters or 0.75 words in English. AI APIs charge separately for input tokens (the text you send) and output tokens (the text the model generates). Prices are typically quoted per 1 million tokens."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "How does DeepSeek compare in price to OpenAI?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "DeepSeek models are significantly cheaper than OpenAI equivalents. DeepSeek V3 costs ${fmtPriceSsr(deepseekV3?.inputPer1M)} per 1M input tokens compared to GPT-4o at ${fmtPriceSsr(gpt4o?.inputPer1M)} per 1M input tokens — making it one of the most cost-effective frontier models available."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "Which AI models and agents are most popular right now?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "token.app tracks real-time usage rankings for AI models and agents via OpenRouter. The Rankings tab shows leaderboards by total token volume, with filters for daily (24H), weekly (7D), and monthly (30D) time periods. Rankings update hourly to reflect current usage trends across hundreds of AI applications."
-        }
-      }
-    ]
-  }
+  ${faqJsonLd}
   </script>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-Z59RHGWMWD"></script>
@@ -1891,42 +1917,7 @@ ${SITE_NAV_CSS}
 <section class="faq-section" id="faq">
   <h2>Frequently Asked Questions</h2>
   <div class="faq-list">
-    <details class="faq-item">
-      <summary>How much does GPT-4o cost per 1M tokens?</summary>
-      <p>GPT-4o costs ${fmtPriceSsr(gpt4o?.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(gpt4o?.outputPer1M)} per 1M output tokens. These prices are sourced from OpenRouter and updated hourly. Always verify with OpenAI's official pricing page before billing decisions.</p>
-    </details>
-${claudeSonnet ? `    <details class="faq-item">
-      <summary>How much does ${claudeSonnetName} cost per 1M tokens?</summary>
-      <p>${claudeSonnetName}, Anthropic's newest Sonnet, costs ${fmtPriceSsr(claudeSonnet.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(claudeSonnet.outputPer1M)} per 1M output tokens${claudeSonnetCtx ? `, with a ${claudeSonnetCtx}-token context window` : ''}.</p>
-    </details>` : ''}
-    <details class="faq-item">
-      <summary>What is a token in AI models?</summary>
-      <p>A token is a chunk of text processed by an AI language model. In English, roughly 1 token equals 4 characters or 0.75 words. AI APIs charge separately for input tokens (your prompt) and output tokens (the model's response). Prices are quoted per 1 million tokens ($/1M). A typical ChatGPT-length exchange uses 300–500 tokens total.</p>
-    </details>
-    <details class="faq-item">
-      <summary>How does DeepSeek compare in price to OpenAI?</summary>
-      <p>DeepSeek models are significantly cheaper than most OpenAI equivalents. DeepSeek V3 costs ${fmtPriceSsr(deepseekV3?.inputPer1M)} per 1M input tokens compared to GPT-4o at ${fmtPriceSsr(gpt4o?.inputPer1M)} per 1M input tokens. For many tasks, DeepSeek delivers comparable quality at a fraction of the cost.</p>
-    </details>
-    <details class="faq-item">
-      <summary>What is the cheapest AI API available?</summary>
-      <p>Several models offer completely free API access ($0 per token), including models hosted on OpenRouter from Meta (Llama), Mistral, and others. Use the "Free" filter tab in the table above to see all currently free models. Availability of free tiers can change — check token.app regularly for the latest pricing.</p>
-    </details>
-    <details class="faq-item">
-      <summary>How often are token prices updated?</summary>
-      <p>token.app refreshes pricing data every hour by automatically fetching from OpenRouter and official provider pricing pages. The "Updated" timestamp at the top of the table shows when data was last refreshed. Prices can change without notice — always confirm critical pricing with the official provider.</p>
-    </details>
-    <details class="faq-item">
-      <summary>What is the difference between input and output token pricing?</summary>
-      <p>Input tokens are the text you send to the model (your prompt, context, examples). Output tokens are the text the model generates in response. Output tokens typically cost 3–5× more than input tokens because generating text requires more compute than reading it. When optimising costs, reducing your prompt length and caching repeated context can significantly lower your bill.</p>
-    </details>
-    <details class="faq-item">
-      <summary>Which AI model has the largest context window?</summary>
-      <p>As of 2025, several models support extremely large context windows. Google Gemini 1.5 Pro and 1.5 Flash support up to 2M tokens. Anthropic Claude models support up to 200K tokens. OpenAI GPT-4o supports 128K tokens. Larger context windows allow processing longer documents, conversations, and codebases in a single request.</p>
-    </details>
-    <details class="faq-item">
-      <summary>Which AI models and agents are most popular right now?</summary>
-      <p>The Rankings tab shows real-time usage leaderboards for AI models and agents, sourced from OpenRouter. You can filter by time period — 24H (daily), 7D (weekly), or 30D (monthly) — to see which models are trending and which AI-powered apps and agents are consuming the most tokens. Rankings update hourly.</p>
-    </details>
+${faqItemsHtml}
   </div>
 </section>
 

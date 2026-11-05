@@ -359,6 +359,11 @@ export function getModelHtml(params: {
   const url = `https://token.app/model/${encodeURIComponent(m.slug)}`;
   const disp = shortName(m.name);
   const offers = offersJsonLd(m, endpoints, url);
+  // null on both sides = billed in a unit the catalogue doesn't carry (Lyria: per song),
+  // not free. Every price sentence below would otherwise read "costs — per million".
+  const noTokenPrice = m.inputPer1M === null && m.outputPer1M === null
+    ? `${disp} is not priced per token: OpenRouter bills it in another unit, such as per second, image or song.`
+    : null;
 
   // ── Cheaper-and-at-least-as-good alternatives.
   // This is the recommendation only a price+quality site can make, and it is
@@ -400,7 +405,7 @@ export function getModelHtml(params: {
   const faqs = [
     {
       q: `How much does ${disp} cost?`,
-      a: `${disp} costs ${fmtP(m.inputPer1M)} per million input tokens and ${fmtP(m.outputPer1M)} per million output tokens on OpenRouter.` +
+      a: noTokenPrice ?? `${disp} costs ${fmtP(m.inputPer1M)} per million input tokens and ${fmtP(m.outputPer1M)} per million output tokens on OpenRouter.` +
          (bl !== null ? ` At a 3:1 input:output mix that blends to ${fmtP(bl)} per million tokens.` : ''),
     },
     {
@@ -438,8 +443,8 @@ export function getModelHtml(params: {
     : esc(prov.displayName)} › ${esc(disp)}</div>
   <h1>${esc(disp)} pricing &amp; benchmarks</h1>
   <p class="lede">
-    ${esc(disp)} is available from ${esc(prov.displayName)} at ${esc(fmtP(m.inputPer1M))} per million input tokens
-    and ${esc(fmtP(m.outputPer1M))} per million output tokens${bl !== null ? ` (${esc(fmtP(bl))} blended at 3:1)` : ''}.
+    ${noTokenPrice ? esc(noTokenPrice) : `${esc(disp)} is available from ${esc(prov.displayName)} at ${esc(fmtP(m.inputPer1M))} per million input tokens
+    and ${esc(fmtP(m.outputPer1M))} per million output tokens${bl !== null ? ` (${esc(fmtP(bl))} blended at 3:1)` : ''}.`}
     ${m.contextWindow ? `It accepts up to ${m.contextWindow.toLocaleString()} tokens of context.` : ''}
     ${m.description ? esc(m.description.slice(0, 240)) + (m.description.length > 240 ? '…' : '') : ''}
   </p>
@@ -534,7 +539,7 @@ export function getModelHtml(params: {
 
   return shell({
     title: `${disp} pricing, context & benchmarks — token.app`,
-    description: `${disp} costs ${fmtP(m.inputPer1M)}/1M input and ${fmtP(m.outputPer1M)}/1M output.` +
+    description: (noTokenPrice ?? `${disp} costs ${fmtP(m.inputPer1M)}/1M input and ${fmtP(m.outputPer1M)}/1M output.`) +
       (m.contextWindow ? ` ${fmtCtx(m.contextWindow)} context.` : '') +
       (myScore !== null ? ` Scores ${(myScore * 100).toFixed(1)}% on GPQA Diamond.` : ''),
     canonical: url,
