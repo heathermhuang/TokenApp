@@ -6,6 +6,7 @@ import { getProvider, canonicalProviderId } from './providers';
 import { SUBSCRIPTIONS } from './subscriptions';
 import { fetchShareSeries, fetchAppsBoards, fetchModelBoard, fetchTaskSpend } from './openrouter-json';
 import { fetchBenchmarks } from './benchmarks';
+import { fetchVideoModels } from './videos';
 
 const OPENROUTER_API = 'https://openrouter.ai/api/v1/models';
 
@@ -724,6 +725,7 @@ export async function refreshAllData(
   rankings?: string; rankingsError?: string;
   categories?: string; categoriesError?: string;
   benchmarks?: string; benchmarksError?: string;
+  videos?: string; videosError?: string;
 }> {
   const models = await fetchModelsFromOpenRouter();
 
@@ -817,6 +819,25 @@ export async function refreshAllData(
     benchmarksError = String(err);
   }
 
+  // ── Video models. Same contract as benchmarks: non-fatal, and an empty fetch
+  //    never overwrites the last good copy. No TTL, like benchmarks: a stale video
+  //    table beats an empty one if the cron stops.
+  let videosStatus: string | undefined;
+  let videosError: string | undefined;
+  try {
+    const videos = await fetchVideoModels();
+    if (videos.models.length === 0) {
+      videosStatus = 'empty — KV left unchanged';
+    } else {
+      await env.TOKEN_APP_KV.put(KV_KEYS.VIDEOS, JSON.stringify(videos));
+      const unparsed = videos.models.reduce((n, m) => n + m.unparsedSkus.length, 0);
+      videosStatus = `${videos.models.length} models, ${unparsed} unparsed SKUs`;
+    }
+  } catch (err) {
+    console.error('Video models fetch failed (non-fatal):', err);
+    videosError = String(err);
+  }
+
   // ── Categories: scrape AT MOST once per calendar day. Long-running (~2-3 min,
   //    up to 15 Browser Rendering pages), so it ONLY runs when the caller has the
   //    wall-clock budget — the hourly scheduled handler (15-min cron limit) passes
@@ -854,6 +875,7 @@ export async function refreshAllData(
     rankings: rankingsStatus, rankingsError,
     categories: categoriesStatus, categoriesError,
     benchmarks: benchmarksStatus, benchmarksError,
+    videos: videosStatus, videosError,
   };
 }
 

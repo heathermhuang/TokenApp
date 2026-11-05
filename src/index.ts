@@ -5,6 +5,7 @@ import type { Env, Subscription } from './types';
 import { KV_KEYS } from './types';
 import { getModels, getSubscriptions, getRankings, refreshAllData, readModelUsage } from './fetchers';
 import { readBenchmarks } from './benchmarks';
+import { readVideos } from './videos';
 import { getModelHtml, getSubCompareHtml, getModelCompareHtml } from './pages';
 import { PROVIDER_PAGE_SLUGS, PROVIDER_SLUG_REDIRECTS, canonicalProviderId } from './providers';
 import { logoSvg } from './logos';
@@ -48,7 +49,7 @@ app.use('/api/*', cors({ origin: '*' }));
 //   • Freshness-sensitive fetches (/api/rankings, /api/market-share,
 //     /api/task-spend) are therefore cache-busted client-side with a 10-min time
 //     bucket — see withBust() in template.ts. "Slow" endpoints (/api/models,
-//     /api/subscriptions, /api/rankings/categories) change rarely, so the 4h edge
+//     /api/subscriptions, /api/rankings/categories, /api/videos) change rarely, so the 4h edge
 //     cache is fine and they are left un-busted.
 //   • The SSR page "/" is NOT edge-cached (re-rendered per request from KV/D1),
 //     so the leaderboard + apps board are already fresh to within ~1 cron cycle.
@@ -136,6 +137,24 @@ app.get(
     } catch (err) {
       console.error('Failed to get task spend:', err);
       return c.json({ error: 'Failed to load task spend' }, 500);
+    }
+  }
+);
+
+app.get(
+  '/api/videos',
+  cache({ cacheName: 'token-app-videos', cacheControl: 'max-age=3600, stale-while-revalidate=86400' }),
+  async (c) => {
+    try {
+      // Video models with per-second prices (src/videos.ts), written to KV by the
+      // cron. The homepage embeds the same payload, so nothing on the page
+      // fetches this: it is here for parity with /api/models.
+      const raw = await c.env.TOKEN_APP_KV.get(KV_KEYS.VIDEOS);
+      if (!raw) return c.json({ error: 'Video models not yet available' }, 404);
+      return c.body(raw, 200, { 'Content-Type': 'application/json' });
+    } catch (err) {
+      console.error('Failed to get video models:', err);
+      return c.json({ error: 'Failed to load video models' }, 500);
     }
   }
 );
@@ -568,11 +587,12 @@ app.get('/compare/:pair', async (c) => {
 app.get('/', async (c) => {
   try {
     // Server-side render with initial data (avoids client-side waterfall)
-    const [{ models, lastUpdated }, subs, rankings, benchmarks] = await Promise.all([
+    const [{ models, lastUpdated }, subs, rankings, benchmarks, videos] = await Promise.all([
       getModels(c.env),
       getSubscriptions(c.env),
       getRankings(c.env),
       readBenchmarks(c.env),
+      readVideos(c.env),
     ]);
 
     const html = getHtml({
@@ -580,6 +600,7 @@ app.get('/', async (c) => {
       initialSubscriptions: JSON.stringify(subs),
       initialRankings: rankings ? JSON.stringify(rankings) : 'null',
       initialBenchmarks: benchmarks ? JSON.stringify(benchmarks) : 'null',
+      initialVideos: videos ? JSON.stringify(videos.models) : '[]',
       lastUpdated,
     });
 
