@@ -90,8 +90,18 @@ export function normalizeModel(raw: OpenRouterModel): NormalizedModel {
   const slug = rest.join('/') || raw.id;
 
   const modality = parseModality(raw.architecture?.modality ?? 'text->text');
-  const inputPer1M = toMillion(raw.pricing?.prompt ?? '0');
-  const outputPer1M = toMillion(raw.pricing?.completion ?? '0');
+  // A model that outputs something other than text (a song, an image) and reports
+  // $0 for both token fields is not free: its price is in another unit that this
+  // feed does not carry. Lyria lists prompt/completion "0" and costs $0.08 a song.
+  // null renders as "—" and keeps it out of Free, sorts and superlatives. The
+  // `:free` suffix is OpenRouter's own statement that $0 is the real price.
+  const unpriced =
+    modality.output.some((o) => o !== 'text') &&
+    Number(raw.pricing?.prompt ?? 0) === 0 &&
+    Number(raw.pricing?.completion ?? 0) === 0 &&
+    !raw.id.endsWith(':free');
+  const inputPer1M = unpriced ? null : toMillion(raw.pricing?.prompt ?? '0');
+  const outputPer1M = unpriced ? null : toMillion(raw.pricing?.completion ?? '0');
   const cacheReadPer1M = toMillionOrNull(raw.pricing?.input_cache_read);
   const cacheWritePer1M = toMillionOrNull(raw.pricing?.input_cache_write);
   const cacheWrite1hPer1M = toMillionOrNull(raw.pricing?.input_cache_write_1h);
