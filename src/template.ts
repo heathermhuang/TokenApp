@@ -85,7 +85,7 @@ export function getHtml(params: {
   // both the visible <details> and the FAQPage JSON-LD, which had drifted apart.
   type FaqModel = (typeof parsedModels)[number];
   const listed = (m: FaqModel) =>
-    !m.isDeprecated && !m.id.startsWith('~') && !/:free$|batch/i.test(m.id + ' ' + m.name);
+    !m.isDeprecated && !m.id.startsWith('~') && !m.id.endsWith(':free') && !/batch/i.test(m.id + ' ' + m.name);
   const textOnly = (m: FaqModel) => (m.outputModalities ?? ['text']).every(o => o === 'text');
   const priced = (m: FaqModel) =>
     m.inputPer1M != null && m.inputPer1M > 0 && m.outputPer1M != null && m.outputPer1M >= 0;

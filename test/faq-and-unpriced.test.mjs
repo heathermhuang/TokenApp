@@ -116,6 +116,9 @@ const CATALOGUE = [
   nm('~google/gemini-pro-latest', 'Google: Gemini Pro Latest', { contextWindow: 2_500_000 }),
   nm('nvidia/nemotron-3.5-lightning:free', 'NVIDIA: Nemotron 3.5 Lightning (free)', { inputPer1M: 0, outputPer1M: 0, isFree: true }),
   nm('google/gemma-4-31b-it:free', 'Google: Gemma 4 31B (free)', { inputPer1M: 0, outputPer1M: 0, isFree: true }),
+  // A :free twin of the largest-context model: the name ends "(free)", not ":free",
+  // so a suffix test run against `id + ' ' + name` never sees it (Codex, #58).
+  nm('spacexai/grok-4.20:free', 'SpaceXAI: Grok 4.20 (free)', { contextWindow: 2_000_000, inputPer1M: 0, outputPer1M: 0, isFree: true }),
 ];
 
 function faqOf(html) {
@@ -158,12 +161,16 @@ test('the context-window answer comes from the data, skipping routers and aliase
   assert.doesNotMatch(allText, /As of 20\d\d|Gemini 1\.5|200K/);
   // Largest first.
   assert.ok(q.a.indexOf('Grok 4.20') < q.a.indexOf('Gemini 3.6 Pro'));
+  // A :free twin must not take a second slot and push a distinct model out.
+  assert.equal(q.a.match(/Grok 4\.20/g).length, 1);
+  assert.doesNotMatch(q.a, /\(free\)/);
+  assert.match(q.a, /GPT-6\.1 Terra Pro/);
 });
 
 test('the free-models answer counts the free models actually listed', () => {
   const q = visible.find((x) => /cheapest/i.test(x.q));
   assert.ok(q);
-  assert.match(q.a, /\b2 models\b/);
+  assert.match(q.a, /\b3 models\b/);
 });
 
 test('FAQPage JSON-LD carries exactly the visible questions and answers', () => {
