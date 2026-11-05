@@ -2096,6 +2096,7 @@ function fmtCtx(n) {
 
 function fmtPrice(n) {
   if (n === null || n === undefined) return '—';
+  if (n < 0) return 'Varies';   // router sentinel (-1/token): price depends on the routed model
   if (n === 0) return '$0.00';
   if (n < 0.01) return '<$0.01';
   if (n < 1) return '$' + n.toFixed(3);
@@ -2104,7 +2105,7 @@ function fmtPrice(n) {
 }
 
 function priceClass(n, field) {
-  if (n === null || n === undefined) return '';
+  if (n === null || n === undefined || n < 0) return '';
   if (n === 0) return 'price-free';
   const threshold = field === 'input' ? [0.5, 3, 15] : [2, 12, 50];
   if (n < threshold[0]) return 'price-cheap';
@@ -4635,6 +4636,7 @@ export function getProviderHtml(params: {
 
   function fmtP(n: number | null | undefined): string {
     if (n === null || n === undefined) return '—';
+    if (n < 0) return 'Varies';   // router sentinel (-1/token)
     if (n === 0) return 'Free';
     if (n < 0.01) return '<$0.01';
     if (n < 1) return '$' + n.toFixed(3);
@@ -4667,8 +4669,8 @@ export function getProviderHtml(params: {
       <td><a href="/model/${encodeURIComponent(m.slug || m.id)}" class="model-name-link"><span class="model-name">${escape(m.name.replace(/^[^:]+: /, ''))}</span></a></td>
       <td class="dim">${fmtDate(m.createdAt)}</td>
       <td class="num">${fmtCtx(m.contextWindow)}</td>
-      <td class="num ${m.inputPer1M === 0 ? 'price-free' : m.inputPer1M && m.inputPer1M < 0.5 ? 'price-cheap' : m.inputPer1M && m.inputPer1M < 3 ? 'price-mid' : ''}">${fmtP(m.inputPer1M)}</td>
-      <td class="num ${m.outputPer1M === 0 ? 'price-free' : m.outputPer1M && m.outputPer1M < 2 ? 'price-cheap' : m.outputPer1M && m.outputPer1M < 12 ? 'price-mid' : ''}">${fmtP(m.outputPer1M)}</td>
+      <td class="num ${m.inputPer1M === 0 ? 'price-free' : !m.inputPer1M || m.inputPer1M < 0 ? '' : m.inputPer1M < 0.5 ? 'price-cheap' : m.inputPer1M < 3 ? 'price-mid' : ''}">${fmtP(m.inputPer1M)}</td>
+      <td class="num ${m.outputPer1M === 0 ? 'price-free' : !m.outputPer1M || m.outputPer1M < 0 ? '' : m.outputPer1M < 2 ? 'price-cheap' : m.outputPer1M < 12 ? 'price-mid' : ''}">${fmtP(m.outputPer1M)}</td>
       <td class="dim">${mods.join(', ') || 'Text'}</td>
     </tr>`;
   }).join('\n');

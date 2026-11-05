@@ -46,6 +46,7 @@ function fmtPFine(n: number | null | undefined): string {
 
 function fmtP(n: number | null | undefined): string {
   if (n === null || n === undefined) return '—';
+  if (n < 0) return 'Varies';   // router sentinel (-1/token): see noTokenPrice in getModelHtml
   if (n === 0) return 'Free';
   if (n < 0.01) return '<$0.01';
   if (n < 1) return '$' + n.toFixed(3);
@@ -361,9 +362,13 @@ export function getModelHtml(params: {
   const offers = offersJsonLd(m, endpoints, url);
   // null on both sides = billed in a unit the catalogue doesn't carry (Lyria: per song),
   // not free. Every price sentence below would otherwise read "costs — per million".
+  // A negative price is OpenRouter's router sentinel ("depends on what this routes
+  // to"); printed through fmtP it read as "<$0.01", a price the model does not have.
   const noTokenPrice = m.inputPer1M === null && m.outputPer1M === null
     ? `${disp} is not priced per token: OpenRouter bills it in another unit, such as per second, image or song.`
-    : null;
+    : (m.inputPer1M ?? 0) < 0 || (m.outputPer1M ?? 0) < 0
+      ? `${disp} has no fixed per-token price: what you pay depends on the model it routes each request to.`
+      : null;
 
   // ── Cheaper-and-at-least-as-good alternatives.
   // This is the recommendation only a price+quality site can make, and it is
