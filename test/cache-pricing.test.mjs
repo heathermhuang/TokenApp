@@ -193,15 +193,33 @@ test('the cheaper-than-prompt multiple is stated, not left to the reader', () =>
 
 // ── The column is wired into the table ───────────────────────────────────────
 
+// The homepage has two tables since video models (per second, not per token) got
+// their own: the counts below are taken per table, never across the page.
+const tableIn = (sectionId) => {
+  const start = html.indexOf(`id="${sectionId}"`);
+  return html.slice(start, html.indexOf('</table>', start));
+};
+const videoRenderer = html.slice(html.indexOf('function renderVideoTable('), html.indexOf('function bindVideoSortHeaders('));
+
 test('the Cached column is sortable and the empty-state colspan matches it', () => {
   assert.match(html, /data-sort="cacheReadPer1M"/);
   // A colspan left behind when the column count changes misaligns every empty
   // state. Nine since the Provider column folded into the Model cell.
-  const headerCount = (html.match(/<th scope="col"/g) || []).length;
+  const headerCount = (tableIn('api-section').match(/<th scope="col"/g) || []).length;
   assert.equal(headerCount, 9);
-  const spans = [...html.matchAll(/colspan="(\d+)"/g)].map((m) => Number(m[1]));
+  const spans = [...html.replace(videoRenderer, '').matchAll(/colspan="(\d+)"/g)].map((m) => Number(m[1]));
   assert.ok(spans.length > 0);
   for (const n of spans) assert.equal(n, headerCount);
+});
+
+test('the video table: empty-state colspan and row cells match its headers', () => {
+  const headerCount = (tableIn('video-section').match(/<th scope="col"/g) || []).length;
+  assert.equal(headerCount, 8);
+  assert.ok(videoRenderer.length > 0, 'renderVideoTable not found — this test needs rewiring');
+  const spans = [...videoRenderer.matchAll(/colspan="(\d+)"/g)].map((m) => Number(m[1]));
+  assert.deepEqual(spans, [headerCount]);
+  const row = videoRenderer.slice(videoRenderer.indexOf(`'<tr class="model-row">'`), videoRenderer.indexOf(`'</tr>'`));
+  assert.equal((row.match(/<td/g) || []).length, headerCount);
 });
 
 test('the row renderer actually emits a cell for every header', () => {
@@ -215,7 +233,7 @@ test('the row renderer actually emits a cell for every header', () => {
   assert.match(html, /\$\{cachedCell\(m\)\}/);
   const rowTemplate = html.match(/return `<tr class="model-row[\s\S]*?<\/tr>`/)[0];
   const cellCount = (rowTemplate.match(/<td/g) || []).length;
-  const headerCount = (html.match(/<th scope="col"/g) || []).length;
+  const headerCount = (tableIn('api-section').match(/<th scope="col"/g) || []).length;
   assert.equal(cellCount, headerCount);
 });
 

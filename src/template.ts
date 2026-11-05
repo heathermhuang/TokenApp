@@ -10,6 +10,7 @@ export function getHtml(params: {
   initialSubscriptions?: string;
   initialRankings?: string;
   initialBenchmarks?: string;
+  initialVideos?: string;
   lastUpdated?: string | null;
 }): string {
   const { lastUpdated = null } = params;
@@ -50,6 +51,7 @@ export function getHtml(params: {
   const initialSubscriptions = safeLiteral(params.initialSubscriptions ?? '[]');
   const initialRankings = safeLiteral(params.initialRankings ?? 'null');
   const initialBenchmarks = safeLiteral(params.initialBenchmarks ?? 'null');
+  const initialVideos = safeLiteral(params.initialVideos ?? '[]');
 
   // Compute counts server-side for accurate meta tags and hero description
   const parsedModels = JSON.parse(params.initialModels ?? '[]') as Array<{
@@ -151,6 +153,28 @@ export function getHtml(params: {
     q: 'What is the cheapest AI API available?',
     a: `${freeModels.length} model${freeModels.length === 1 ? ' is' : 's are'} free to call right now ($0 per token), from providers including ${andList(freeProviders)}. Use the "Free" filter tab in the table above to see them all. Free tiers come and go, so check token.app for the latest pricing.`,
   });
+  // Video is priced per second, not per token. The range is at 720p, the resolution
+  // most video models list; a price with no named resolution stays out of it (Veo
+  // 3.1's unnamed rate is its 1080p one). The clip figure counts only models that
+  // can make 8 seconds in one request — the cheapest 720p model today maxes out at 5.
+  const parsedVideos = JSON.parse(params.initialVideos ?? '[]') as Array<{
+    name: string; provider: string; perSecond: Record<string, number>; maxDuration: number | null;
+  }>;
+  const at720 = parsedVideos
+    .filter(v => v.perSecond?.['720p'] != null)
+    .sort((a, b) => a.perSecond['720p'] - b.perSecond['720p']);
+  const clipCapable = at720.filter(v => v.maxDuration == null || v.maxDuration >= 8);
+  const fmtVideo = (n: number) => '$' + (n < 0.1 ? n.toFixed(3) : n.toFixed(2));
+  if (at720.length >= 2) {
+    const lo = at720[0], hi = at720[at720.length - 1];
+    const clip = clipCapable.length >= 2
+      ? ` An 8-second 720p clip costs from ${fmtVideo(8 * clipCapable[0].perSecond['720p'])} (${clipCapable[0].name}) to ${fmtVideo(8 * clipCapable[clipCapable.length - 1].perSecond['720p'])} (${clipCapable[clipCapable.length - 1].name}).`
+      : '';
+    faqs.push({
+      q: 'How much does AI video generation cost?',
+      a: `Video models are priced per second of video, not per token. At 720p without audio, the ${at720.length} video models with a published 720p rate run from ${fmtVideo(lo.perSecond['720p'])} per second (${lo.name}, ${lo.provider}) to ${fmtVideo(hi.perSecond['720p'])} per second (${hi.name}, ${hi.provider}).${clip} Some models charge extra for audio; the Video tab compares every model by resolution.`,
+    });
+  }
   faqs.push({
     q: 'How often are token prices updated?',
     a: 'token.app refreshes pricing data every hour by automatically fetching from OpenRouter and official provider pricing pages. The "Updated" timestamp at the top of the table shows when data was last refreshed. Prices can change without notice — always confirm critical pricing with the official provider.',
@@ -613,6 +637,25 @@ ${SITE_NAV_CSS}
       #api-section thead th:not([data-sort]),
       #api-section thead th .th-sort { padding-left: 10px; padding-right: 10px; }
     }
+
+    /* Model type (Language | Video). Video is priced per second, not per token, so
+       on the Video tab the token table, its filters, the price/quality chart and the
+       picks step aside rather than share a column with a different unit. Driven by
+       body[data-mtype] so switchView() and renderPareto() need not know about it. */
+    .type-row { margin-bottom: 10px; }
+    .type-row .cat-tabs.seg { display: inline-flex; flex: 0 0 auto; }
+    .type-count { color: var(--text3); margin-left: 2px; }
+    #video-section { display: none; overflow-x: auto; }
+    body[data-mtype="video"]:not([data-view]) #video-section,
+    body[data-mtype="video"][data-view="api"] #video-section { display: block; }
+    body[data-mtype="video"] #api-section,
+    body[data-mtype="video"] #pareto-section,
+    body[data-mtype="video"] .superlatives,
+    body[data-mtype="video"] #cat-tabs,
+    body[data-mtype="video"] .toolbar-end,
+    body[data-mtype="video"] #provider-filters { display: none !important; }
+    #video-section .table-meta { flex-wrap: wrap; gap: 4px 12px; }
+    #video-section .other-rates { color: var(--text3); font-size: 12px; white-space: nowrap; }
 
     .table-meta {
       display: flex;
@@ -1630,23 +1673,27 @@ ${SITE_NAV_CSS}
       /* Only the table runs edge to edge; the chart card and the table's meta line
          keep the page's 16px gutter. */
       .pareto-shell { padding: 0 16px 24px; overflow-x: visible; }
-      #api-section .table-meta { padding-left: 16px; padding-right: 16px; }
+      #api-section .table-meta, #video-section .table-meta { padding-left: 16px; padding-right: 16px; }
       #api-section tbody td:first-child,
-      #api-section thead th:first-child .th-sort { padding-left: 16px; }
-      #api-section td.model-cell, #api-section thead th:first-child {
+      #api-section thead th:first-child .th-sort,
+      #video-section tbody td:first-child,
+      #video-section thead th:first-child .th-sort { padding-left: 16px; }
+      #api-section td.model-cell, #api-section thead th:first-child,
+      #video-section td.model-cell, #video-section thead th:first-child {
         position: sticky; left: 0; z-index: 1;
         background: var(--bg);
         min-width: 0; max-width: 46vw;
         box-shadow: 1px 0 0 var(--border);
       }
-      #api-section tbody tr:hover td.model-cell { background: var(--surface); }
+      #api-section tbody tr:hover td.model-cell,
+      #video-section tbody tr:hover td.model-cell { background: var(--surface); }
       .model-name, .model-provider { max-width: calc(46vw - 56px); }
       table { min-width: 720px; table-layout: auto; }
       table th, table td { padding: 8px; }
       /* Sortable headers delegate their padding to the inner button, so the tighter
          mobile cell padding has to follow it there or the header columns stay at the
          desktop width while the body cells shrink. */
-      table thead th[data-sort] { padding: 0; }
+      table thead th[data-sort], table thead th[data-vsort] { padding: 0; }
       table thead th .th-sort { padding: 8px; }
       .model-name { font-size: 13px; }
       .model-cell-head { gap: 10px; }
@@ -1724,6 +1771,12 @@ ${SITE_NAV_CSS}
 <!-- ── Controls ─────────────────────────────────────────────────────────────── -->
 <div class="controls">
   <div id="api-controls">
+    <div class="type-row" id="type-row" hidden>
+      <div class="cat-tabs seg" id="type-tabs" role="group" aria-label="Model type">
+        <button type="button" class="cat-tab active" data-mtype="language" aria-pressed="true">Language <span class="type-count" id="type-count-language"></span></button>
+        <button type="button" class="cat-tab" data-mtype="video" aria-pressed="false">Video <span class="type-count" id="type-count-video"></span></button>
+      </div>
+    </div>
     <div class="toolbar">
       <div class="search-wrap">
         <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -1818,6 +1871,33 @@ ${SITE_NAV_CSS}
     <tbody id="models-tbody">
       <tr><td colspan="9"><div class="loading"><div class="spinner"></div> Loading models…</div></td></tr>
     </tbody>
+  </table>
+</div>
+
+<!-- ── Video Pricing Table ─────────────────────────────────────────────────────
+     Per second of generated video, from OpenRouter's /api/v1/videos/models
+     (src/videos.ts). A resolution OpenRouter did not name never lands in the 720p
+     or 1080p column; it shows under "Other rates" as "res. not stated". -->
+<h2 class="sr-only">Video Generation Pricing</h2>
+<div class="table-wrap" id="video-section">
+  <div class="table-meta">
+    <span><strong id="video-count">—</strong> video models shown <span class="unit-note">· USD per second of video, without audio</span></span>
+    <span>Rates from <a href="https://openrouter.ai/models?output_modalities=video" target="_blank" rel="noopener">OpenRouter</a></span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th scope="col" data-vsort="name" aria-sort="none"><button type="button" class="th-sort">Model <span class="sort-icon" aria-hidden="true">↕</span></button></th>
+        <th scope="col" data-vsort="createdAt" aria-sort="none"><button type="button" class="th-sort">Released <span class="sort-icon" aria-hidden="true">↕</span></button></th>
+        <th scope="col" data-vsort="p720" class="num sorted" aria-sort="ascending"><button type="button" class="th-sort" title="USD per second at 720p, without audio">720p <span class="sort-icon" aria-hidden="true">↑</span></button></th>
+        <th scope="col" data-vsort="p1080" class="num" aria-sort="none"><button type="button" class="th-sort" title="USD per second at 1080p, without audio">1080p <span class="sort-icon" aria-hidden="true">↕</span></button></th>
+        <th scope="col">Other rates</th>
+        <th scope="col" title="Extra USD per second to add audio, where it is priced separately">Audio</th>
+        <th scope="col" data-vsort="maxDuration" class="num" aria-sort="none"><button type="button" class="th-sort" title="Longest clip one request can make">Max length <span class="sort-icon" aria-hidden="true">↕</span></button></th>
+        <th scope="col" data-vsort="clip" class="num" aria-sort="none"><button type="button" class="th-sort" title="8 seconds at 720p without audio: the 720p rate × 8. Blank when the model cannot make an 8-second clip.">8s clip <span class="sort-icon" aria-hidden="true">↕</span></button></th>
+      </tr>
+    </thead>
+    <tbody id="videos-tbody"></tbody>
   </table>
 </div>
 
@@ -2013,6 +2093,10 @@ const state = {
   benchIndex: {},    // modelId -> { benchmarkId: BenchmarkScore }
   benchPrimary: 'gpqa_diamond', // benchmark driving the Quality column + chart
   benchFilter: null, // benchmarkId → show only models scored on it; null = all
+  videos: [],          // VideoModel[] (src/videos.ts), SSR-embedded
+  modelType: 'language', // 'language' | 'video' — which table the Models view shows
+  vSortKey: 'p720',
+  vSortDir: 1,
 };
 
 // ── Derived pricing/quality fields ─────────────────────────────────────────────
@@ -3698,7 +3782,7 @@ function updateStats() {
 
 // ── Sort Headers ───────────────────────────────────────────────────────────────
 function bindSortHeaders() {
-  document.querySelectorAll('thead th[data-sort]').forEach(th => {
+  document.querySelectorAll('#api-section thead th[data-sort]').forEach(th => {
     th.addEventListener('click', () => {
       const key = th.dataset.sort;
       if (state.sortKey === key) {
@@ -3707,7 +3791,7 @@ function bindSortHeaders() {
         state.sortKey = key;
         state.sortDir = 1;
       }
-      document.querySelectorAll('thead th').forEach(t => {
+      document.querySelectorAll('#api-section thead th').forEach(t => {
         t.classList.remove('sorted');
         // Only sortable columns carry aria-sort at all — putting "none" on a plain
         // header would announce it as sortable when it is not.
@@ -3724,6 +3808,137 @@ function bindSortHeaders() {
       renderTable();
     });
   });
+}
+
+// ── Video models ───────────────────────────────────────────────────────────────
+// Priced per second of output (src/videos.ts), so they get their own table rather
+// than a row in the per-token one. perSecond is keyed by resolution; "default" is a
+// price OpenRouter published without naming the resolution.
+var VIDEO_OTHER_RES = ['480p', '768p', '2K', '4K'];
+
+function fmtPerSec(n) {
+  if (n === null || n === undefined) return '—';
+  return '$' + (n < 0.1 ? n.toFixed(3) : n.toFixed(2));
+}
+
+// 8 seconds at 720p — the comparison people actually make — but only for a model
+// that can make an 8-second clip in one request.
+function videoClip(v) {
+  var p = v.perSecond['720p'];
+  if (p === undefined) return null;
+  if (v.maxDuration !== null && v.maxDuration < 8) return null;
+  return p * 8;
+}
+
+function videoSortValue(v, key) {
+  if (key === 'name') return v.name.toLowerCase();
+  if (key === 'p720') return v.perSecond['720p'];
+  if (key === 'p1080') return v.perSecond['1080p'];
+  if (key === 'clip') return videoClip(v);
+  return v[key];
+}
+
+function videoAudioCell(v) {
+  if (v.audioPerSecond > 0) return '+' + fmtPerSec(v.audioPerSecond) + '/s';
+  if (v.audioPerSecond === 0 || v.generatesAudio === true) return 'Included';
+  if (v.generatesAudio === false) return 'None';
+  return '<span class="muted">—</span>';
+}
+
+function videoOtherRates(v) {
+  var parts = [];
+  VIDEO_OTHER_RES.forEach(function (r) {
+    if (v.perSecond[r] !== undefined) parts.push(r + ' ' + fmtPerSec(v.perSecond[r]));
+  });
+  // An unnamed resolution adds nothing next to a named 720p/1080p price, and
+  // could be either of them; alone, it is the only rate there is.
+  if (v.perSecond['default'] !== undefined && v.perSecond['720p'] === undefined && v.perSecond['1080p'] === undefined) {
+    parts.push(fmtPerSec(v.perSecond['default']) + ' res. not stated');
+  }
+  if (v.otherUnit) parts.push(fmtPerSec(v.otherUnit.price) + ' per ' + v.otherUnit.unit);
+  return parts.length ? escape(parts.join(' · ')) : '<span class="muted">—</span>';
+}
+
+function renderVideoTable() {
+  var tbody = document.getElementById('videos-tbody');
+  if (!tbody) return;
+  var q = state.search.trim().toLowerCase();
+  var list = state.videos.filter(function (v) {
+    return !q || v.name.toLowerCase().includes(q) || v.provider.toLowerCase().includes(q) || v.id.toLowerCase().includes(q);
+  });
+  var key = state.vSortKey, dir = state.vSortDir;
+  list.sort(function (a, b) {
+    var x = videoSortValue(a, key), y = videoSortValue(b, key);
+    // Unpriced rows sink in both directions: a missing price is not the cheapest.
+    var xm = x === null || x === undefined, ym = y === null || y === undefined;
+    if (xm || ym) return xm === ym ? 0 : (xm ? 1 : -1);
+    return (x < y ? -1 : x > y ? 1 : 0) * dir;
+  });
+  document.getElementById('video-count').textContent = list.length.toLocaleString();
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><h3>No video models found</h3><p>Try a different search.</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map(function (v) {
+    var url = 'https://openrouter.ai/' + v.id;
+    var p720 = v.perSecond['720p'], p1080 = v.perSecond['1080p'];
+    return '<tr class="model-row">' +
+      '<td class="model-cell"><div class="model-cell-head">' +
+        '<span class="logo-tile" aria-hidden="true">' + providerLogoImg(v.providerId) + '</span>' +
+        '<a href="' + escape(url) + '" target="_blank" rel="noopener" class="model-link" title="Open ' + escape(v.name) + ' on OpenRouter">' +
+          '<span class="model-name">' + escape(v.name) + '</span>' +
+          '<span class="model-provider">' + escape(providerLabel(v.providerId, v.provider)) + '</span>' +
+        '</a></div></td>' +
+      '<td class="released">' + fmtDate(v.createdAt) + '</td>' +
+      '<td class="num"><span class="price">' + fmtPerSec(p720) + '</span></td>' +
+      '<td class="num"><span class="price">' + fmtPerSec(p1080) + '</span></td>' +
+      '<td class="other-rates">' + videoOtherRates(v) + '</td>' +
+      '<td>' + videoAudioCell(v) + '</td>' +
+      '<td class="num">' + (v.maxDuration ? v.maxDuration + 's' : '<span class="muted">—</span>') + '</td>' +
+      '<td class="num"><span class="price">' + fmtPerSec(videoClip(v)) + '</span></td>' +
+    '</tr>';
+  }).join('');
+}
+
+function bindVideoSortHeaders() {
+  var heads = document.querySelectorAll('#video-section thead th[data-vsort]');
+  heads.forEach(function (th) {
+    th.addEventListener('click', function () {
+      var key = th.dataset.vsort;
+      if (state.vSortKey === key) state.vSortDir *= -1;
+      else { state.vSortKey = key; state.vSortDir = 1; }
+      heads.forEach(function (t) {
+        t.classList.remove('sorted');
+        t.setAttribute('aria-sort', 'none');
+        var i = t.querySelector('.sort-icon');
+        if (i) i.textContent = '↕';
+      });
+      th.classList.add('sorted');
+      th.setAttribute('aria-sort', state.vSortDir === 1 ? 'ascending' : 'descending');
+      var icon = th.querySelector('.sort-icon');
+      if (icon) icon.textContent = state.vSortDir === 1 ? '↑' : '↓';
+      renderVideoTable();
+    });
+  });
+}
+
+// The switch only appears once there is something to switch to.
+function renderTypeTabs() {
+  document.getElementById('type-row').hidden = state.videos.length === 0;
+  document.getElementById('type-count-language').textContent = state.models.length ? state.models.length.toLocaleString() : '';
+  document.getElementById('type-count-video').textContent = state.videos.length.toLocaleString();
+}
+
+function setModelType(type) {
+  if (type === 'video' && state.videos.length === 0) type = 'language';
+  state.modelType = type;
+  document.body.dataset.mtype = type;
+  document.querySelectorAll('#type-tabs [data-mtype]').forEach(function (b) {
+    var on = b.dataset.mtype === type;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  if (type === 'video') renderVideoTable();
 }
 
 // ── View Switch ────────────────────────────────────────────────────────────────
@@ -3853,6 +4068,7 @@ async function init() {
   var initialSubs = ${initialSubscriptions};
   var initialRankings = ${initialRankings};
   var initialBenchmarks = ${initialBenchmarks};
+  state.videos = ${initialVideos};
   var lastUpdated = ${lastUpdated ? JSON.stringify(lastUpdated) : 'null'};
 
   if (initialModels && initialModels.length > 0) {
@@ -3867,6 +4083,7 @@ async function init() {
     renderTable();
     renderPareto();
     renderSuperlatives();
+    renderTypeTabs();
     if (!initialBenchmarks) loadBenchmarks();
     if (lastUpdated) {
       var upd = fmtUpdated(lastUpdated);
@@ -3896,6 +4113,7 @@ async function init() {
       updateStats();
       renderProviderFilters();
       renderTable();
+      renderTypeTabs();
       // A view opened from the URL hash rendered before this data arrived; draw it again.
       if (state.view === 'subscriptions') renderSubscriptions();
       else if (state.view === 'rankings') renderRankings();
@@ -3928,6 +4146,7 @@ function toggleTheme() {
 document.addEventListener('DOMContentLoaded', () => {
   init();
   bindSortHeaders();
+  bindVideoSortHeaders();
   initConsent();
 
   // Main view tabs
@@ -3940,8 +4159,17 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.main-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       openView(tab.dataset.view);
-      history.replaceState(null, '', tab.dataset.view === 'api' ? location.pathname + location.search : '#' + tab.dataset.view);
+      var modelsHash = state.modelType === 'video' ? '#video' : location.pathname + location.search;
+      history.replaceState(null, '', tab.dataset.view === 'api' ? modelsHash : '#' + tab.dataset.view);
     });
+  });
+
+  // Language | Video. Shareable as /#video, like /#rankings.
+  document.getElementById('type-tabs').addEventListener('click', e => {
+    const btn = e.target.closest('[data-mtype]');
+    if (!btn) return;
+    setModelType(btn.dataset.mtype);
+    history.replaceState(null, '', state.modelType === 'video' ? '#video' : location.pathname + location.search);
   });
 
 
@@ -4515,12 +4743,14 @@ document.addEventListener('DOMContentLoaded', () => {
     searchTimer = setTimeout(() => {
       state.search = e.target.value;
       renderTable();
+      if (state.modelType === 'video') renderVideoTable();
     }, 150);
   });
 
   // Last, once everything the views read is set up.
   var hashView = location.hash.slice(1);
   if (hashView === 'subscriptions' || hashView === 'rankings') openView(hashView);
+  else if (hashView === 'video') setModelType('video');
 });
 </script>
 </body>

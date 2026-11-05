@@ -260,6 +260,32 @@ export interface ModelBenchmarks {
   versions: string[];
 }
 
+// ── Video models (src/videos.ts) ──────────────────────────────────────────────
+
+export interface VideoModel {
+  id: string;                 // OpenRouter id, e.g. "bytedance/seedance-2.0"
+  name: string;               // vendor prefix stripped, e.g. "Seedance 2.0"
+  provider: string;
+  providerId: string;         // canonical, e.g. "spacexai" for x-ai/*
+  createdAt: number | null;
+  resolutions: string[];      // as OpenRouter lists them, [] when it lists none
+  maxDuration: number | null; // seconds
+  generatesAudio: boolean | null;
+  // USD per second of generated video, without audio where audio is priced apart.
+  // Keyed by resolution; "default" = OpenRouter gave a price but no resolution.
+  perSecond: Record<string, number>;
+  // Extra USD/s for audio at the same resolution; 0 = included at no extra cost;
+  // null = no separate audio price published.
+  audioPerSecond: number | null;
+  otherUnit: { price: number; unit: string } | null; // e.g. upscalers: per megapixel-second
+  unparsedSkus: string[];     // SKU keys we did not recognise (surfaced, never guessed)
+}
+
+export interface VideoPayload {
+  models: VideoModel[];
+  fetchedAt: string;
+}
+
 export interface BenchmarksPayload {
   models: ModelBenchmarks[];
   benchmarks: { id: string; label: string; blurb: string }[]; // the surfaced set, in display order
@@ -316,4 +342,5 @@ export const KV_KEYS = {
   APPS_BOARDS: 'rankings:apps',    // { day, week, month, fetchedAt } AppRanking arrays
   TASK_SPEND: 'rankings:taskspend',// TaskSpend (top models by task treemap)
   BENCHMARKS: 'benchmarks:all',    // BenchmarksPayload (Epoch AI, CC BY)
+  VIDEOS: 'videos:all',            // VideoPayload (OpenRouter /api/v1/videos/models)
 } as const;

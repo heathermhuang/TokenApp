@@ -222,3 +222,32 @@ test('an unpriced model page says it is not priced per token, never "Free" or "c
   assert.doesNotMatch(html, /costs (—|Free)|at (—|Free) per million|— per million/);
   assert.match(html, /not priced per token/);
 });
+
+// ── Video cost question ──────────────────────────────────────────────────────
+
+const vid = (name, provider, perSecond, maxDuration = 15) => ({ id: 'x/' + name, name, provider, providerId: 'x', perSecond, maxDuration });
+
+test('the video question quotes the real 720p range and an 8s clip only from models that can make one', () => {
+  const videos = [
+    vid('Mischief 1', 'TBC', { '720p': 0.01 }, 5),       // cheapest, but max 5s: no 8s clip
+    vid('Veo 3.1 Lite', 'Google', { '720p': 0.03 }),
+    vid('Seedance 2.5', 'ByteDance', { '720p': 0.23112 }),
+    vid('Veo 3.1', 'Google', { default: 0.2, '4K': 0.4 }), // no named 720p rate: not in the range
+  ];
+  const { visible: v, ld: l } = faqOf(getHtml({ initialModels: '[]', initialVideos: JSON.stringify(videos) }));
+  const q = v.find((x) => /video generation/i.test(x.q));
+  assert.ok(q, 'video question present');
+  const a = decode(q.a);
+  assert.match(a, /per second/);
+  assert.match(a, /\b3 video models\b/);
+  assert.match(a, /\$0\.010 per second \(Mischief 1, TBC\)/);
+  assert.match(a, /\$0\.23 per second \(Seedance 2\.5, ByteDance\)/);
+  // 8s clip: Veo 3.1 Lite 8 × 0.03 = $0.24, Seedance 2.5 8 × 0.23112 = $1.85. Mischief can't.
+  assert.match(a, /8-second 720p clip costs from \$0\.24 \(Veo 3\.1 Lite\) to \$1\.85 \(Seedance 2\.5\)/);
+  assert.ok(l.mainEntity.some((e) => /video generation/i.test(e.name)));
+});
+
+test('with no video data the video question is left out', () => {
+  const { visible: v } = faqOf(getHtml({ initialModels: '[]' }));
+  assert.ok(!v.some((x) => /video/i.test(x.q)));
+});
