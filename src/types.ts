@@ -269,14 +269,15 @@ export interface VideoModel {
   providerId: string;         // canonical, e.g. "spacexai" for x-ai/*
   createdAt: number | null;
   resolutions: string[];      // as OpenRouter lists them, [] when it lists none
+  durations: number[];        // clip lengths one request can ask for, [] when unlisted
   maxDuration: number | null; // seconds
   generatesAudio: boolean | null;
   // USD per second of generated video, without audio where audio is priced apart.
   // Keyed by resolution; "default" = OpenRouter gave a price but no resolution.
   perSecond: Record<string, number>;
-  // Extra USD/s for audio at the same resolution; 0 = included at no extra cost;
-  // null = no separate audio price published.
-  audioPerSecond: number | null;
+  // Extra USD/s for audio, keyed like perSecond; 0 = included at no extra cost;
+  // a resolution absent here has no separate audio price.
+  audioPerSecond: Record<string, number>;
   otherUnit: { price: number; unit: string } | null; // e.g. upscalers: per megapixel-second
   unparsedSkus: string[];     // SKU keys we did not recognise (surfaced, never guessed)
 }

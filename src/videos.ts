@@ -129,13 +129,13 @@ export function normalizeVideoModel(raw: RawVideoModel): VideoModel {
     if (allowed(res) && perSecond[res] === undefined) perSecond[res] = round(n); // audio-only price
   }
 
-  // Audio extra, read at 720p when both prices exist there, else the first
-  // resolution that has both.
-  let audioPerSecond: number | null = null;
-  const both = ['720p', ...Object.keys(withAudio)].find(
-    (r) => withAudio[r] !== undefined && base[r] !== undefined && allowed(r),
-  );
-  if (both) audioPerSecond = round(Math.max(0, withAudio[both] - base[both]));
+  // Audio extra per resolution: it varies (Veo 3.1 Fast: +$0.02/s at 720p,
+  // +$0.05/s at 4K), so one figure beside every rate in the row would misprice
+  // all but one of them.
+  const audioPerSecond: Record<string, number> = {};
+  for (const [res, n] of Object.entries(withAudio)) {
+    if (base[res] !== undefined && allowed(res)) audioPerSecond[res] = round(Math.max(0, n - base[res]));
+  }
 
   const [vendorId] = raw.id.split('/');
   const providerId = canonicalProviderId(vendorId ?? '');
@@ -151,6 +151,7 @@ export function normalizeVideoModel(raw: RawVideoModel): VideoModel {
     providerId,
     createdAt: raw.created ?? null,
     resolutions,
+    durations,
     maxDuration: durations.length ? Math.max(...durations) : null,
     generatesAudio: raw.generate_audio ?? null,
     perSecond,

@@ -225,11 +225,12 @@ test('an unpriced model page says it is not priced per token, never "Free" or "c
 
 // ── Video cost question ──────────────────────────────────────────────────────
 
-const vid = (name, provider, perSecond, maxDuration = 15) => ({ id: 'x/' + name, name, provider, providerId: 'x', perSecond, maxDuration });
+const vid = (name, provider, perSecond, durations = [5, 8, 10, 15]) => ({ id: 'x/' + name, name, provider, providerId: 'x', perSecond, durations, maxDuration: Math.max(...durations) });
 
 test('the video question quotes the real 720p range and an 8s clip only from models that can make one', () => {
   const videos = [
-    vid('Mischief 1', 'TBC', { '720p': 0.01 }, 5),       // cheapest, but max 5s: no 8s clip
+    vid('Mischief 1', 'TBC', { '720p': 0.01 }, [3, 5]),  // cheapest, but max 5s: no 8s clip
+    vid('Wan 2.6', 'Alibaba', { '720p': 0.02 }, [5, 10]), // max 10s, but 8s is not an option
     vid('Veo 3.1 Lite', 'Google', { '720p': 0.03 }),
     vid('Seedance 2.5', 'ByteDance', { '720p': 0.23112 }),
     vid('Veo 3.1', 'Google', { default: 0.2, '4K': 0.4 }), // no named 720p rate: not in the range
@@ -239,7 +240,7 @@ test('the video question quotes the real 720p range and an 8s clip only from mod
   assert.ok(q, 'video question present');
   const a = decode(q.a);
   assert.match(a, /per second/);
-  assert.match(a, /\b3 video models\b/);
+  assert.match(a, /\b4 video models\b/);
   assert.match(a, /\$0\.010 per second \(Mischief 1, TBC\)/);
   assert.match(a, /\$0\.23 per second \(Seedance 2\.5, ByteDance\)/);
   // 8s clip: Veo 3.1 Lite 8 × 0.03 = $0.24, Seedance 2.5 8 × 0.23112 = $1.85. Mischief can't.

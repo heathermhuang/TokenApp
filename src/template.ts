@@ -156,14 +156,15 @@ export function getHtml(params: {
   // Video is priced per second, not per token. The range is at 720p, the resolution
   // most video models list; a price with no named resolution stays out of it (Veo
   // 3.1's unnamed rate is its 1080p one). The clip figure counts only models that
-  // can make 8 seconds in one request — the cheapest 720p model today maxes out at 5.
+  // offer an 8-second clip — the cheapest 720p model today maxes out at 5, and a max
+  // of 10 is not enough either (Wan 2.6 offers 5 or 10 only).
   const parsedVideos = JSON.parse(params.initialVideos ?? '[]') as Array<{
-    name: string; provider: string; perSecond: Record<string, number>; maxDuration: number | null;
+    name: string; provider: string; perSecond: Record<string, number>; durations?: number[];
   }>;
   const at720 = parsedVideos
     .filter(v => v.perSecond?.['720p'] != null)
     .sort((a, b) => a.perSecond['720p'] - b.perSecond['720p']);
-  const clipCapable = at720.filter(v => v.maxDuration == null || v.maxDuration >= 8);
+  const clipCapable = at720.filter(v => (v.durations ?? []).includes(8));
   const fmtVideo = (n: number) => '$' + (n < 0.1 ? n.toFixed(3) : n.toFixed(2));
   if (at720.length >= 2) {
     const lo = at720[0], hi = at720[at720.length - 1];
@@ -3822,11 +3823,10 @@ function fmtPerSec(n) {
 }
 
 // 8 seconds at 720p — the comparison people actually make — but only for a model
-// that can make an 8-second clip in one request.
+// that offers 8 seconds. A max of 10 is not enough: Wan 2.6 offers 5 or 10 only.
 function videoClip(v) {
   var p = v.perSecond['720p'];
-  if (p === undefined) return null;
-  if (v.maxDuration !== null && v.maxDuration < 8) return null;
+  if (p === undefined || !(v.durations || []).includes(8)) return null;
   return p * 8;
 }
 
@@ -3838,11 +3838,26 @@ function videoSortValue(v, key) {
   return v[key];
 }
 
+var VIDEO_RES_ORDER = ['480p', '720p', '768p', '1080p', '2K', '4K', 'default'];
+
+// The audio extra varies by resolution (Veo 3.1 Fast: +$0.02/s at 720p, +$0.05/s
+// at 4K). One figure fits the cell, so when they differ it names the resolution
+// it is for, and the title carries the rest.
 function videoAudioCell(v) {
-  if (v.audioPerSecond > 0) return '+' + fmtPerSec(v.audioPerSecond) + '/s';
-  if (v.audioPerSecond === 0 || v.generatesAudio === true) return 'Included';
-  if (v.generatesAudio === false) return 'None';
-  return '<span class="muted">—</span>';
+  var a = v.audioPerSecond || {};
+  var keys = VIDEO_RES_ORDER.filter(function (r) { return a[r] !== undefined; });
+  // As in Other rates, an unnamed resolution adds nothing beside named ones.
+  if (keys.length > 1) keys = keys.filter(function (r) { return r !== 'default'; });
+  if (keys.length === 0) {
+    if (v.generatesAudio === true) return 'Included';
+    if (v.generatesAudio === false) return 'None';
+    return '<span class="muted">—</span>';
+  }
+  var fmt = function (n) { return n > 0 ? '+' + fmtPerSec(n) + '/s' : 'Included'; };
+  if (keys.every(function (r) { return a[r] === a[keys[0]]; })) return fmt(a[keys[0]]);
+  var shown = keys.indexOf('720p') >= 0 ? '720p' : keys[0];
+  var all = keys.map(function (r) { return r + ' ' + fmt(a[r]); }).join(', ');
+  return '<span title="' + escape('Audio: ' + all) + '">' + escape(fmt(a[shown]) + ' at ' + shown) + '</span>';
 }
 
 function videoOtherRates(v) {

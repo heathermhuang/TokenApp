@@ -73,7 +73,7 @@ test('video_tokens convert per second as rate × ceil(W×H×24/1024)', () => {
   near(s2.perSecond['4K'], 0.000004 * 194400, '4K uses video_tokens_4k');
   const s15 = v('bytedance/seedance-1-5-pro');
   near(s15.perSecond['480p'], 0.0115296, 'no-audio base');  // page: Video (no audio) (480p)
-  near(s15.audioPerSecond, (0.0000024 - 0.0000012) * 21600, 'audio extra at 720p');
+  near(s15.audioPerSecond['720p'], (0.0000024 - 0.0000012) * 21600, 'audio extra at 720p');
 });
 
 test('a resolution with its own token rate is never priced from the silent default', () => {
@@ -123,15 +123,32 @@ test('prices for resolutions the model does not list are dropped', () => {
 test('the headline is the no-audio price; audio is the extra on top', () => {
   const veo = v('google/veo-3.1-fast');
   near(veo.perSecond['720p'], 0.08, '720p no audio');   // page: Video (no audio) (720p) 0.08
-  near(veo.audioPerSecond, 0.02, 'audio extra');        // page: with audio 0.10
+  near(veo.audioPerSecond['720p'], 0.02, 'audio extra');  // page: with audio 0.10
   const kling = v('kwaivgi/kling-v3.0-std');
-  near(kling.audioPerSecond, 0.042, 'Kling audio extra');
+  near(kling.audioPerSecond['720p'], 0.042, 'Kling audio extra');
+});
+
+test('the audio extra is kept per resolution, not collapsed to one figure', () => {
+  // Codex, #60: Veo 3.1 Fast adds $0.02/s at 720p but $0.05/s at 4K. One number
+  // beside the 4K rate made 4K-with-audio read $0.27/s when it is $0.30/s.
+  const veo = v('google/veo-3.1-fast');
+  near(veo.audioPerSecond['4K'], 0.05, '4K audio extra');
+  near(veo.audioPerSecond['720p'], 0.02, '720p audio extra');
 });
 
 test('audio priced the same as silent reads as included (0), not as missing', () => {
-  assert.equal(v('bytedance/seedance-2.0').audioPerSecond, 0);
-  assert.equal(v('runway/gen-4.5').audioPerSecond, null);
+  assert.equal(v('bytedance/seedance-2.0').audioPerSecond['720p'], 0);
+  assert.deepEqual(v('runway/gen-4.5').audioPerSecond, {});
   assert.equal(v('runway/gen-4.5').generatesAudio, false);
+});
+
+test('supported durations are kept, so "can it make 8 seconds" is a lookup, not max >= 8', () => {
+  // Codex, #60: Wan 2.6 offers 5s or 10s. Its max is 10, but an 8s clip is not
+  // something you can order.
+  assert.deepEqual(v('alibaba/wan-2.6').durations, [5, 10]);
+  assert.equal(v('alibaba/wan-2.6').durations.includes(8), false);
+  assert.deepEqual(v('google/veo-3.1').durations, [4, 6, 8]);
+  assert.deepEqual(v('runway/aleph-2').durations, []);
 });
 
 // ── Everything else ──────────────────────────────────────────────────────────
