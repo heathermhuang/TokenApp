@@ -30,15 +30,15 @@ const MEDIA = {
   images: [{ id: 'recraft/recraft-v4', name: 'Recraft V4', provider: 'Recraft', providerId: 'recraft', createdAt: 1, edits: false, perImage: 0.04, otherRates: [], unparsed: [] }],
   audio: [{ id: 'microsoft/mai-transcribe-2', name: 'MAI-Transcribe 2', provider: 'Microsoft', providerId: 'microsoft', createdAt: 1, kind: 'transcription', price: 0.1, otherRates: [], unparsed: [], contextLength: null }],
   embeddings: [],
-  // This wiring fixture must be fresh; stale-price policy has separate tests.
-  fetchedAt: new Date().toISOString(),
-  audioPricedAt: new Date().toISOString(),
+  fetchedAt: '2026-11-05T00:00:00.000Z',
+  audioPricedAt: '2026-11-05T00:00:00.000Z',
 };
 
 const stmt = { bind: () => stmt, all: async () => ({ results: [] }), first: async () => null, run: async () => ({}), raw: async () => [] };
 function env(kv) {
   return {
-    TOKEN_APP_KV: { get: async (k) => kv.get(k) ?? null, put: async () => {} },
+    // An absent models cache starts a live OpenRouter fetch during SSR.
+    TOKEN_APP_KV: { get: async (k) => kv.get(k) ?? (k === 'models:all' ? '[]' : null), put: async () => {} },
     // Rankings history: an empty D1, so the page renders with no snapshots.
     RANKINGS_DB: { prepare: () => stmt },
   };
