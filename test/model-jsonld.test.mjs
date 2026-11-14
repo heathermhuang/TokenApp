@@ -127,7 +127,7 @@ test('carries the critical image field and an availability', () => {
 
 // ── The >=2 gate, matching what hostsPanel renders ───────────────────────────
 
-test('a range needs 2 priced hosts; otherwise the catalogue price stands alone', () => {
+test('a range needs 2 priced hosts; otherwise the catalogue price is a one-offer range', () => {
   const one = {
     modelId: MODEL.id, fetchedAt: '',
     endpoints: [endpoint({ inputPer1M: 7, outputPer1M: 7, blendedPer1M: 7 })],
@@ -135,8 +135,8 @@ test('a range needs 2 priced hosts; otherwise the catalogue price stands alone',
   for (const eps of [null, one]) {
     const o = productLd(eps).offers;
     assert.equal(o.lowPrice, '2.5', 'falls back to the price the page header shows');
-    assert.ok(!('highPrice' in o), 'no spread may be claimed from one host');
-    assert.ok(!('offerCount' in o), 'no count may be claimed from one host');
+    assert.equal(o.highPrice, '2.5', 'one price is a degenerate range, never a spread');
+    assert.equal(o.offerCount, 1, 'the page shows exactly one offer');
   }
 });
 
@@ -150,7 +150,8 @@ test('unpriced hosts do not count toward the gate or the bounds', () => {
   };
   const o = productLd(eps).offers;
   assert.equal(o.lowPrice, '2.5', 'one priced host is not a range');
-  assert.ok(!('offerCount' in o));
+  assert.equal(o.highPrice, '2.5', 'the priced host must not widen the range');
+  assert.equal(o.offerCount, 1);
 });
 
 // ── Markup must describe what the page renders ───────────────────────────────
@@ -178,8 +179,8 @@ test('a published range means the hosts table is on the page', () => {
   ).offers;
 
   assert.ok(!html.includes('Where to run'), 'fixture must hide the hosts table');
-  assert.ok(!('highPrice' in o), 'no spread may be published without the table');
-  assert.ok(!('offerCount' in o), 'no count may be published without the table');
+  assert.equal(o.highPrice, '2.5', 'no spread may be published without the table');
+  assert.equal(o.offerCount, 1, 'no count above one without the table');
   assert.equal(o.lowPrice, '2.5', 'falls back to the price the page header shows');
 });
 
@@ -230,6 +231,7 @@ test('the fallback reads the catalogue price rather than a constant', () => {
       .find((j) => j.includes('"Product"')),
   ).offers;
   assert.equal(o.lowPrice, '13.75');
+  assert.equal(o.highPrice, '13.75', 'highPrice tracks the catalogue price too');
 });
 
 // ── Availability is derived, not asserted ────────────────────────────────────
