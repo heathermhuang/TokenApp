@@ -302,8 +302,14 @@ function offersJsonLd(
   // knowable price publishes no `offers` at all — same as one with no price field.
   // Found by sweeping all 467 live pages; three spot-checked pages did not show it.
   // Endpoint prices need no such guard: usdPerM() already nulls anything below zero.
+  //
+  // One price is a degenerate range, not a missing one: highPrice == lowPrice and
+  // offerCount 1 claim no spread and describe exactly what the page shows (a single
+  // header price, no hosts table). Omitting them drew Search Console's Product
+  // snippets warnings "Missing field offerCount / highPrice" (2026-11-14).
   if (m.inputPer1M !== null && m.inputPer1M >= 0) {
-    return { ...base, lowPrice: priceStr(m.inputPer1M) };
+    const p = priceStr(m.inputPer1M);
+    return { ...base, lowPrice: p, highPrice: p, offerCount: 1 };
   }
   return null;   // no price anywhere: omit `offers` rather than publish a blank one
 }
