@@ -338,6 +338,16 @@ const VERSION_PIN: Record<string, string> = {
   // must not land on GA's page; they are dropped rather than re-routed (see the
   // MODEL_MAP note — one Epoch name cannot address two catalogue ids).
   'Gemini 2.5 Pro (Jun 2025)': 'gemini-2.5-pro',
+  // NOT the -fallback row: Epoch's own note calls it "not a separately released
+  // model" — Fable 5 with its 21 content-filter refusals answered by OLDER Anthropic
+  // models (Opus 4.8 ×20, Opus 4.6 ×1). That 93.9% is a system, not Fable 5.
+  'Claude Fable 5': 'claude-fable-5',
+  // Same weights evaluated twice: 2025 runs (mistral-small-2501/-2503, task v1.0.0)
+  // and 2026-08-30 re-runs under Epoch's current ids and task v1.1.6. Pin the
+  // re-runs: Small 3's matches our catalogue date (2025-01-30; the old id says
+  // 01-25). The only thing lost is MATH level 5, which the site does not show.
+  'Mistral Small 3': 'mistral-small-3-2501',
+  'Mistral Small 3.1': 'mistral-small-3.1-2503',
 };
 
 // ── CSV parsing ───────────────────────────────────────────────────────────────
