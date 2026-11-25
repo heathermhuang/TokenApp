@@ -230,6 +230,64 @@ const MODEL_MAP: Record<string, string> = {
   // to confuse it with. This is now the loosest date match in the map — if a
   // second Inkling Small release ever appears on either side, re-judge this first.
   'Inkling-Small': 'thinkingmachines/inkling-small',
+
+  // ── 2026-11-25 data pass (unmapped 119). Every entry below was checked three
+  //    ways: Epoch's `id_model_version` names this exact model, the catalogue id is
+  //    the plain release (not -pro / -contributor / -image / a coder or VL variant),
+  //    and the dates agree within a listing lag (gap in days noted where > 1).
+  // Anthropic — Fable 5.2 and Opus 5.5 also carry a `-fallback` row, pinned away below.
+  'Claude Fable 5.1': 'anthropic/claude-fable-5.1',
+  'Claude Fable 5.2': 'anthropic/claude-fable-5.2',
+  'Claude Opus 5.5': 'anthropic/claude-opus-5.5',
+  'Claude Sonnet 5.5': 'anthropic/claude-sonnet-5.5',
+  'Claude Haiku 5.5': 'anthropic/claude-haiku-5.5',
+  // OpenAI — the base model each time, never its -pro sibling.
+  'GPT-6 Astra': 'openai/gpt-6-astra',
+  'GPT-6 Luna': 'openai/gpt-6-luna',
+  'GPT-6 Sol': 'openai/gpt-6-sol',
+  'GPT-6.1 Sol': 'openai/gpt-6.1-sol',
+  'GPT-6.1 Terra': 'openai/gpt-6.1-terra',
+  'GPT-6.2 Astra': 'openai/gpt-6.2-astra',
+  // Google
+  'Gemini 3.8 Flash': 'google/gemini-3.8-flash',
+  'Gemini 4 Argon': 'google/gemini-4-argon',
+  'Gemini 4 Carbon': 'google/gemini-4-carbon',
+  'Gemini 4 Hydrogen': 'google/gemini-4-hydrogen',
+  'Gemini 4 Neon': 'google/gemini-4-neon',
+  'Gemma 3 4B': 'google/gemma-3-4b-it',
+  'Gemma 3 12B': 'google/gemma-3-12b-it',
+  'Gemma 4 26B A4B': 'google/gemma-4-26b-a4b-it',
+  // DeepSeek — dated ids on both sides, so no moving alias (bucket 3 below).
+  'DeepSeek V4 Pro 0813': 'deepseek/deepseek-v4-pro-0813',
+  'DeepSeek V4.1 Flash': 'deepseek/deepseek-v4.1-flash',
+  'DeepSeek V4.1 Flash 1017': 'deepseek/deepseek-v4.1-flash-1017',
+  // Z.ai — Epoch 08-14 / 08-20 against our 08-18 / 08-26 listings.
+  'GLM-5.3': 'z-ai/glm-5.3',
+  'GLM-5.3-Flash': 'z-ai/glm-5.3-flash',
+  // SpaceXAI / Moonshot / Mistral / NVIDIA
+  'Grok 4.7': 'x-ai/grok-4.7',
+  // Epoch's only version is `kimi-k3.1-pro-together` (run through Together, a third-
+  // party host). Same open weights, same 2026-10-23 date — the K2.5 precedent.
+  'Kimi K3.1 Pro': 'moonshotai/kimi-k3.1-pro',
+  'Mistral Large 4': 'mistralai/mistral-large-4-0',   // pinned below: the -oss release is 10-29
+  'Mistral Small 3.2': 'mistralai/mistral-small-3.2-24b-instruct',
+  'Nemotron 3 Ultra': 'nvidia/nemotron-3-ultra-550b-a55b',
+  // Meta — `muse-spark-1.3` is the plain model, not the -contributor listing.
+  'Muse Ember': 'meta/muse-ember',
+  'Muse Spark 1.3': 'meta/muse-spark-1.3',
+  'Muse Spark Open': 'meta/muse-spark-open',
+  'Muse Wonder': 'meta/muse-wonder',
+  // Qwen
+  'Qwen3-14B': 'qwen/qwen3-14b',
+  'Qwen3-32B': 'qwen/qwen3-32b',
+  'Qwen3-30B-A3B': 'qwen/qwen3-30b-a3b',
+  'Qwen3-30B-A3B (Jul 2025)': 'qwen/qwen3-30b-a3b-instruct-2507',   // pinned below: the thinking-2507 sibling is not in our catalogue
+  'Qwen3.5-35B-A3B': 'qwen/qwen3.5-35b-a3b',
+  // 15 days (Epoch 02-24 open-weights date, our 03-10 listing): the Inkling-Small
+  // rule — one candidate on each side, no second 9B anywhere. Re-judge if one appears.
+  'Qwen3.5-9B': 'qwen/qwen3.5-9b',
+  'Qwen3.8 Max (0902)': 'qwen/qwen3.8-max-0902',
+  'Qwen4-Max': 'qwen/qwen4-max',
 };
 
 /**
@@ -253,6 +311,18 @@ const MODEL_MAP: Record<string, string> = {
  *                            2026-08-17: the catalogue carries ONLY the image variants,
  *                            there is no plain gemini-3-pro entry to map to
  *       'Gemma 2 9B'      vs google/gemma-2-27b-it (27B ≠ 9B; no 9B entry exists)
+ *
+ *     Added 2026-11-25:
+ *       'Doubao Seed 2.1 Turbo' vs bytedance-seed/seed-2-1-turbo — Epoch's is the
+ *                            CN Doubao snapshot `-260628` (06-23), our listing is 08-12:
+ *                            seven weeks apart and a different channel. Not the same release
+ *       'Doubao Seed 2.0 Lite (Apr 2026)' vs bytedance-seed/seed-2.0-lite (03-10) — the
+ *                            April `-260428` snapshot, not the March listing
+ *       'Qwen3-8B'        vs qwen/qwen3-vl-8b-instruct (VL variant; no plain 8B entry)
+ *       'DeepSeek-V3'     vs deepseek/deepseek-chat — same 2024-12-26 date and name
+ *                            ("DeepSeek V3"), but `deepseek-chat` is a MOVING alias that now
+ *                            serves V3.2 (see VERSION_PIN). Bucket 3, not a match
+ *       'AI Co-Mathematician' — a DeepMind research system, not a catalogue model
  *
  *     'GPT-5.5 Instant' (Epoch 2026-05-05, base `gpt-5.5-instant`) belongs here too,
  *     and is the sharpest case: there is no openai/gpt-5.5-instant in the catalogue,
@@ -342,6 +412,14 @@ const VERSION_PIN: Record<string, string> = {
   // model" — Fable 5 with its 21 content-filter refusals answered by OLDER Anthropic
   // models (Opus 4.8 ×20, Opus 4.6 ×1). That 93.9% is a system, not Fable 5.
   'Claude Fable 5': 'claude-fable-5',
+  // Same reason, same fallback system on the two newer Anthropic models (2026-11-25).
+  'Claude Fable 5.2': 'claude-fable-5-2',
+  'Claude Opus 5.5': 'claude-opus-5-5',
+  // `mistral-large-4-0-oss` (2026-10-29) is the later open-weights release, a different
+  // snapshot from the 10-06 API model our catalogue lists.
+  'Mistral Large 4': 'mistral-large-4-0',
+  // Two models share this Epoch name; only the instruct one is in our catalogue.
+  'Qwen3-30B-A3B (Jul 2025)': 'qwen3-30b-a3b-instruct-2507',
   // Same weights evaluated twice: 2025 runs (mistral-small-2501/-2503, task v1.0.0)
   // and 2026-08-30 re-runs under Epoch's current ids and task v1.1.6. Pin the
   // re-runs: Small 3's matches our catalogue date (2025-01-30; the old id says
