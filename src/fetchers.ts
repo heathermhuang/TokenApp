@@ -318,7 +318,17 @@ export async function fetchCategoryRankings(env: Env): Promise<CategoryScrape> {
 
     for (const cat of APP_CATEGORIES.slice(0, CATEGORY_SCRAPE_CAP)) {
       try {
-        await page.goto(categoryUrl(cat), { waitUntil: 'networkidle0', timeout: CATEGORY_RENDER_TIMEOUT_MS });
+        try {
+          await page.goto(categoryUrl(cat), { waitUntil: 'networkidle0', timeout: CATEGORY_RENDER_TIMEOUT_MS });
+        } catch (err) {
+          // The FIRST navigation in a fresh browser never reaches networkidle0, yet
+          // the page is fully rendered by the timeout. cli-agent is first in the list,
+          // so its board went empty from 2026-11-23 (reproduced in Chrome: whichever
+          // page goes first times out). Extract anyway; the apps>0 guard still skips a page that
+          // did not render. Any other goto error, or a timeout before the navigation
+          // committed (URL unchanged), leaves the PREVIOUS category on screen.
+          if ((err as Error)?.name !== 'TimeoutError' || page.url() !== categoryUrl(cat)) throw err;
+        }
         await new Promise((r) => setTimeout(r, 1200));
         const res = (await page.evaluate(CATEGORY_EXTRACTOR_SOURCE)) as {
           label: string;
