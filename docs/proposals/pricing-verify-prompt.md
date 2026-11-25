@@ -70,6 +70,15 @@ Only bump it for entries whose prices you actually re-read on the vendor page. I
 corrected a model name but could not reach the prices, **leave the date alone** — that
 keeps the staleness visible instead of papering over it.
 
+## Every tier states `annualBilling` — re-verify it like a price
+
+Since #72 (2026-11-25) each tier carries `annualBilling`: `discounted`, `annual-only`,
+`unavailable` or `unpublished` (definitions in `src/types.ts`). `annualMonthlyPrice` is a
+number **only** for `discounted` and `annual-only`. **Never store annual == monthly**:
+`test/annual-billing.test.mjs` fails on it. When a vendor adds or drops an annual plan, change
+`annualBilling` and quote the source. "No annual text anywhere on the page or in the docs" is
+evidence for `unavailable`; "an annual plan exists but no price is published" is `unpublished`.
+
 ## Sweep `features[]`, not just `description`
 
 PR #28 existed solely because stamped entries still carried superseded model names inside
@@ -111,7 +120,10 @@ and read each state. A price you cannot see may be one click away on the same UR
 | **Cursor** | `resize_window` with a **preset** does not clear a 0×0 viewport — pass explicit `width`/`height`. The page also renders a **hidden mobile duplicate of every pricing radio** (measured: 6 hidden at 0×0 shadowing 6 visible); a synthetic click lands on the invisible one and changes nothing. Click the visible desktop control. Tiers are now **nested segmented controls** (Individual → Pro/Pro+/Ultra, Teams → Standard/Premium), so there are three toggle levels, not one. On 2026-09-18 the hidden duplicates were **gone** (7 radios, all visible). Keep enumerating: they may come back. |
 | **Duplicate controls — ALL vendors** | Cursor's decoys are 0×0, so filtering on size finds them. **Kling's are not**: it renders two Yearly/Monthly pairs (y≈132 and y≈1534) and **both report non-zero dimensions**, so the size filter silently fails and only position discriminates. Therefore: **enumerate every matching control and assert how many exist**, then click the topmost visible one. Never `querySelector` the first match. |
 | **Suno** | The page defaults to the **annual** toggle. Read which toggle is active before recording a "monthly" price. |
-| **ChatGPT** | `chatgpt.com/pricing` sits behind a Cloudflare interstitial, and since 2026-09-18 so does `openai.com/chatgpt/pricing`, **even in a real browser** (it used to serve SGD). Do not work around either. **Model-per-plan is sourceable** from the OpenAI Help Center, which loads in the browser but 403s to curl. Article 20001354, "GPT-5.6 and GPT-6 Pro in ChatGPT", and the ChatGPT release notes both work. The USD prices are still not sourceable. |
+| **ChatGPT** | `chatgpt.com/pricing` sits behind a Cloudflare interstitial, and since 2026-09-18 so does `openai.com/chatgpt/pricing`, **even in a real browser** (it used to serve SGD). Do not work around either. **Model-per-plan is sourceable** from the OpenAI Help Center, which loads in the browser but 403s to curl. Article 20001354, "GPT-5.6 and GPT-6 Pro in ChatGPT", and the ChatGPT release notes both work. **Since 2026-11-25, USD prices are sourceable too**, from the same Help Center: Plus 6950777 ("$20/month (billed monthly)"), Pro 9793128 (Pro 100 / 200 / 500 table), Business 8792828 (standard and Premium seats, monthly and annual), Go 11989085 (no USD price). The in-page `fetch()` of each article works once one help page is open. |
+| **Claude** | **`claude.com/pricing` geolocates.** On 2026-11-25 it served Singapore prices ("Prices include 9% GST", Pro "$25 … $30 if billed monthly", Max "$149.99") with no currency switch. Those are SGD; never record them. USD is on support.claude.com: Pro 8325606 ("$20 per month (US)"), Max 11049741, Ultra 17728952, each also stating whether annual exists. Card **features** are currency-independent and fine to read from the pricing page. |
+| **Grok** | x.ai/pricing was **restructured** on or before 2026-11-25 into one ladder (Free / Plus / Premium / Super / Ultra / Teams / Enterprise), monthly only. help.x.com/en/using-x/x-premium still prices annual plans under the **old** X Premium names and contradicts x.ai (Premium+ perks at $40 there, $30 on x.ai). Do not map those annual figures onto the new tiers by name. |
+| **Gemini** | `gemini.google/subscriptions` shows monthly only. **Annual lives on `one.google.com/about/plans`** behind a Monthly / Annual toggle: AI Pro "Usually $199.99, now $99.99 for 12 months, then $199.99/year". Record the $199.99 list price, not the intro offer. Google One help confirms annual exists for AI Pro (16476811) and AI Plus (16548195, no price published). Ultra has no annual section. |
 | **z.ai** | The GLM model list appears only in `<title>`/`<meta keywords>`. The keywords tag is SEO stuffing, and the rendered tiers say only "latest flagship models", so do not treat an SEO tag as a per-plan model list. **Pricing is now a Monthly / Quarterly (20% off) / Yearly (30% off) toggle that defaults to Yearly.** Read Monthly for `monthlyPrice` and Yearly for `annualMonthlyPrice`. The 30% was a "standing promo" until 2026-08-17 and is a cadence discount now. The **Team** tab has per-seat Standard and Premium. |
 | **Perplexity** | `/pro` shows only annual equivalents and has no toggle. Monthly Pro comes from the page's own copy ("First month free, then $20/month"); Max comes from help article 11680686 ("$200/monthly or $2000/annually"). Enterprise prices sit in a **Framer FAQ accordion** that will not open while the Browser pane is hidden. The answer text is in the page's JS bundle, so fetch the `modulepreload` scripts and search for "per user per year". Help article 11187416 corroborates. The model cards (tagged "New") disagree with the page's own FAQ: use the cards and report the conflict. |
 
@@ -132,7 +144,7 @@ Do not burn the budget rediscovering these. Confirm quickly, then move on.
 
 | Entry | Expected outcome |
 |---|---|
-| `chatgpt` | SGD geolocation; USD not sourceable from the pricing page |
+| `chatgpt` | Pricing pages gated. **USD now sourceable from the Help Center** (see traps); Go's price is still not |
 | `github-copilot` | Annual is **discontinued** (legacy since 2026-06-01) — annual == monthly is correct and sourced |
 | `mistral-lechat` | **RESOLVED 2026-09-18.** The page still shows monthly only, but help.mistral.ai article 455205 states "Annual billing includes a 20% discount". 11.99 and 19.99 are 20% off $14.99 and $24.99. Re-check the rate |
 | `microsoft-copilot` | **NO LONGER a dead end — it is the one member of this table with real USD prices that move.** The 08-17 "not on this page" was wrong: M365 Premium and M365 Copilot sit behind the **Individual** / **Enterprise** tabs. Read every tab. |
@@ -162,10 +174,11 @@ headline finding. Say so loudly in the report.
    against the file, and record a verdict with a quote.
 5. Apply only confirmed fixes. Bump `lastVerified` only where prices were re-read.
 6. Run `npm test` and `./node_modules/.bin/tsc --noEmit`. Both must pass.
-7. Diff the data before/after with `node scratchpad/dump.mjs`. **If it does not exist,
-   say so in the report** rather than skipping silently — it is gitignored and has gone
-   missing once already, and a skipped safety check that reports nothing looks identical
-   to a passed one.
+7. Diff the data before/after. `scratchpad/dump.mjs` is gitignored and has now gone missing
+   twice, so do not rely on it: bundle `git show main:src/subscriptions.ts` and the working
+   copy with esbuild and compare the two `SUBSCRIPTIONS` arrays tier by tier (the 2026-11
+   report shows the output shape). **Say in the report which check ran.** A skipped safety
+   check that reports nothing looks identical to a passed one.
 8. Commit to the branch. Write the report. **Stop and notify.**
 
 ## Reporting rules
@@ -199,15 +212,21 @@ headline finding. Say so loudly in the report.
   31, 2026"* and *"promotional pricing applies to the first year only"*. An earlier note said "expires Sep
   2026" and was wrong. The file stores the **$21 list** price. Re-check in **January 2027**, and do **not**
   "fix" 21 down to 18 unless Microsoft makes it the standing rate.
-- **Windsurf feature string `Free SWE-2 use through Oct 10, 2026`** is dated. The October run should
-  check whether the free period ended or was extended, and update or drop the string.
+- **A scheduled run's "succeeded" status is not evidence that it ran.** The 2026-10-01 and 11-01 runs
+  both died on their first command ("OAuth token revoked") and still showed "succeeded". Check the
+  run's transcript, or that a branch and report exist, before trusting it.
+- **Windsurf SWE-2 string.** RESOLVED 2026-11-25: the date is gone and the page says "Free use of SWE-2".
+  Teams is now "$80 PER MONTH … Up to 100 users" with no per-seat price.
+- **v0 Premium ($20)** is listed in the docs but "in the process of being sunsetted and is no longer available
+  to new users", so it is deliberately not in the file.
+- **16 entries were not re-read on 2026-11-25** (see that report). Do those first next time.
 - **v0 Plus shows `$30` beside a struck-through `$90`.** RESOLVED 2026-09-18: v0.app/docs/pricing lists
   "$30/user/month", which is also what the card charges. The $90 is unexplained and appears in no doc, so it is
   not recorded. Read the docs page, not just the pricing card.
 - **Replit's free Starter card is gone** from the pricing page. The plan is still documented at
   docs.replit.com/billing/plans/starter-plan ("all at no cost"), so source it there.
-- **`grok.com/supergrok`** (the only page pricing SuperGrok Lite, Heavy and annual) is Cloudflare-gated.
-  If it opens up, those three numbers can finally be re-read.
+- **`grok.com/supergrok`** is still Cloudflare-gated, but it no longer matters: SuperGrok Lite and Heavy
+  were removed in the 2026-11 restructure (see traps).
 - **Model sources for free-only entries.** qwen-chat: Qwen Studio's model picker (chat.qwen.ai, visible
   logged out) names its models. meta-ai: developer.meta.com lists the current Muse Spark version but not which
   one the Meta AI app runs, so the entry deliberately names no version. Keep it that way until Meta says.
