@@ -52,7 +52,7 @@ the vendor sells no annual plan. "Unpublished" means it may, but no annual price
 | gemini · AI Pro | **discounted** 19.99 → 16.67 | support.google.com/googleone/answer/16476811 *"You can choose between monthly or annual subscriptions for the Google AI Pro plan"*; one.google.com/about/plans, Annual toggle: *"Google AI Pro · 5 TB · Usually $199.99, now $99.99 for 12 months, then $199.99/year"*. List price recorded (199.99 / 12); the $99.99 is a 12-month intro promo |
 | gemini · AI Plus | **unpublished** | answer/16548195 *"You can choose between a monthly or annual membership plan for Google AI Plus"*, but no price on any page found |
 | gemini · AI Ultra (5×), (20×) | **unavailable** (by absence) | answer/16476748 has no annual section where its Pro and Plus siblings each have one, and the Google One Annual toggle lists only AI Pro |
-| grok · Plus, Premium, Super, Ultra, Teams | **unpublished** | x.ai/pricing shows monthly only. help.x.com/en/using-x/x-premium (US) still lists *"Premium 8.00 USD / 84.00 USD"* and *"Premium+ 40.00 USD / 395.00 USD"* annual, but under the **old** names, and it conflicts with x.ai: the Premium+ perks now sit in x.ai's $30 Premium. Which annual price belongs to which new plan cannot be determined. Flagged, not applied |
+| grok · Plus, Premium, Super, Ultra, Teams | **unpublished** → see Pass B: Plus/Premium/Super/Ultra are `discounted` | x.ai/pricing shows monthly only. help.x.com/en/using-x/x-premium (US) still lists *"Premium 8.00 USD / 84.00 USD"* and *"Premium+ 40.00 USD / 395.00 USD"* annual, but under the **old** names, and it conflicts with x.ai: the Premium+ perks now sit in x.ai's $30 Premium. Which annual price belongs to which new plan cannot be determined. Flagged, not applied |
 | mistral-lechat · Education (was Student) | **unpublished** | help.mistral.ai/articles/455205: *"For Pro and Team plans, you can choose between monthly or annual billing"*. 698530 (Education plan) says nothing about annual |
 | kimi · Business | **annual only** | kimi.com/membership/pricing, Business: *"$ 600 / year / seat · Billed annually"*; FAQ *"The Business plan is currently billed annually"* |
 | github-copilot · Pro, Pro+, Max, Business, Enterprise | **unavailable** | docs.github.com still carries *"Model multipliers for annual plans (legacy)"*. Annual closed 2026-06-01 (08-17 finding), still legacy |
@@ -108,3 +108,59 @@ the vendor sells no annual plan. "Unpublished" means it may, but no annual price
 
 perplexity, ernie-bot, doubao, zhipu-ai, deepseek, qwen-chat, meta-ai, manus, cursor, replit, lovable,
 midjourney, suno, elevenlabs, kling, runway. Their `lastVerified` dates are unchanged.
+
+---
+
+# Pass B — the remaining 16 entries (same day)
+
+**Supersedes the "Not re-read this pass (16)" list above, and the Grok annual verdict.**
+
+| | |
+|---|---|
+| Re-read in full, `lastVerified` bumped | **8**: zhipu-ai, cursor, replit, lovable, midjourney, suno, elevenlabs, runway |
+| Re-read in part, date left alone | **2**: manus (Pro 4K annual not re-read), kling (Team not re-read) |
+| Unverifiable, unchanged | **1**: perplexity |
+| Free-only, probed for change only | **5**: reachability identical (ernie-bot → wenxin.baidu.com 200, doubao 200, qwen-chat 200, deepseek 403, meta-ai 403 to curl). No escalation |
+| Tiers | 129 → **130** |
+| Data check | compiled `main` vs branch, tier by tier: every change below and nothing else |
+
+## HEADLINES
+
+1. **Cursor is now sold as the same subscription as Grok.** cursor.com/pricing lists exactly x.ai's ladder:
+   *"Free $0/month · Plus $8/month · Premium $30/month · Super $100/month · Ultra $200/month · Teams $30+/user/month ·
+   Enterprise Custom"*. Plus carries *"\*Only Grok models are available on this plan"*. Every stored Cursor tier
+   (Hobby / Pro $20 / Pro+ $60 / Ultra / Teams $40 & $120) was stale.
+2. **That settles Grok's annual prices.** cursor.com/docs/models-and-pricing: *"Annual billing is available at $80/yr
+   for Plus, $300/yr for Premium, $1,000/yr for Super, and $2,000/yr for Ultra"*. These are the same plans, under the same
+   names and monthly prices, on x.ai/pricing. So Grok's Plus / Premium / Super / Ultra go from `unpublished` to
+   `discounted` (6.67 / 25 / 83.33 / 166.67). Teams stays `unpublished`: *"Teams $30, $100, or $200 per seat/mo"*, no annual figure.
+3. **Perplexity is fully gated.** perplexity.ai/pro **and** its help-center articles return Cloudflare's "Just a moment…"
+   even in a real browser after waiting. Not bypassed; the entry is unchanged.
+4. **Promotions are everywhere (Black Friday).** Manus "Up to 33% off", Kling "Limited-Time 50% / 35% Off", ElevenLabs
+   "Save up to 55%", Suno "Extra 30% off". **Only list and renewal prices were recorded.** Re-check nothing in December
+   on the strength of a promo.
+
+## CHANGED
+
+| Entry · tier | Old → new | Quote |
+|---|---|---|
+| cursor | all tiers → Free / Plus 8 (6.67) / Premium 30 (25) / Super 100 (83.33) / Ultra 200 (166.67) / Teams 30/seat / Enterprise | headline 1 and 2; docs *"Premium $30/mo 4x Plus API list price, from prepaid credit · Super $100/mo 15x Plus · Ultra $200/mo 50x Plus"* |
+| grok · Plus / Premium / Super / Ultra | annual null → 6.67 / 25 / 83.33 / 166.67, `discounted` | headline 2 |
+| manus · Pro 8–20K | name → **Pro 8K** | Monthly, 8,000 credits *"$40 / month"*; 20,000 credits is now *"First month only, then $100/month"*, so "$40 for 8–20K" was wrong. Annual 8K *"$34 / month, billed yearly"* |
+| manus · Pro 40K | name → **Max** | *"Max … 40,000 credits / month … then $200/month"*; annual *"then $2,000/year"* (= 166.67, stored 167) |
+| manus | description: Manus 1.6 → **2.0**, ladder wording | *"Access to Manus 2.0 and 2.0 Max"*, Free *"Manus 2.0 Lite"*; Pro 4,000 credits *"$20 / month"* |
+| suno | **+ Platinum** 120 / 100 | *"Platinum · Top Tier · Our most powerful plan, with visuals for your songs plus the most credits and downloads"*; Monthly *"$120"*; Annual *"then $1,200/yr"* |
+| kling · Ultra | → **Ultra+** 619 / 408.58, 57,000 credits | Monthly *"Ultra+ … $619"*; Yearly *"Then $4902.99/year"*; *"57000 Credits/month"*. The 26,000-credit Ultra is gone |
+| kling | description 3.0 → **4.0** series | *"Kling 4.0 – HDR"*, *"Kling Image 4.0 - 8K"* |
+
+## CURRENT (re-read, unchanged)
+
+- **zhipu-ai**: Yearly default *"$12.6/month $18/month · $56/month $80/month · $117.6/month $168/month"*; Team *"$88per seat/month From $79.2/month · $188per seat/month From $169.2/month"*. The title now names GLM-5.4: an SEO title per the traps table, so not changed. CNY prices not re-read.
+- **replit**: *"$20 $18 / month, billed annually"*, *"$100 $90 / month, billed annually"*.
+- **lovable**: Monthly *$25 / $50*; Yearly *"$21 … Originally $25"*, *"$42 … Originally $50"*.
+- **midjourney**: docs table *"Monthly Price $10 | $30 | $60 | $120"*, *"Annual Price $96 ($8 / month) | $288 ($24) | $576 ($48) | $1,152 ($96)"*.
+- **suno**: Monthly *$10 / $30*; Annual list *"then $96/yr"*, *"then $288/yr"*.
+- **elevenlabs**: *$6 / $22 / $99 / $299 / $990* with yearly *$5 / $18.33 / $82.50 / $249.17 / $825* (*"Billed yearly, $9,900 a year"* etc.).
+- **runway**: Yearly *$12 / $28 / $76* (*"Billed annually. Save $36/year."*), monthly *$15 / $35 / $95*.
+- **kling**: Standard $10 / $79.2/yr, Pro $37 / $293.04/yr, Premier **at 8K** $92 / $728.64/yr. The page's Premier card **defaults to 18K ($207)**, and a synthetic click on its 8K option does nothing: there are two copies of each option, the duplicate-control trap again. A real click on the visible one works, and the yearly toggle resets the selector.
+- **manus · Team**: *"starts from US$20 per seat per month or US$200 per seat per year"*.
