@@ -41,10 +41,22 @@ export interface NormalizedModel {
 
 // ── Subscription data (static) ────────────────────────────────────────────────
 
+/**
+ * How annual billing works for a tier — STATED from the vendor's own pages, never
+ * inferred from the two prices (open item 12; evidence in docs/reviews/pricing-verify-2026-11.md).
+ *   discounted   cheaper annual rate: monthlyPrice > annualMonthlyPrice, both numbers
+ *   annual-only  no monthly price published: monthlyPrice null, annualMonthlyPrice set
+ *   unavailable  the vendor sells no annual plan: annualMonthlyPrice null
+ *   unpublished  an annual plan may exist, but no annual price was found: annualMonthlyPrice null
+ * There is no "same price" value: the 2026-11 pass found no vendor selling one.
+ */
+export type AnnualBilling = 'discounted' | 'annual-only' | 'unavailable' | 'unpublished';
+
 export interface SubscriptionTier {
   name: string;
-  monthlyPrice: number | null;         // USD (international)
-  annualMonthlyPrice: number | null;   // USD annual
+  monthlyPrice: number | null;         // USD (international); null = not published
+  annualMonthlyPrice: number | null;   // USD per month when billed annually; null unless annualBilling says one exists
+  annualBilling: AnnualBilling;
   cnMonthlyPrice?: number | null;      // CNY domestic price
   cnAnnualMonthlyPrice?: number | null;// CNY domestic annual
   perSeat: boolean;

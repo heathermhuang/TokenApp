@@ -3348,6 +3348,27 @@ async function loadBenchmarks() {
   if (sect && !state.benchmarks) sect.style.display = 'none';
 }
 
+// Price line plus annual line for one tier. Annual follows the tier's STATED
+// billing (open item 12), not a comparison of the two prices.
+function tierPriceHtml(t) {
+  var price;
+  if (t.annualBilling === 'annual-only' && t.monthlyPrice === null && t.annualMonthlyPrice) {
+    price = '<span class="tier-price">$' + t.annualMonthlyPrice + '<span class="period">/mo</span></span>';
+  } else if (t.monthlyPrice === null) {
+    price = t.cnMonthlyPrice != null
+      ? '<span class="tier-price">¥' + t.cnMonthlyPrice + '<span class="period">/mo</span></span>'
+      : '<span class="tier-price">Contact</span>';
+  } else if (t.monthlyPrice === 0) {
+    price = '<span class="tier-price" style="color:var(--green)">Free</span>';
+  } else {
+    price = '<span class="tier-price">$' + t.monthlyPrice + '<span class="period">/mo</span></span>';
+  }
+  var annual = '';
+  if (t.annualBilling === 'discounted') annual = '<div class="tier-annual">$' + t.annualMonthlyPrice + '/mo billed annually</div>';
+  else if (t.annualBilling === 'annual-only') annual = '<div class="tier-annual">billed annually only</div>';
+  return price + annual;
+}
+
 function renderSubscriptions() {
   const grid = document.getElementById('subs-grid');
   const list = filterSubs();
@@ -3360,18 +3381,6 @@ function renderSubscriptions() {
   grid.innerHTML = list.map(sub => {
     const ps = getProviderStyle(sub.providerId);
     const tiersHtml = sub.tiers.map(t => {
-      const priceHtml = t.monthlyPrice === null
-        ? (t.cnMonthlyPrice != null
-          ? \`<span class="tier-price">¥\${t.cnMonthlyPrice}<span class="period">/mo</span></span>\`
-          : '<span class="tier-price">Contact</span>')
-        : t.monthlyPrice === 0
-          ? '<span class="tier-price" style="color:var(--green)">Free</span>'
-          : \`<span class="tier-price">$\${t.monthlyPrice}<span class="period">/mo</span></span>\`;
-
-      const annualHtml = (t.annualMonthlyPrice && t.annualMonthlyPrice < (t.monthlyPrice ?? Infinity))
-        ? \`<div class="tier-annual">$\${t.annualMonthlyPrice}/mo billed annually</div>\`
-        : '';
-
       const cnPriceHtml = t.cnMonthlyPrice != null && typeof t.monthlyPrice === 'number' && t.monthlyPrice > 0
         ? \`<div class="tier-cn-price">🇨🇳 ¥\${t.cnMonthlyPrice}/mo\${t.cnAnnualMonthlyPrice && t.cnAnnualMonthlyPrice < t.cnMonthlyPrice ? ' · ¥' + t.cnAnnualMonthlyPrice + ' annual' : ''}</div>\`
         : '';
@@ -3383,9 +3392,8 @@ function renderSubscriptions() {
       return \`<div class="tier\${t.highlight ? ' highlight' : ''}">
         \${badgeHtml}
         <div class="tier-name">\${escape(t.name)}</div>
-        \${priceHtml}
+        \${tierPriceHtml(t)}
         \${perSeat}
-        \${annualHtml}
         \${cnPriceHtml}
         <div class="tier-features">\${feats}</div>
       </div>\`;
