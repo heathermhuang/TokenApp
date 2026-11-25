@@ -745,32 +745,15 @@ function cheapestPaid(s: Subscription): number | null {
 }
 
 /**
- * Does this tier actually offer a cheaper annual rate?
- *
- * `annualMonthlyPrice === monthlyPrice` is this dataset's convention for "a price
- * exists and there is NO annual discount" — 59 of 123 tier pairs use it, and it is
- * distinct from `null`, which every occurrence pairs with a null monthlyPrice and so
- * means "no price published at all" (Enterprise / contact-sales).
- *
- * Mirrors the same test the main page has always applied (`template.ts`, tier-annual
- * line): an annual figure is only shown when it BEATS monthly. Printing an equal
- * figure under a column headed "Annual /mo" asserts a purchasable annual rate, which
- * for GitHub Copilot is affirmatively false — its annual plans closed 2026-06-01 —
- * and is merely noise for the other 58.
+ * The "Annual /mo" cell, read from the tier's STATED billing (open item 12) rather
+ * than inferred from the two prices. Only `discounted` and `annual-only` tiers have
+ * an annual rate to show; `unavailable` and `unpublished` carry none, and
+ * test/annual-billing.test.mjs pins that the data agrees.
  */
-/*
- * BOTH prices must be published numbers before they can be compared. Falling back to
- * `monthlyPrice ?? Infinity` (as the main page's inline check does) would make the
- * shape `{monthlyPrice: null, annualMonthlyPrice: 10}` "a discount" — the type permits
- * it — and render a row whose monthly cell is "—" while its annual cell says $10.
- * No entry is shaped that way today; requiring finite numbers means none can be.
- */
-function hasAnnualDiscount(t: SubscriptionTier): boolean {
-  const monthly = t.monthlyPrice;
-  const annual = t.annualMonthlyPrice;
-  if (typeof monthly !== 'number' || !Number.isFinite(monthly)) return false;
-  if (typeof annual !== 'number' || !Number.isFinite(annual)) return false;
-  return annual < monthly;
+function annualCell(t: SubscriptionTier): string {
+  if (t.annualBilling === 'discounted') return esc(fmtUsd(t.annualMonthlyPrice));
+  if (t.annualBilling === 'annual-only') return `${esc(fmtUsd(t.annualMonthlyPrice))} <span class="muted">annual only</span>`;
+  return '—';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -801,7 +784,7 @@ export function getSubCompareHtml(params: {
     return s.tiers.map((t) => `<tr>
           <td><strong>${esc(t.name)}</strong>${t.badge ? ` <span class="chip">${esc(t.badge)}</span>` : ''}</td>
           <td class="num">${esc(fmtUsd(t.monthlyPrice))}${t.perSeat && t.monthlyPrice ? '<span class="muted">/seat</span>' : ''}</td>
-          <td class="num muted">${hasAnnualDiscount(t) ? esc(fmtUsd(t.annualMonthlyPrice)) : '—'}</td>
+          <td class="num muted">${annualCell(t)}</td>
         </tr>`).join('\n        ');
   }
 
