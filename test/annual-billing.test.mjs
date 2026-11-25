@@ -94,6 +94,9 @@ test('compare page: the annual column shows a real annual rate, never an inferre
   assert.doesNotMatch(row('None'), /\$10[\s\S]*\$10/, 'an unavailable tier must not repeat its monthly price as annual');
   assert.match(row('Only'), /\$50/, 'an annual-only tier shows its annual price');
   assert.match(row('Only'), /annual only|billed annually/i);
+  assert.match(row('Only'), /\$50<span class="muted">\/seat<\/span>/, 'a per-seat annual-only price keeps its unit');
+  const solo = getSubCompareHtml({ a: sub([{ ...T.only, perSeat: false }]), b: sub([T.disc]), all: [] });
+  assert.doesNotMatch(solo.match(/<strong>Only<\/strong>[\s\S]*?<\/tr>/)[0], /\/seat/, 'and only a per-seat one');
 });
 
 // The main page renders tiers in client JS; evaluate the shipped helper.

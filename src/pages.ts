@@ -752,7 +752,9 @@ function cheapestPaid(s: Subscription): number | null {
  */
 function annualCell(t: SubscriptionTier): string {
   if (t.annualBilling === 'discounted') return esc(fmtUsd(t.annualMonthlyPrice));
-  if (t.annualBilling === 'annual-only') return `${esc(fmtUsd(t.annualMonthlyPrice))} <span class="muted">annual only</span>`;
+  // The monthly cell carries /seat only when monthlyPrice is set, and annual-only
+  // tiers have none, so the unit has to travel with the price here (Codex P2).
+  if (t.annualBilling === 'annual-only') return `${esc(fmtUsd(t.annualMonthlyPrice))}${t.perSeat ? '<span class="muted">/seat</span>' : ''} <span class="muted">annual only</span>`;
   return '—';
 }
 
