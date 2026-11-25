@@ -2354,12 +2354,18 @@ var PROVIDER_STYLE_DARK = {
     openrouter:   { color: '#475569', bg: 'rgba(71,85,105,0.08)' },
     nvidia:       { color: '#4d7c0f', bg: 'rgba(77,124,15,0.08)' },
   };
+// A map's OWN value for key, else undefined. A bare map[key] reaches
+// Object.prototype, so an upstream slug like "constructor" returns a function.
+function ownGet(map, key) {
+  return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : undefined;
+}
+
 function getProviderStyle(providerId) {
   var map = isLightTheme() ? PROVIDER_STYLE_LIGHT : PROVIDER_STYLE_DARK;
   var fallback = isLightTheme()
     ? { color: '#475569', bg: 'rgba(71,85,105,0.08)' }
     : { color: '#94a3b8', bg: 'rgba(148,163,184,0.12)' };
-  return map[providerId] || fallback;
+  return ownGet(map, providerId) || fallback;
 }
 
 // Provider slug -> display name, interpolated from PROVIDERS in providers.ts so this
@@ -2534,7 +2540,7 @@ const MODEL_PAGE_URLS = {
 };
 
 function getProviderUrl(providerId) {
-  return PROVIDER_URLS[providerId] ?? null;
+  return ownGet(PROVIDER_URLS, providerId) ?? null;
 }
 
 function safeUrl(url) {
@@ -2566,7 +2572,7 @@ function getModelUrl(m) {
   } else if (m.providerId === 'nvidia') {
     url = 'https://build.nvidia.com/' + m.id;
   } else {
-    url = MODEL_PAGE_URLS[m.providerId] || PROVIDER_URLS[m.providerId] || 'https://openrouter.ai/' + m.id;
+    url = ownGet(MODEL_PAGE_URLS, m.providerId) || ownGet(PROVIDER_URLS, m.providerId) || 'https://openrouter.ai/' + m.id;
   }
   return safeUrl(url) || ('https://openrouter.ai/' + m.id);
 }
@@ -4731,7 +4737,7 @@ document.addEventListener('DOMContentLoaded', () => {
       tmSquarify(tasks.map(function (t) { return { value: t.share, t: t }; }), cr.x, cr.y, cr.w, cr.h).forEach(function (ir) {
         var t = ir.it.t;
         var f = 0.82 + 0.18 * (t.share / (maxShare || 1));   // bigger share → brighter
-        var bg = tmShade(TASK_CAT_BASE[key] || '#888888', f);
+        var bg = tmShade(ownGet(TASK_CAT_BASE, key) || '#888888', f);
         var pct = (t.share * 100).toFixed(1);
         // Top model's provider icon (OpenRouter shows one per tile). Stacks above
         // the label; on tiles too short for both, only the icon survives so we
@@ -4795,7 +4801,7 @@ document.addEventListener('DOMContentLoaded', () => {
     host.innerHTML = (activeTaskMetric().categories || []).slice()
       .sort(function (a, b) { return b.share - a.share; })
       .map(function (c) {
-        return '<span><i class="tm-dot" style="background:' + (TASK_CAT_BASE[c.key] || '#888888') + '"></i>' +
+        return '<span><i class="tm-dot" style="background:' + (ownGet(TASK_CAT_BASE, c.key) || '#888888') + '"></i>' +
           escape(c.label) + ' <b>' + (c.share * 100).toFixed(1) + '%</b></span>';
       }).join('');
   }
