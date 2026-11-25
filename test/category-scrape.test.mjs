@@ -3,13 +3,14 @@
  * src/fetchers.ts).
  *
  * WHY THIS FILE EXISTS: from 2026-11-23 the CLI Agents board stopped getting
- * rows while the other twelve kept updating. OpenRouter's cli-agent page keeps
- * a connection open, so `page.goto(..., { waitUntil: 'networkidle0' })` never
- * resolves and throws a TimeoutError after 30s. The loop's catch then skipped
- * the category, although by that point the page was fully rendered: running the
- * real extractor against it in Chrome found all 20 apps. So a goto TIMEOUT must
- * not discard a rendered page, while any OTHER goto error (DNS, reset) must still
- * skip it, because what is on screen then is whatever the previous page left.
+ * rows while the other twelve kept updating. The first navigation in a fresh
+ * browser never reaches networkidle0, so `page.goto` throws a TimeoutError after
+ * 30s, and cli-agent is first in APP_CATEGORIES (in Chrome, whichever page went
+ * first timed out). The loop's catch skipped the category although the page was
+ * fully rendered: the real extractor found all 20 apps. So a goto TIMEOUT must
+ * not discard a rendered page, while any OTHER goto error (DNS, reset), or a
+ * timeout before the URL changed, must still skip it: the screen then still
+ * shows the previous category.
  *
  * The browser is a stub that decides per URL how goto behaves and what the
  * page "shows", so nothing touches the network.
@@ -62,6 +63,8 @@ const PAGES = {
   'game':        { goto: () => Promise.reject(named('TimeoutError', 'Navigation timeout of 30000 ms exceeded')), apps: [] },
   // A non-timeout failure: the screen still holds the PREVIOUS page, so recording it would be wrong.
   'roleplay':    { goto: () => Promise.reject(new Error('net::ERR_CONNECTION_RESET')), apps: twoApps('Stale') },
+  // Timed out BEFORE the navigation committed: the URL and the screen are still the previous page's.
+  'general-chat': { goto: () => Promise.reject(named('TimeoutError', 'Navigation timeout of 30000 ms exceeded')), apps: twoApps('Stale'), committed: false },
 };
 
 async function scrape() {
@@ -69,15 +72,18 @@ async function scrape() {
   globalThis.__launch = async () => ({
     newPage: async () => {
       let current = null;
+      let url = 'about:blank';
       return {
         setUserAgent: async () => {},
         setViewport: async () => {},
-        goto: (url) => {
-          const slug = url.split('/').pop();
+        goto: (next) => {
+          const slug = next.split('/').pop();
           visited.push(slug);
           current = PAGES[slug] ?? { goto: () => Promise.resolve(), apps: [] };
+          if (current.committed !== false) url = next;
           return current.goto();
         },
+        url: () => url,
         evaluate: async () => ({ label: '', apps: current.apps }),
       };
     },
@@ -111,6 +117,11 @@ test('a timed-out page that rendered nothing is still skipped', async () => {
 test('a non-timeout goto error still skips the category', async () => {
   const { result } = await scrape();
   assert.equal(result.categories.find((c) => c.slug === 'roleplay'), undefined);
+});
+
+test('a timeout before the navigation committed is skipped (previous page still on screen)', async () => {
+  const { result } = await scrape();
+  assert.equal(result.categories.find((c) => c.slug === 'general-chat'), undefined);
 });
 
 test('a normal page is unaffected, and one failure does not stop the loop', async () => {
