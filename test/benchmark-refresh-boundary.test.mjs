@@ -101,9 +101,11 @@ test('an Epoch fetch that THROWS leaves the last good benchmarks in KV', async (
 });
 
 test('an Epoch export missing id_model_version (the join throws) leaves KV alone', async () => {
-  const csv = 'task,Model,Best score (across scorers)\ngpqa_diamond,Claude 3 Haiku,0.4\n';
+  // A valid export with ONLY id_model_version removed, so the throw is that guard's.
+  const csv = 'original_task_name,Model,Unique display name,best_score,mean_score,stderr,started_at\n'
+    + 'GPQA diamond,Claude 3 Haiku,,0.4,0.4,0.01,2026-01-01\n';
   const { body, store } = await refresh(() => new Response(csv, { status: 200 }));
-  assert.ok(body.benchmarksError, 'a missing join key must surface as an error');
+  assert.match(String(body.benchmarksError), /missing id_model_version/);
   assert.equal(store.get('benchmarks:all'), LAST_GOOD);
 });
 
