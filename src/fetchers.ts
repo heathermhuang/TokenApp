@@ -318,7 +318,15 @@ export async function fetchCategoryRankings(env: Env): Promise<CategoryScrape> {
 
     for (const cat of APP_CATEGORIES.slice(0, CATEGORY_SCRAPE_CAP)) {
       try {
-        await page.goto(categoryUrl(cat), { waitUntil: 'networkidle0', timeout: CATEGORY_RENDER_TIMEOUT_MS });
+        try {
+          await page.goto(categoryUrl(cat), { waitUntil: 'networkidle0', timeout: CATEGORY_RENDER_TIMEOUT_MS });
+        } catch (err) {
+          // cli-agent keeps a connection open, so networkidle0 never fires, yet the
+          // page is fully rendered by the timeout (empty since 2026-11-23 because of
+          // this). Extract anyway; the apps>0 guard below still skips a page that
+          // did not render. Any other goto error leaves the previous page on screen.
+          if ((err as Error)?.name !== 'TimeoutError') throw err;
+        }
         await new Promise((r) => setTimeout(r, 1200));
         const res = (await page.evaluate(CATEGORY_EXTRACTOR_SOURCE)) as {
           label: string;
