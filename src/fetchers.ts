@@ -1,6 +1,6 @@
 import puppeteer from '@cloudflare/puppeteer';
 import { APP_CATEGORIES, CATEGORY_SCRAPE_CAP, categoryUrl } from './categories';
-import type { Env, NormalizedModel, OpenRouterModel, OpenRouterResponse, RankingsData, ModelRanking, AppRanking, RankingPeriod, RankDelta, TaskSpend, ModelUsage } from './types';
+import type { Env, NormalizedModel, PriceTier, PriceWindow, OpenRouterModel, OpenRouterResponse, RankingsData, ModelRanking, AppRanking, RankingPeriod, RankDelta, TaskSpend, ModelUsage } from './types';
 import { KV_KEYS } from './types';
 import { getProvider, canonicalProviderId } from './providers';
 import { SUBSCRIPTIONS } from './subscriptions';
@@ -107,6 +107,29 @@ export function normalizeModel(raw: OpenRouterModel): NormalizedModel {
   const cacheReadPer1M = toMillionOrNull(raw.pricing?.input_cache_read);
   const cacheWritePer1M = toMillionOrNull(raw.pricing?.input_cache_write);
   const cacheWrite1hPer1M = toMillionOrNull(raw.pricing?.input_cache_write_1h);
+
+  // pricing.overrides holds two unrelated things, told apart by which key is present.
+  // A field an override omits keeps the headline rate.
+  const overrides = unpriced ? [] : raw.pricing?.overrides ?? [];
+  const tiers: PriceTier[] = overrides
+    .filter((o) => typeof o.min_prompt_tokens === 'number')
+    .map((o) => ({
+      minPromptTokens: o.min_prompt_tokens as number,
+      inputPer1M: toMillionOrNull(o.prompt) ?? inputPer1M,
+      outputPer1M: toMillionOrNull(o.completion) ?? outputPer1M,
+    }))
+    .sort((a, b) => a.minPromptTokens - b.minPromptTokens);
+  // A window priced AT the headline adds nothing, and its hours read as "the rest".
+  const windows: PriceWindow[] = overrides
+    .filter((o) => o.utc_days !== undefined || o.utc_start !== undefined || o.utc_end !== undefined)
+    .map((o) => ({
+      days: o.utc_days ?? null,
+      startUtc: o.utc_start ?? null,
+      endUtc: o.utc_end ?? null,
+      inputPer1M: toMillionOrNull(o.prompt) ?? inputPer1M,
+      outputPer1M: toMillionOrNull(o.completion) ?? outputPer1M,
+    }))
+    .filter((w) => w.inputPer1M !== inputPer1M || w.outputPer1M !== outputPer1M);
   const imagePricePer = raw.pricing?.image
     ? parseFloat(raw.pricing.image) || null
     : null;
@@ -169,6 +192,8 @@ export function normalizeModel(raw: OpenRouterModel): NormalizedModel {
     cacheReadPer1M,
     cacheWritePer1M,
     cacheWrite1hPer1M,
+    longContext: tiers.length ? tiers : null,
+    timeWindows: windows.length ? windows : null,
     imagePricePer,
     contextWindow: raw.context_length ?? null,
     maxOutput: raw.top_provider?.max_completion_tokens ?? null,

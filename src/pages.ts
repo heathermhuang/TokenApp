@@ -13,7 +13,7 @@
  * run benchmark (Epoch AI, CC BY, cited). No number renders without provenance.
  */
 
-import type { NormalizedModel, Subscription, SubscriptionTier, BenchmarksPayload, ModelBenchmarks, ModelEndpoints, ModelUsage } from './types';
+import type { NormalizedModel, PriceWindow, Subscription, SubscriptionTier, BenchmarksPayload, ModelBenchmarks, ModelEndpoints, ModelUsage } from './types';
 import { getProvider, PROVIDER_PAGE_SET, canonicalProviderId } from './providers';
 import { canonicalLogoSlug, LOGO_ASSET_VERSION } from './logos';
 import { FONT_PRELOAD, FONT_FACE_CSS } from './typeface';
@@ -70,6 +70,54 @@ function fmtDate(ts: number | null | undefined): string {
 // can never disagree about which of two models is "cheaper".
 export const BLEND_IN = 0.75;
 export const BLEND_OUT = 0.25;
+// ── Price variation (pricing.overrides) ─────────────────────────────────────
+// "Mon–Fri 00:00–01:00, 04:00–06:00 UTC; Sat–Sun all day", grouped by price. Only
+// windows priced differently from the headline reach here, so "the rest" is headline.
+const WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+function fmtDays(days: string[] | null): string {
+  if (!days || days.length === 7) return 'Daily';
+  const key = [...days].sort().join(',');
+  if (key === [...WEEKDAYS].sort().join(',')) return 'Mon–Fri';
+  if (key === 'saturday,sunday') return 'Sat–Sun';
+  return days.map((d) => d.charAt(0).toUpperCase() + d.slice(1, 3)).join(', ');
+}
+function fmtHhmm(n: number): string {
+  const h = Math.floor(n / 100), m = n % 100;
+  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+}
+function fmtSchedule(ws: PriceWindow[]): string {
+  const byDays = new Map<string, PriceWindow[]>();
+  for (const w of ws) {
+    const k = fmtDays(w.days);
+    byDays.set(k, [...(byDays.get(k) ?? []), w]);
+  }
+  return [...byDays].map(([days, list]) => {
+    const spans = list.filter((w) => w.startUtc !== null || w.endUtc !== null);
+    if (!spans.length) return `${days} all day`;
+    // An end of 0 is midnight at the END of the span, not the start of the day.
+    return `${days} ` + spans.map((w) => `${fmtHhmm(w.startUtc ?? 0)}–${w.endUtc ? fmtHhmm(w.endUtc) : '24:00'}`).join(', ') + ' UTC';
+  }).join('; ');
+}
+function priceVariationRows(m: NormalizedModel): string {
+  const row = (k: string, i: number | null, o: number | null) =>
+    `<div class="stat-row"><span class="stat-k">${esc(k)}</span><span class="stat-v nw">${esc(fmtP(i))} / ${esc(fmtP(o))}</span></div>`;
+  let out = '';
+  if (m.timeWindows?.length) {
+    const byPrice = new Map<string, PriceWindow[]>();
+    for (const w of m.timeWindows) {
+      const k = `${w.inputPer1M}|${w.outputPer1M}`;
+      byPrice.set(k, [...(byPrice.get(k) ?? []), w]);
+    }
+    out += '<div class="stat-sub">By time of day · input / output · other hours at the price above</div>';
+    for (const ws of byPrice.values()) out += row(fmtSchedule(ws), ws[0].inputPer1M, ws[0].outputPer1M);
+  }
+  if (m.longContext?.length) {
+    out += '<div class="stat-sub">Long prompts · input / output</div>';
+    for (const t of m.longContext) out += row(`Above ${fmtCtx(t.minPromptTokens)} prompt tokens`, t.inputPer1M, t.outputPer1M);
+  }
+  return out;
+}
+
 export function blended(m: Pick<NormalizedModel, 'inputPer1M' | 'outputPer1M'>): number | null {
   if (m.inputPer1M === null || m.outputPer1M === null) return null;
   if (m.inputPer1M < 0 || m.outputPer1M < 0) return null;
@@ -132,6 +180,8 @@ ${SITE_NAV_CSS}
     .stat-row:last-child { border-bottom:none; }
     .stat-k { color:var(--text2); }
     .stat-v { font-weight:600; font-variant-numeric:tabular-nums; text-align:right; }
+    .stat-sub { color:var(--text3); font-size:11px; padding:12px 0 2px; }
+    .stat-v.nw { white-space:nowrap; }
     ul.reasons { list-style:none; }
     ul.reasons li { padding:6px 0 6px 20px; position:relative; color:var(--text2); font-size:13px; line-height:1.55; }
     ul.reasons li::before { content:'→'; position:absolute; left:0; color:var(--accent); }
@@ -457,6 +507,7 @@ export function getModelHtml(params: {
     ${noTokenPrice ? esc(noTokenPrice) : `${esc(disp)} is available from ${esc(prov.displayName)} at ${esc(fmtP(m.inputPer1M))} per million input tokens
     and ${esc(fmtP(m.outputPer1M))} per million output tokens${bl !== null ? ` (${esc(fmtP(bl))} blended at 3:1)` : ''}.`}
     ${m.contextWindow ? `It accepts up to ${m.contextWindow.toLocaleString()} tokens of context.` : ''}
+    ${m.timeWindows?.length ? 'Its price changes by time of day; the schedule is below.' : ''}
     ${m.description ? esc(m.description.slice(0, 240)) + (m.description.length > 240 ? '…' : '') : ''}
   </p>
 
@@ -468,6 +519,7 @@ export function getModelHtml(params: {
         <div class="stat-row"><span class="stat-k">Output</span><span class="stat-v">${esc(fmtP(m.outputPer1M))}</span></div>
         <div class="stat-row"><span class="stat-k">Blended (3:1)</span><span class="stat-v">${esc(fmtP(bl))}</span></div>
         ${m.imagePricePer !== null && m.imagePricePer !== undefined ? `<div class="stat-row"><span class="stat-k">Per image</span><span class="stat-v">${esc(fmtP(m.imagePricePer))}</span></div>` : ''}
+        ${priceVariationRows(m)}
       </div>
     </div>
     <div class="panel">
