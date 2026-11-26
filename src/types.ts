@@ -23,6 +23,10 @@ export interface NormalizedModel {
   cacheReadPer1M: number | null;
   cacheWritePer1M: number | null;
   cacheWrite1hPer1M: number | null;
+  // From pricing.overrides. Optional because KV written before 2026-11-26 lacks them.
+  // null = none published. Neither is assumed to be a discount: read the numbers.
+  longContext?: PriceTier[] | null;   // lowest threshold first
+  timeWindows?: PriceWindow[] | null; // only windows priced differently from the headline
   imagePricePer: number | null; // USD per image (if applicable)
   contextWindow: number | null;
   maxOutput: number | null;
@@ -37,6 +41,23 @@ export interface NormalizedModel {
   createdAt: number | null;    // unix timestamp
   description?: string;
   huggingFaceId?: string | null;  // e.g. "deepseek-ai/DeepSeek-V3" — when present, canonical model card link
+}
+
+// A long-context tier: prompts of at least minPromptTokens are billed at these rates.
+export interface PriceTier {
+  minPromptTokens: number;
+  inputPer1M: number | null;
+  outputPer1M: number | null;
+}
+
+// A time-of-day window. days null = every day; startUtc/endUtc are OpenRouter's HHMM
+// integers (1500 = 15:00), null = all day, and a window may wrap midnight (1500–100).
+export interface PriceWindow {
+  days: string[] | null;
+  startUtc: number | null;
+  endUtc: number | null;
+  inputPer1M: number | null;
+  outputPer1M: number | null;
 }
 
 // ── Subscription data (static) ────────────────────────────────────────────────
@@ -102,6 +123,15 @@ export interface OpenRouterModel {
     input_cache_read?: string;
     input_cache_write?: string;
     input_cache_write_1h?: string;   // Anthropic's 1-hour TTL tier, dearer than the 5m default
+    // Long-context tiers (min_prompt_tokens) AND time-of-day windows (utc_*), in one array.
+    overrides?: {
+      min_prompt_tokens?: number;
+      utc_days?: string[];
+      utc_start?: number;
+      utc_end?: number;
+      prompt?: string;
+      completion?: string;
+    }[];
   };
   top_provider: {
     context_length: number;

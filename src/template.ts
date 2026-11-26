@@ -68,6 +68,7 @@ export function getHtml(params: {
     isFree?: boolean;
     provider?: string;
     outputModalities?: string[];
+    timeWindows?: { inputPer1M: number | null }[] | null;
   }>;
   const modelCount = parsedModels.length;
   const providerCount = new Set(parsedModels.map(m => m.providerId)).size;
@@ -134,14 +135,23 @@ export function getHtml(params: {
     return ' At a 3:1 input-to-output mix, the two cost about the same.';
   }
 
+  // A time-windowed model has no single price, and its headline can be the PEAK
+  // (DeepSeek V4.1 Flash 1017 is half price most of the week). Direction-neutral.
+  const timeNote = (m: FaqModel) => {
+    const ins = (m.timeWindows ?? []).map(w => w.inputPer1M).filter((p): p is number => p != null);
+    if (!ins.length || m.inputPer1M == null) return '';
+    const lo = Math.min(m.inputPer1M, ...ins), hi = Math.max(m.inputPer1M, ...ins);
+    return ` ${shortName(m)}'s price changes by time of day, from ${fmtPriceSsr(lo)} to ${fmtPriceSsr(hi)} per 1M input tokens; the figure above is its standard rate.`;
+  };
+
   const faqs: { q: string; a: string }[] = [];
   if (openai) faqs.push({
     q: `How much does ${shortName(openai)} cost per 1M tokens?`,
-    a: `${shortName(openai)}, OpenAI's newest model, costs ${fmtPriceSsr(openai.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(openai.outputPer1M)} per 1M output tokens${openai.contextWindow ? `, with a ${fmtCtxSsr(openai.contextWindow)}-token context window` : ''}. These prices are sourced from OpenRouter and updated hourly. Always verify with OpenAI's official pricing page before billing decisions.`,
+    a: `${shortName(openai)}, OpenAI's newest model, costs ${fmtPriceSsr(openai.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(openai.outputPer1M)} per 1M output tokens${openai.contextWindow ? `, with a ${fmtCtxSsr(openai.contextWindow)}-token context window` : ''}. These prices are sourced from OpenRouter and updated hourly. Always verify with OpenAI's official pricing page before billing decisions.${timeNote(openai)}`,
   });
   if (claudeSonnet) faqs.push({
     q: `How much does ${shortName(claudeSonnet)} cost per 1M tokens?`,
-    a: `${shortName(claudeSonnet)}, Anthropic's newest Sonnet, costs ${fmtPriceSsr(claudeSonnet.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(claudeSonnet.outputPer1M)} per 1M output tokens${claudeSonnet.contextWindow ? `, with a ${fmtCtxSsr(claudeSonnet.contextWindow)}-token context window` : ''}.`,
+    a: `${shortName(claudeSonnet)}, Anthropic's newest Sonnet, costs ${fmtPriceSsr(claudeSonnet.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(claudeSonnet.outputPer1M)} per 1M output tokens${claudeSonnet.contextWindow ? `, with a ${fmtCtxSsr(claudeSonnet.contextWindow)}-token context window` : ''}.${timeNote(claudeSonnet)}`,
   });
   faqs.push({
     q: 'What is a token in AI models?',
@@ -149,7 +159,7 @@ export function getHtml(params: {
   });
   if (deepseek && openai) faqs.push({
     q: 'How does DeepSeek compare in price to OpenAI?',
-    a: `${shortName(deepseek)}, DeepSeek's newest model, costs ${fmtPriceSsr(deepseek.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(deepseek.outputPer1M)} per 1M output tokens. ${shortName(openai)}, OpenAI's newest, costs ${fmtPriceSsr(openai.inputPer1M)} and ${fmtPriceSsr(openai.outputPer1M)}.${deepseekVerdict(deepseek, openai)}`,
+    a: `${shortName(deepseek)}, DeepSeek's newest model, costs ${fmtPriceSsr(deepseek.inputPer1M)} per 1M input tokens and ${fmtPriceSsr(deepseek.outputPer1M)} per 1M output tokens. ${shortName(openai)}, OpenAI's newest, costs ${fmtPriceSsr(openai.inputPer1M)} and ${fmtPriceSsr(openai.outputPer1M)}.${deepseekVerdict(deepseek, openai)}${timeNote(deepseek)}${timeNote(openai)}`,
   });
   if (freeModels.length) faqs.push({
     q: 'What is the cheapest AI API available?',
@@ -2738,8 +2748,8 @@ function renderTable() {
       </td>
       <td class="released">\${fmtDate(m.createdAt)}</td>
       <td class="ctx num">\${fmtCtx(m.contextWindow)}</td>
-      <td class="num"><span class="price \${inPClass}">\${fmtPrice(m.inputPer1M)}</span></td>
-      <td class="num"><span class="price \${outPClass}">\${fmtPrice(m.outputPer1M)}</span></td>
+      <td class="num"><span class="price \${inPClass}">\${fmtPrice(m.inputPer1M)}</span>\${priceMark(m)}</td>
+      <td class="num"><span class="price \${outPClass}">\${fmtPrice(m.outputPer1M)}</span>\${priceMark(m)}</td>
       <td class="num"><span class="price price-blended \${priceClass(m.blendedPer1M, 'input')}">\${fmtPrice(m.blendedPer1M)}</span></td>
       <td class="num">\${cachedCell(m)}</td>
       <td>\${qualityCell(m)}</td>
@@ -2761,6 +2771,39 @@ function fmtPriceFine(n) {
   if (n === 0) return '$0.00';
   if (n < 0.01) return '$' + n.toFixed(4);
   return fmtPrice(n);
+}
+
+// Price variation from pricing.overrides, for the price cell's tooltip. A time
+// window can be dearer OR cheaper than the headline (DeepSeek V4.1 Flash 1017's
+// headline is its PEAK), so the direction comes from the numbers, never the label.
+function priceVariation(m) {
+  var parts = [];
+  var w = m.timeWindows, base = m.inputPer1M;
+  if (w && w.length && base !== null && base !== undefined) {
+    var lo = base, hi = base;
+    for (var i = 0; i < w.length; i++) {
+      var p = w[i].inputPer1M;
+      if (p === null || p === undefined) continue;
+      if (p < lo) lo = p;
+      if (p > hi) hi = p;
+    }
+    var s = 'Price changes by time of day (UTC)';
+    if (lo < base) s += ': as low as ' + fmtPrice(lo) + ' input';
+    if (hi > base) s += (lo < base ? ', ' : ': ') + 'up to ' + fmtPrice(hi) + ' input';
+    parts.push(s + '. Schedule on the model page');
+  }
+  var t = m.longContext;
+  if (t && t.length) {
+    parts.push(t.map(function (x) {
+      return 'Re-prices above ' + fmtCtx(x.minPromptTokens) + ' prompt tokens: ' +
+        fmtPrice(x.inputPer1M) + ' in / ' + fmtPrice(x.outputPer1M) + ' out';
+    }).join('; '));
+  }
+  return parts.join('. ');
+}
+function priceMark(m) {
+  var v = priceVariation(m);
+  return v ? '<span class="cache-dagger" title="' + escape(v) + '">‡</span>' : '';
 }
 
 function cachedCell(m) {
