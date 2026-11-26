@@ -4634,8 +4634,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // of total spend, coloured by macro-category (palette sampled from OpenRouter)
   // and nested so each category's tasks cluster. Clicking a tile shows that
   // task's top models in the two-column list below.
-  var TASK_CAT_BASE = { general: '#f76b15', agent: '#6e56cf', code: '#30a46c', data: '#0090ff' };
-  var TASK_CAT_ORDER = ['general', 'agent', 'code', 'data'];
+  // Sampled from OpenRouter's treemap legend (2026-11-26), in its order.
+  var TASK_CAT_BASE = { software: '#3cb371', data: '#0088fe', information: '#ff8042', writing: '#db7093', assistance: '#7b68ee', creative: '#da70d6', media: '#4682b4', retrieval: '#6b8e23' };
+  var TASK_CAT_ORDER = ['software', 'data', 'information', 'writing', 'assistance', 'creative', 'media', 'retrieval'];
 
   // Spend is top-level; tokens (when present) is the parallel half. The toggle
   // flips which one the treemap, legend and per-task model list read from.
