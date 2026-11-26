@@ -231,9 +231,49 @@ type RawSpendBlock = {
 };
 type RawTaskSpend = { data: { spend: RawSpendBlock; tokens: RawSpendBlock } };
 
-// Curated tag → display label, verified against OpenRouter's rendered treemap
-// (2026-06-28). Unknown/new tags fall back to prettyTag().
+// Curated tag → display label, verified against OpenRouter's rendered treemap.
+// Unknown/new tags fall back to prettyTag().
 const TASK_LABELS: Record<string, string> = {
+  // Current taxonomy (read off the treemap 2026-11-26). Four tags have tiles too
+  // small for OpenRouter to label (data.visualization, media.speech_synthesis,
+  // retrieval.embedding, software.database_sql), so they use the fallback.
+  'software.implementation': 'Implementation',
+  'software.debugging': 'Debugging',
+  'software.code_review': 'Code review',
+  'software.testing_verification': 'Testing & verification',
+  'software.security_assessment': 'Security assessment',
+  'software.infrastructure_devops': 'Infrastructure & DevOps',
+  'software.architecture_requirements_planning': 'Architecture & planning',
+  'software.code_explanation_documentation': 'Code explanation & docs',
+  'software.refactoring_optimization': 'Refactoring & optimization',
+  'data.classification_tagging': 'Classification & tagging',
+  'data.extraction': 'Extraction',
+  'data.evaluation': 'Evaluation & grading',
+  'data.analysis': 'Analysis',
+  'data.transformation': 'Transformation',
+  'data.reconciliation_consolidation': 'Reconciliation & consolidation',
+  'information.context_grounded_qa': 'Context-grounded Q&A',
+  'information.research_synthesis': 'Research synthesis',
+  'information.planning_decision_support': 'Planning & decision support',
+  'information.factual_qa': 'Factual Q&A',
+  'information.math_logic': 'Math & logic',
+  'information.explanation_tutoring': 'Explanation & tutoring',
+  'writing.drafting': 'Drafting',
+  'writing.rewriting_editing': 'Rewriting & editing',
+  'writing.summarization': 'Summarization',
+  'writing.translation_localization': 'Translation & localization',
+  'assistance.service_issue_resolution': 'Service issue resolution',
+  'assistance.transactional_assistance': 'Transactional assistance',
+  'assistance.workflow_control': 'Workflow control',
+  'assistance.casual_conversation': 'Casual conversation',
+  'assistance.advice_coaching': 'Advice & coaching',
+  'creative.interactive_roleplay': 'Interactive roleplay',
+  'creative.creative_writing': 'Creative writing',
+  'media.image_generation_editing': 'Image generation & editing',
+  'media.video_generation': 'Video generation',
+  'media.speech_transcription': 'Speech transcription',
+  'retrieval.reranking': 'Reranking',
+  // Previous taxonomy (2026-06-28), kept so an old KV snapshot still reads right.
   'agent:workflow_execution': 'Workflow Execution',
   'agent:multi_step_planning': 'Multi-step Planning',
   'agent:tool_dispatch': 'Tool Dispatch',
@@ -267,7 +307,8 @@ const TASK_LABELS: Record<string, string> = {
 };
 
 function prettyTag(tag: string): string {
-  const tail = tag.includes(':') ? tag.slice(tag.indexOf(':') + 1) : tag;
+  // Drop the category prefix: "code:debugging" (old) or "software.database_sql" (new).
+  const tail = tag.replace(/^.*[:.]/, '');
   return tail.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
