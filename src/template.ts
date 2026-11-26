@@ -1810,6 +1810,7 @@ ${SITE_NAV_CSS}
         <button class="cat-tab" data-cat="audio">Audio</button>
         <button class="cat-tab" data-cat="reasoning">Reasoning</button>
         <button class="cat-tab" data-cat="free">Free</button>
+        <button class="cat-tab" data-cat="batch">Batch</button>
         <button class="cat-tab" data-cat="opensource">Open Source</button>
         <button class="cat-tab" data-cat="deprecated">Deprecated</button>
       </div>
@@ -2660,6 +2661,7 @@ function filterModels() {
         case 'audio':      return m.inputModalities?.includes('audio') || m.outputModalities?.includes('audio');
         case 'reasoning':  return m.isReasoning;
         case 'free':       return m.isFree;
+        case 'batch':      return isBatchModel(m);
         case 'opensource': return m.isOpenSource;
         case 'deprecated': return m.isDeprecated;
         default: return true;
@@ -2843,6 +2845,15 @@ function qualityCell(m) {
     '<span class="q-num">' + pct + '</span></span>';
 }
 
+// A :batch twin is the same model sold through an async batch API at a lower
+// price. Keyed on the id suffix, never the name: "Batch Writer" is not a batch twin.
+function isBatchModel(m) {
+  return typeof m.id === 'string' && m.id.endsWith(':batch');
+}
+function batchBadge(m) {
+  return isBatchModel(m) ? '<span class="badge" title="Batch API: the same model at a lower price, with results returned async (not in real time)">Batch</span>' : '';
+}
+
 function buildModIcons(m) {
   const badges = [];
   // Status: only the exception is tagged
@@ -2859,12 +2870,14 @@ function buildModIcons(m) {
   if (hasAudio)    badges.push('<span class="badge badge-audio">Audio</span>');
   if (m.isReasoning) badges.push('<span class="badge badge-reasoning">Reasoning</span>');
   if (m.isFree)    badges.push('<span class="badge badge-free">Free</span>');
+  if (isBatchModel(m)) badges.push(batchBadge(m));
   return badges.join('');
 }
 
 function buildMobileMeta(m) {
   const b = [];
   if (m.isFree)    b.push('<span class="badge badge-free">Free</span>');
+  if (isBatchModel(m)) b.push(batchBadge(m));
   if (m.isVision)  b.push('<span class="badge badge-vision">Vision</span>');
   if (m.isReasoning) b.push('<span class="badge badge-reasoning">Reasoning</span>');
   if (m.outputModalities?.includes('image')) b.push('<span class="badge badge-image-gen">Image</span>');
