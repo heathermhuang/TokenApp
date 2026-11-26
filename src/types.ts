@@ -27,6 +27,7 @@ export interface NormalizedModel {
   // null = none published. Neither is assumed to be a discount: read the numbers.
   longContext?: PriceTier[] | null;   // lowest threshold first
   timeWindows?: PriceWindow[] | null; // only windows priced differently from the headline
+  webSearchPerCall?: number | null;   // USD per web search request, on top of tokens; null = none published
   imagePricePer: number | null; // USD per image (if applicable)
   contextWindow: number | null;
   maxOutput: number | null;
@@ -123,6 +124,7 @@ export interface OpenRouterModel {
     input_cache_read?: string;
     input_cache_write?: string;
     input_cache_write_1h?: string;   // Anthropic's 1-hour TTL tier, dearer than the 5m default
+    web_search?: string;             // USD per web search request (NOT per token)
     // Long-context tiers (min_prompt_tokens) AND time-of-day windows (utc_*), in one array.
     overrides?: {
       min_prompt_tokens?: number;
