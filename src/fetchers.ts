@@ -194,6 +194,12 @@ export function normalizeModel(raw: OpenRouterModel): NormalizedModel {
     cacheWrite1hPer1M,
     longContext: tiers.length ? tiers : null,
     timeWindows: windows.length ? windows : null,
+    // A flat fee per search, so it skips the per-1M conversion. "0" and absent both
+    // mean "none published"; neither is a free search.
+    webSearchPerCall: (() => {
+      const n = Number.parseFloat(raw.pricing?.web_search ?? '');
+      return Number.isFinite(n) && n > 0 ? n : null;
+    })(),
     imagePricePer,
     contextWindow: raw.context_length ?? null,
     maxOutput: raw.top_provider?.max_completion_tokens ?? null,

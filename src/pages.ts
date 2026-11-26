@@ -519,6 +519,7 @@ export function getModelHtml(params: {
         <div class="stat-row"><span class="stat-k">Output</span><span class="stat-v">${esc(fmtP(m.outputPer1M))}</span></div>
         <div class="stat-row"><span class="stat-k">Blended (3:1)</span><span class="stat-v">${esc(fmtP(bl))}</span></div>
         ${m.imagePricePer !== null && m.imagePricePer !== undefined ? `<div class="stat-row"><span class="stat-k">Per image</span><span class="stat-v">${esc(fmtP(m.imagePricePer))}</span></div>` : ''}
+        ${m.webSearchPerCall ? `<div class="stat-row"><span class="stat-k">Web search</span><span class="stat-v nw">$${(m.webSearchPerCall * 1000).toFixed(2)} per 1K searches</span></div>` : ''}
         ${priceVariationRows(m)}
       </div>
     </div>
