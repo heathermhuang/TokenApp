@@ -164,3 +164,51 @@ midjourney, suno, elevenlabs, kling, runway. Their `lastVerified` dates are unch
 - **runway**: Yearly *$12 / $28 / $76* (*"Billed annually. Save $36/year."*), monthly *$15 / $35 / $95*.
 - **kling**: Standard $10 / $79.2/yr, Pro $37 / $293.04/yr, Premier **at 8K** $92 / $728.64/yr. The page's Premier card **defaults to 18K ($207)**, and a synthetic click on its 8K option does nothing: there are two copies of each option, the duplicate-control trap again. A real click on the visible one works, and the yearly toggle resets the selector.
 - **manus · Team**: *"starts from US$20 per seat per month or US$200 per seat per year"*.
+
+
+---
+
+# Pass C — the 14 entries still unstamped (2026-11-26)
+
+| | |
+|---|---|
+| Re-read in full, `lastVerified` bumped | **9**: chatgpt, claude-code, kimi, manus, kling, v0, deepseek, qwen-chat, ernie-bot |
+| Re-read in part, date left alone | **1**: claude-ai (every USD price except Pro annual) |
+| Unverifiable, unchanged | **4**: perplexity (Cloudflare), hailuo-ai (redirects to the site root), doubao (paid CNY tiers need sign-in), meta-ai (*"Meta AI isn't available yet in your country"*) |
+| Tiers | 130 → 130 |
+| Data check | compiled `main` vs branch, tier by tier: every change below and nothing else |
+
+## HEADLINES
+
+1. **`chatgpt.com/pricing` loads again** in a real browser (no interstitial). It confirms Go **$8**, the one ChatGPT price
+   the Help Center never published, so chatgpt is fully stamped for the first time since July.
+2. **Kling Team's list price moved**: *"$98 /Seat/Month $122 20% Off"* and *"$61 … First Year: $732/Seat per 12 months.
+   From Year 2: $876/Seat per 12 months"*. The $98 and $61 are the Black Friday offer (*"Get up to 50% off Team Plan"*), so
+   the file records the $122 list and the $876 renewal ($73/mo). It stored $99 and $59.
+3. **Black Friday is still everywhere** (Manus *"Up to 33% off"*, Kling *"Up to 50% off"*). Only list and renewal prices
+   were recorded. Kling's individual cards also say *"then $9.8/month"* (Standard) and *"then $32.56/month"* (Pro) after the
+   promo, which match neither the struck list ($10 / $37) nor any discount stated on the page. Not recorded; re-check in
+   December.
+
+## CHANGED
+
+| Entry · tier | Old → new | Quote |
+|---|---|---|
+| kling · Team | 99 / 59 → **122 / 73** | headline 2 |
+| manus · Max | annual 167 → **166.67** | Yearly *"then $2,000/year"* (the 167 was rounded) |
+| kimi · Adagio | name → **Free** | the comparison table heads the column *"Free $0"* |
+| chatgpt · Free / Plus / Enterprise | GPT-5.6 → **GPT-6** / **GPT-6.2** / no version | *"Unlimited text chats with GPT-6"*, *"Advanced reasoning models with GPT-6.2"*; the Enterprise card names no model |
+| claude-ai · Pro, claude-code | Opus 5 / Sonnet 5 / Fable 5.1 → **no version** | the pricing card says *"More Claude models"*; versions dropped, not swapped |
+| claude-code | `underlyingModels` + `anthropic/claude-opus-5.5` | *"Fast mode is a high-speed configuration for Opus 5.5 … In research preview on Claude Code"* |
+| qwen-chat | Omni-Flash dropped | the logged-out picker lists only *"Qwen3.7-Plus"* and *"Qwen3.8-Max"* |
+| deepseek, ernie-bot | V4 / ERNIE 5.1 / 5.0 → **no version** | neither page says which model the chat runs; deepseek.com leads with *"DeepSeek V4.1 Flash has been updated to version V4.1-Flash-1017"* |
+
+## CURRENT (re-read, unchanged)
+
+- **chatgpt**: *"$0 / $8 / $20 / From $100"*; Help Center Plus *"$20/month (billed monthly)"*, Pro *"Pro 100 $100 … Pro 200 $200 … Pro 500 $500"*, *"Annual billing and payment for multiple months in advance are not available"*; Business *"$20/month if billed annually. $25/month if billed monthly"*, Premium *"$100/month if billed annually. $125/month if billed monthly"*.
+- **claude-ai**: support.claude.com Pro *"$20 per month (US)"*, Max *"$100 per month"*, Ultra *"$200 per month"*, Team *"Standard seats $25 per member per month, billed monthly $20 per member per month, billed annually Premium seats $125 … $100"*. **Pro annual ($17) has no USD source**: the help center only says *"Save on your Pro plan subscription by switching from monthly to annual billing"*, and claude.com/pricing serves SGD (*"$25 Per month with annual subscription discount ($300 billed up front). $30 if billed monthly"*, *"Prices include 9% GST"*).
+- **kimi**: Annually *"$15 … $19 Billed annually $180"*, *"$31 … $372"*, *"$79 … $948"*, *"$159 … $1,908"*; Monthly *$19 / $39 / $99 / $199*; Business *"$600 / year / seat Billed annually"*.
+- **manus**: Monthly Pro 4K *$20*, 8K *$40*, Max *"$200"* list; Annually Pro 4K *"$17 / month, billed yearly"*, 8K *"$34"*; Team *"US$20 per seat per month or US$200 per seat per year"*.
+- **kling**: Yearly *"Then $79.2/year"*, *"Then $293.04/year"*, Premier 8K *"Then $728.64/year"* (struck *$1104* = 12 × $92), Ultra+ *"Then $4902.99/year"*; Monthly struck *$10 / $37 / $207 (18K)*.
+- **v0**: docs *"Free $0/month · Premium $20/month · Plus $30/user/month · Business $100/user/month"*; no annual text on the docs or pricing page.
+- **ernie-bot**: yiyan.baidu.com → wenxin.baidu.com (百度文心助手), free, no paid plan shown.

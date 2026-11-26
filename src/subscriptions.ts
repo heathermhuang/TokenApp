@@ -11,7 +11,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     category: 'chat',
     url: 'https://chatgpt.com/pricing',
     underlyingModels: ['openai/gpt-chat-latest', 'openai/gpt-6-astra', 'openai/gpt-5.6-sol', 'openai/gpt-5.6-sol-pro', 'openai/gpt-5.6-luna'],
-    lastVerified: '2026-07-07',
+    lastVerified: '2026-11-26',
     tiers: [
       {
         name: 'Free',
@@ -19,7 +19,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
         annualMonthlyPrice: null,
         annualBilling: 'unavailable',
         perSeat: false,
-        features: ['Unlimited text chats with GPT-5.6 Luna', 'Limited messages with uploads', 'Limited and slower image generation', 'Limited deep research', 'Limited Codex access'],
+        features: ['Unlimited text chats with GPT-6', 'Limited messages with uploads', 'Limited and slower image generation', 'Limited deep research', 'Limited Codex access'],
         highlight: false,
       },
       {
@@ -37,7 +37,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
         annualMonthlyPrice: null,
         annualBilling: 'unavailable',
         perSeat: false,
-        features: ['Advanced reasoning models with GPT-5.6', 'Expanded messages and uploads', 'Expanded deep research', 'Projects, scheduled tasks, and custom GPTs', 'Expanded Codex usage', 'GPT-6 Astra in Work & Codex'],
+        features: ['Advanced reasoning models with GPT-6.2', 'Expanded messages and uploads', 'Expanded deep research', 'Projects, scheduled tasks, and custom GPTs', 'Expanded Codex usage', 'GPT-6 Astra in Work & Codex'],
         highlight: true,
         badge: 'Most Popular',
       },
@@ -93,7 +93,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
         annualMonthlyPrice: null,
         annualBilling: 'unpublished',
         perSeat: true,
-        features: ['Unlimited GPT-5.6', 'GPT-6 Pro (per workspace permissions)', 'SOC 2 & SSO', 'Analytics dashboards', 'Custom data retention', '24/7 priority support'],
+        features: ['Unlimited text chats', 'GPT-6 Pro (per workspace permissions)', 'SOC 2 & SSO', 'Analytics dashboards', 'Custom data retention', '24/7 priority support'],
         highlight: false,
         badge: 'Contact Sales',
       },
@@ -125,7 +125,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
         annualMonthlyPrice: 17,
         annualBilling: 'discounted',
         perSeat: false,
-        features: ['~45 prompts / 5-hr window', 'All models incl. Opus 5 & Sonnet 5', 'Fable via usage credits', 'Claude Code included', 'Cowork, Design & Science tools', 'Unlimited Projects'],
+        features: ['~45 prompts / 5-hr window', 'All Claude models', 'Fable via usage credits', 'Claude Code included', 'Cowork, Design & Science tools', 'Unlimited Projects'],
         highlight: true,
         badge: 'Most Popular',
       },
@@ -455,14 +455,14 @@ export const SUBSCRIPTIONS: Subscription[] = [
     description: '月之暗面 (Moonshot AI) — long-context assistant powered by Kimi K3, with Deep Research and agentic tasks. Tiers shown are international (USD); domestic China is a separate, cheaper ¥ ladder (Andante ¥49 to Allegro ¥699/mo).',
     category: 'chat',
     url: 'https://www.kimi.com/membership/pricing',
-    lastVerified: '2026-09-18',
+    lastVerified: '2026-11-26',
     // The old /pricing URL still 302s to root; the ladder moved to /membership/pricing (found
     // 2026-09-18) with the paid tiers renamed Plus/Pro/Max/Ultra at unchanged prices. That page
     // names no per-tier model beyond "K3 Extra" long context, so tier features carry no version.
     underlyingModels: ['moonshotai/kimi-k3'],
     tiers: [
       {
-        name: 'Adagio',
+        name: 'Free',
         monthlyPrice: 0,
         annualMonthlyPrice: null,
         annualBilling: 'unavailable',
@@ -524,10 +524,10 @@ export const SUBSCRIPTIONS: Subscription[] = [
     name: 'ERNIE Bot',
     provider: 'Baidu',
     providerId: 'baidu',
-    description: '文心 (formerly 文小言 / 文心一言) — Baidu\'s AI assistant. Fully free since April 2025, now powered by ERNIE 5.1.',
+    description: '文心 (formerly 文小言 / 文心一言) — Baidu\'s AI assistant. Fully free since April 2025.',
     category: 'chat',
     url: 'https://yiyan.baidu.com/',
-    lastVerified: '2026-07-07',
+    lastVerified: '2026-11-26',
     tiers: [
       {
         name: 'Free',
@@ -535,7 +535,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
         annualMonthlyPrice: null,
         annualBilling: 'unavailable',
         perSeat: false,
-        features: ['ERNIE 5.1 (unlimited)', 'ERNIE 5.0 multimodal reasoning', 'Web search', 'Image & video generation', 'Document analysis', 'China-only access'],
+        features: ['Latest ERNIE models', 'Web search', 'Image & video generation', 'Document analysis', 'China-only access'],
         highlight: true,
         badge: 'Free Forever',
       },
@@ -675,7 +675,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     description: '深度求索 — free frontier assistant powered by DeepSeek-V4. No consumer paywall; monetizes via its ultra-cheap API.',
     category: 'chat',
     url: 'https://chat.deepseek.com',
-    lastVerified: '2026-07-11',
+    lastVerified: '2026-11-26',
     underlyingModels: ['deepseek/deepseek-v4-pro', 'deepseek/deepseek-v4-flash'],
     tiers: [
       {
@@ -684,7 +684,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
         annualMonthlyPrice: null,
         annualBilling: 'unavailable',
         perSeat: false,
-        features: ['DeepSeek-V4 chat (unlimited)', 'Thinking mode (DeepThink)', 'Web search', 'File upload & analysis', 'No message caps or feature gates'],
+        features: ['Latest DeepSeek models (unlimited)', 'Thinking mode (DeepThink)', 'Web search', 'File upload & analysis', 'No message caps or feature gates'],
         highlight: true,
         badge: 'Free Forever',
       },
@@ -698,9 +698,9 @@ export const SUBSCRIPTIONS: Subscription[] = [
     description: 'Qwen Studio (formerly 通义千问 / Qwen Chat) — Alibaba\'s assistant offering Qwen3.8-Max and Qwen3.7-Plus. Free consumer app; monetizes via Alibaba Cloud API.',
     category: 'chat',
     url: 'https://chat.qwen.ai',
-    lastVerified: '2026-07-11',
-    // Qwen Studio's picker (2026-09-18) offers Qwen3.7-Plus, Qwen3.8-Max and Qwen3.8-Omni-Flash. Qwen3.7-Max is no
-    // longer listed, so it was dropped. No 3.8 id is listed either: the catalogue carries only the dated snapshot
+    lastVerified: '2026-11-26',
+    // Qwen Studio's picker offers Qwen3.7-Plus and Qwen3.8-Max (2026-11-26; Qwen3.8-Omni-Flash, listed on
+    // 2026-09-18, is gone). Qwen3.7-Max was dropped earlier for the same reason. No 3.8 id is listed either: the catalogue carries only the dated snapshot
     // qwen3.8-max-0902 and the open-weights qwen3.8-2.4t-a95b, and picking one would be a guess.
     underlyingModels: ['qwen/qwen3.7-plus'],
     tiers: [
@@ -710,7 +710,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
         annualMonthlyPrice: null,
         annualBilling: 'unavailable',
         perSeat: false,
-        features: ['Qwen3.8-Max, Qwen3.8-Omni-Flash & Qwen3.7-Plus', 'Thinking & web search modes', 'Image, video & audio understanding', 'Artifacts & code preview'],
+        features: ['Qwen3.8-Max & Qwen3.7-Plus', 'Thinking & web search modes', 'Image, video & audio understanding', 'Artifacts & code preview'],
         highlight: true,
         badge: 'Free Forever',
       },
@@ -747,7 +747,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     description: 'General AI agent (research, coding, websites, slides, browser automation) on Manus 2.0 — has now resumed operating as an independent company. Credit-based ladder: Pro runs from 4,000 credits ($20) to 20,000 ($100), Max is 40,000 ($200).',
     category: 'chat',
     url: 'https://manus.im/pricing',
-    lastVerified: '2026-09-18',
+    lastVerified: '2026-11-26',
     tiers: [
       {
         name: 'Free',
@@ -779,7 +779,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
       {
         name: 'Max',
         monthlyPrice: 200,
-        annualMonthlyPrice: 167,
+        annualMonthlyPrice: 166.67,
         annualBilling: 'discounted',
         perSeat: false,
         features: ['40,000 credits/mo', 'Free Cloud Computer', 'Early access to betas'],
@@ -1015,8 +1015,8 @@ export const SUBSCRIPTIONS: Subscription[] = [
     description: 'Agentic coding tool for terminal, IDE, web, and desktop. Included with Claude Pro/Max/Team plans — or pay-as-you-go via API.',
     category: 'coding',
     url: 'https://claude.com/product/claude-code',
-    lastVerified: '2026-09-18',
-    underlyingModels: ['anthropic/claude-opus-5', 'anthropic/claude-sonnet-5', 'anthropic/claude-fable-5.1'],
+    lastVerified: '2026-11-26',
+    underlyingModels: ['anthropic/claude-opus-5.5', 'anthropic/claude-opus-5', 'anthropic/claude-sonnet-5', 'anthropic/claude-fable-5.1'],
     tiers: [
       {
         name: 'Included w/ Plans',
@@ -1024,7 +1024,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
         annualMonthlyPrice: null,
         annualBilling: 'unpublished',
         perSeat: false,
-        features: ['Included with Pro ($20), Max & Ultra plans', 'Or pay per token at API rates', 'Opus 5, Sonnet 5 & Fable 5.1', 'Terminal, IDE, web & desktop apps', 'Usage draws from your plan limits'],
+        features: ['Included with Pro ($20), Max & Ultra plans', 'Or pay per token at API rates', 'Opus, Sonnet & Fable models', 'Terminal, IDE, web & desktop apps', 'Usage draws from your plan limits'],
         highlight: true,
         badge: 'Bundled',
       },
@@ -1139,7 +1139,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     description: 'Vercel\'s AI app builder — prompts to deployed full-stack apps, metered through its own v0 Mini/Pro/Max model tiers. No annual billing; credits expire after 65 days.',
     category: 'coding',
     url: 'https://v0.app/pricing',
-    lastVerified: '2026-09-18',
+    lastVerified: '2026-11-26',
     tiers: [
       {
         name: 'Free',
@@ -1428,7 +1428,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     description: 'Kuaishou\'s AI video & image generator on the Kling 4.0 series (Kling 4.0 video with HDR, Image 4.0 up to 8K). List prices shown — renewals run ~12% lower and annual ~34% off; first-month promos are common.',
     category: 'media',
     url: 'https://kling.ai/app/membership/membership-plan',
-    lastVerified: '2026-09-18',
+    lastVerified: '2026-11-26',
     tiers: [
       {
         name: 'Basic',
@@ -1479,11 +1479,11 @@ export const SUBSCRIPTIONS: Subscription[] = [
       },
       {
         name: 'Team',
-        monthlyPrice: 99,
-        annualMonthlyPrice: 59,
+        monthlyPrice: 122,
+        annualMonthlyPrice: 73,
         annualBilling: 'discounted',
         perSeat: true,
-        features: ['10,000 credits/seat/mo pooled', 'RBAC & corporate billing', 'Annual billed $708/seat'],
+        features: ['10,000 credits/seat/mo pooled', 'RBAC & corporate billing', 'Annual $876/seat from year two'],
         highlight: false,
       },
     ],
